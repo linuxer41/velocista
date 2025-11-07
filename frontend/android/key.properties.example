@@ -1,0 +1,4 @@
+storePassword=pass
+keyPassword=keypass
+keyAlias=key
+storeFile=file.jks
