@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import '../line_follower_state.dart';
+import '../app_state.dart';
 
 class StatisticsCard extends StatelessWidget {
-  final LineFollowerState provider;
+  final AppState provider;
 
   const StatisticsCard({
     super.key,
@@ -73,7 +73,8 @@ class StatisticsCard extends StatelessWidget {
     );
   }
 
-  Widget _buildStatRow(String label, String value, ThemeData theme, ColorScheme colorScheme) {
+  Widget _buildStatRow(
+      String label, String value, ThemeData theme, ColorScheme colorScheme) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import '../line_follower_state.dart';
+import '../app_state.dart';
 import '../arduino_data.dart';
 
 class SensorCard extends StatelessWidget {
-  final LineFollowerState provider;
+  final AppState provider;
 
   const SensorCard({
     super.key,
@@ -14,7 +14,7 @@ class SensorCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20.0),
@@ -30,9 +30,10 @@ class SensorCard extends StatelessWidget {
                 } else if (data.isLineFollowingMode) {
                   title = 'Sensores QTR (${data.sensorCount} sensores) - Línea';
                 } else {
-                  title = 'Sensores QTR (${data.sensorCount} sensores) - ${data.mode.displayName}';
+                  title =
+                      'Sensores QTR (${data.sensorCount} sensores) - ${data.mode.displayName}';
                 }
-                
+
                 return Text(
                   title,
                   style: theme.textTheme.titleMedium?.copyWith(
@@ -114,7 +115,8 @@ class SensorCard extends StatelessWidget {
           final isOnLine = data.isSensorOnLine(index);
           final color = isOnLine ? Colors.red : Colors.green;
           final bgColor = isOnLine ? Colors.red.shade50 : Colors.green.shade50;
-          final borderColor = isOnLine ? Colors.red.shade200 : Colors.green.shade200;
+          final borderColor =
+              isOnLine ? Colors.red.shade200 : Colors.green.shade200;
 
           return Container(
             decoration: BoxDecoration(

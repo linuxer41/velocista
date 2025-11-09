@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 
 /// Operation modes for the robot
 enum OperationMode {
-  lineFollowing(0, 'Line Following', Icons.route),
-  autopilot(1, 'Autopilot', Icons.directions_car),
-  manual(2, 'Manual', Icons.gamepad);
+   lineFollowing(0, 'LINE_FOLLOW', Icons.route),
+   autopilot(1, 'AUTO_PILOT', Icons.directions_car),
+   manual(2, 'MANUAL', Icons.gamepad),
+   servoDistance(3, 'SERVO_DIST', Icons.straighten),
+   pointList(4, 'POINT_LIST', Icons.list_alt);
 
   const OperationMode(this.id, this.displayName, this.icon);
   final int id;
@@ -103,24 +105,16 @@ class ArduinoData {
   /// Parse JSON from Arduino according to the new 3-mode system
   static ArduinoData fromJson(String jsonString) {
     final map = jsonDecode(jsonString);
-    
+
     return ArduinoData(
-      operationMode: map[_keyOperationMode] ?? 0,
-      modeName: map[_keyModeName] ?? 'Unknown',
-      leftEncoderSpeed: (map[_keyLeftEncoderSpeed] is num) 
-          ? (map[_keyLeftEncoderSpeed] as num).toDouble() 
-          : double.tryParse('${map[_keyLeftEncoderSpeed]}') ?? 0.0,
-      rightEncoderSpeed: (map[_keyRightEncoderSpeed] is num) 
-          ? (map[_keyRightEncoderSpeed] as num).toDouble() 
-          : double.tryParse('${map[_keyRightEncoderSpeed]}') ?? 0.0,
-      leftEncoderCount: map[_keyLeftEncoderCount] ?? 0,
-      rightEncoderCount: map[_keyRightEncoderCount] ?? 0,
-      totalDistance: (map[_keyTotalDistance] is num) 
-          ? (map[_keyTotalDistance] as num).toDouble() 
-          : double.tryParse('${map[_keyTotalDistance]}') ?? 0.0,
-      sensors: (map[_keySensors] as List<dynamic>?)
-          ?.map((e) => (e is num) ? e.toInt() : int.tryParse('$e') ?? 0)
-          .toList() ?? [],
+      operationMode: map['mode'] ?? map[_keyOperationMode] ?? 0,
+      modeName: map['modeName'] ?? map[_keyModeName] ?? 'Unknown',
+      leftEncoderSpeed: _parseDoubleValue(map['motors']?['left']?['speed_cm_s'] ?? map[_keyLeftEncoderSpeed]),
+      rightEncoderSpeed: _parseDoubleValue(map['motors']?['right']?['speed_cm_s'] ?? map[_keyRightEncoderSpeed]),
+      leftEncoderCount: map['sensors']?['encoders']?['left'] ?? map[_keyLeftEncoderCount] ?? 0,
+      rightEncoderCount: map['sensors']?['encoders']?['right'] ?? map[_keyRightEncoderCount] ?? 0,
+      totalDistance: _parseDoubleValue(map['distance']?['total_cm'] ?? map[_keyTotalDistance]),
+      sensors: _parseSensorsData(map['sensors']?['qtr'] ?? map[_keySensors]),
       
       // Line Following specific fields
       position: (map[_keyPosition] is num) 
@@ -304,6 +298,66 @@ class ArduinoData {
   /// Check if this is manual mode
   bool get isManualMode => operationMode == 2;
 
+  /// Check if this is servo distance mode
+  bool get isServoDistanceMode => operationMode == 3;
+
+  /// Check if this is point list mode
+  bool get isPointListMode => operationMode == 4;
+
+  /// Parse sensors data with better error handling
+  static List<int> _parseSensorsData(dynamic sensorsData) {
+    if (sensorsData == null) return [];
+
+    try {
+      // Handle case where sensors is a List
+      if (sensorsData is List) {
+        return sensorsData.map((e) => (e is num) ? e.toInt() : int.tryParse('$e') ?? 0).toList();
+      }
+
+      // Handle case where sensors is a Map (like {"qtr": [values]})
+      if (sensorsData is Map) {
+        final qtrData = sensorsData['qtr'];
+        if (qtrData is List) {
+          return qtrData.map((e) => (e is num) ? e.toInt() : int.tryParse('$e') ?? 0).toList();
+        }
+      }
+
+      // Fallback: try to convert to string and parse
+      final sensorsString = sensorsData.toString();
+      if (sensorsString.contains('[') && sensorsString.contains(']')) {
+        // Extract array part
+        final start = sensorsString.indexOf('[');
+        final end = sensorsString.lastIndexOf(']');
+        if (start >= 0 && end > start) {
+          final arrayPart = sensorsString.substring(start + 1, end);
+          final values = arrayPart.split(',').map((s) => int.tryParse(s.trim()) ?? 0).toList();
+          return values;
+        }
+      }
+
+      return [];
+    } catch (e) {
+      print('Error parsing sensors data: $e, data: $sensorsData');
+      return [];
+    }
+  }
+
+  /// Parse double values with better error handling
+  static double _parseDoubleValue(dynamic value) {
+    if (value == null) return 0.0;
+
+    if (value is num) {
+      return value.toDouble();
+    }
+
+    if (value is String) {
+      return double.tryParse(value) ?? 0.0;
+    }
+
+    // Try to convert to string and parse
+    return double.tryParse(value.toString()) ?? 0.0;
+  }
+
   @override
   String toString() {
     return 'ArduinoData{mode: $modeName ($operationMode), encoders: L=${leftEncoderSpeed.toStringAsFixed(1)}cm/s, R=${rightEncoderSpeed.toStringAsFixed(1)}cm/s, distance: ${totalDistance.toStringAsFixed(1)}cm}';
@@ -313,11 +367,69 @@ class ArduinoData {
 /// Command classes for different modes
 class ModeChangeCommand {
   final OperationMode mode;
-  
+
   ModeChangeCommand(this.mode);
-  
+
   Map<String, dynamic> toJson() {
     return {'mode': mode.id};
+  }
+}
+
+class ServoDistanceCommand {
+  final double distance; // Distance in cm
+
+  ServoDistanceCommand(this.distance);
+
+  Map<String, dynamic> toJson() {
+    return {'servoDistance': distance};
+  }
+}
+
+class RoutePointsCommand {
+  final String routePoints; // "dist,grados,dist,grados,..."
+
+  RoutePointsCommand(this.routePoints);
+
+  Map<String, dynamic> toJson() {
+    return {'routePoints': routePoints};
+  }
+}
+
+class SpeedBaseCommand {
+  final double baseSpeed; // 0-1
+
+  SpeedBaseCommand(this.baseSpeed);
+
+  Map<String, dynamic> toJson() {
+    return {'speed': {'base': baseSpeed}};
+  }
+}
+
+class EepromSaveCommand {
+  Map<String, dynamic> toJson() {
+    return {'eeprom': 1};
+  }
+}
+
+class TelemetryRequestCommand {
+  Map<String, dynamic> toJson() {
+    return {'telemetry': 1};
+  }
+}
+
+class TelemetryEnableCommand {
+  final bool enable;
+
+  TelemetryEnableCommand(this.enable);
+
+  Map<String, dynamic> toJson() {
+    return {'telemetry_enable': enable};
+  }
+}
+
+class CalibrateQtrCommand {
+  Map<String, dynamic> toJson() {
+    return {'calibrate_qtr': 1};
   }
 }
 
@@ -463,6 +575,130 @@ class ArduinoPIDConfig {
     return ArduinoPIDConfig(
       setpoint: 2500.0, // Center position for 6 sensors
     );
+  }
+}
+
+/// Base message wrapper for all Arduino communications
+class ArduinoMessage {
+  final String type;
+  final Map<String, dynamic> payload;
+
+  ArduinoMessage({
+    required this.type,
+    required this.payload,
+  });
+
+  static ArduinoMessage? fromJson(String jsonString) {
+    try {
+      final map = jsonDecode(jsonString);
+      if (map.containsKey('type') && map.containsKey('payload')) {
+        return ArduinoMessage(
+          type: map['type'] as String,
+          payload: map['payload'] as Map<String, dynamic>,
+        );
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  bool get isTelemetry => type == 'telemetry';
+  bool get isStatus => type == 'status';
+
+  @override
+  String toString() {
+    return 'ArduinoMessage{type: $type, payload: $payload}';
+  }
+}
+
+/// Telemetry data from Arduino
+class TelemetryData {
+  final int mode;
+  final double speed;
+  final double distance;
+  final double battery;
+  final List<int> sensors;
+  final List<double> pid;
+  final double leftRpm;
+  final double rightRpm;
+  final int leftEncoder;
+  final int rightEncoder;
+  final double? position;
+  final double? error;
+  final double? correction;
+
+  TelemetryData({
+    required this.mode,
+    required this.speed,
+    required this.distance,
+    required this.battery,
+    required this.sensors,
+    required this.pid,
+    required this.leftRpm,
+    required this.rightRpm,
+    required this.leftEncoder,
+    required this.rightEncoder,
+    this.position,
+    this.error,
+    this.correction,
+  });
+
+  static TelemetryData? fromPayload(Map<String, dynamic> payload) {
+    try {
+      return TelemetryData(
+        mode: payload['mode'] ?? 0,
+        speed: (payload['speed'] as num?)?.toDouble() ?? 0.0,
+        distance: (payload['distance'] as num?)?.toDouble() ?? 0.0,
+        battery: (payload['battery'] as num?)?.toDouble() ?? 0.0,
+        sensors: (payload['sensors'] as List<dynamic>?)?.map((e) => (e as num).toInt()).toList() ?? [],
+        pid: (payload['pid'] as List<dynamic>?)?.map((e) => (e as num).toDouble()).toList() ?? [0.0, 0.0, 0.0],
+        leftRpm: (payload['left_rpm'] as num?)?.toDouble() ?? 0.0,
+        rightRpm: (payload['right_rpm'] as num?)?.toDouble() ?? 0.0,
+        leftEncoder: payload['left_encoder'] ?? 0,
+        rightEncoder: payload['right_encoder'] ?? 0,
+        position: (payload['position'] as num?)?.toDouble(),
+        error: (payload['error'] as num?)?.toDouble(),
+        correction: (payload['correction'] as num?)?.toDouble(),
+      );
+    } catch (e) {
+      return null;
+    }
+  }
+
+  OperationMode get operationMode => OperationMode.fromId(mode);
+  bool get isLineFollowingMode => mode == 0;
+  bool get isAutopilotMode => mode == 1;
+  bool get isManualMode => mode == 2;
+  bool get isServoDistanceMode => mode == 3;
+  bool get isPointListMode => mode == 4;
+
+  @override
+  String toString() {
+    return 'TelemetryData{mode: $mode, speed: ${speed.toStringAsFixed(2)}, distance: ${distance.toStringAsFixed(1)}, battery: ${battery.toStringAsFixed(1)}}';
+  }
+}
+
+/// Status messages from Arduino
+class StatusMessage {
+  final String status;
+
+  StatusMessage(this.status);
+
+  static StatusMessage? fromPayload(Map<String, dynamic> payload) {
+    try {
+      if (payload.containsKey('status') && payload['status'] is String) {
+        return StatusMessage(payload['status']);
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  @override
+  String toString() {
+    return 'StatusMessage{status: $status}';
   }
 }
 

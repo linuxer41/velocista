@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_classic/flutter_blue_classic.dart';
-import '../line_follower_state.dart';
+import '../app_state.dart';
 import '../arduino_data.dart';
 
 class StatusCard extends StatelessWidget {
-  final LineFollowerState provider;
+  final AppState provider;
 
   const StatusCard({
     super.key,
@@ -15,7 +15,7 @@ class StatusCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20.0),
@@ -38,7 +38,8 @@ class StatusCard extends StatelessWidget {
                     children: [
                       // Mode indicator
                       Container(
-                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                        padding: const EdgeInsets.symmetric(
+                            vertical: 8, horizontal: 12),
                         decoration: BoxDecoration(
                           color: colorScheme.primaryContainer,
                           borderRadius: BorderRadius.circular(8),
@@ -84,7 +85,9 @@ class StatusCard extends StatelessWidget {
                                 'Error',
                                 data.error?.abs() ?? 0,
                                 max: 1000,
-                                color: (data.error ?? 0) >= 0 ? colorScheme.primary : colorScheme.secondary,
+                                color: (data.error ?? 0) >= 0
+                                    ? colorScheme.primary
+                                    : colorScheme.secondary,
                                 unit: '',
                               ),
                             ),
@@ -94,7 +97,9 @@ class StatusCard extends StatelessWidget {
                               child: _buildStatusCard(
                                 'Línea',
                                 data.isLineDetected ? 'Detectada' : 'Perdida',
-                                data.isLineDetected ? colorScheme.primary : colorScheme.error,
+                                data.isLineDetected
+                                    ? colorScheme.primary
+                                    : colorScheme.error,
                               ),
                             ),
                           ],
@@ -109,7 +114,9 @@ class StatusCard extends StatelessWidget {
                                 data.leftSpeedCmd?.abs() ?? 0,
                                 max: 1.0,
                                 unit: '',
-                                color: (data.leftSpeedCmd ?? 0) >= 0 ? colorScheme.primary : colorScheme.error,
+                                color: (data.leftSpeedCmd ?? 0) >= 0
+                                    ? colorScheme.primary
+                                    : colorScheme.error,
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -120,7 +127,9 @@ class StatusCard extends StatelessWidget {
                                 data.rightSpeedCmd?.abs() ?? 0,
                                 max: 1.0,
                                 unit: '',
-                                color: (data.rightSpeedCmd ?? 0) >= 0 ? colorScheme.primary : colorScheme.error,
+                                color: (data.rightSpeedCmd ?? 0) >= 0
+                                    ? colorScheme.primary
+                                    : colorScheme.error,
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -185,7 +194,9 @@ class StatusCard extends StatelessWidget {
                                 data.leftEncoderSpeed.abs(),
                                 max: 100,
                                 unit: 'cm/s',
-                                color: data.leftEncoderSpeed >= 0 ? colorScheme.primary : colorScheme.error,
+                                color: data.leftEncoderSpeed >= 0
+                                    ? colorScheme.primary
+                                    : colorScheme.error,
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -196,7 +207,9 @@ class StatusCard extends StatelessWidget {
                                 data.rightEncoderSpeed.abs(),
                                 max: 100,
                                 unit: 'cm/s',
-                                color: data.rightEncoderSpeed >= 0 ? colorScheme.primary : colorScheme.error,
+                                color: data.rightEncoderSpeed >= 0
+                                    ? colorScheme.primary
+                                    : colorScheme.error,
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -216,7 +229,8 @@ class StatusCard extends StatelessWidget {
                           const SizedBox(height: 16),
                           Center(
                             child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+                              padding: const EdgeInsets.symmetric(
+                                  vertical: 6, horizontal: 12),
                               decoration: BoxDecoration(
                                 color: colorScheme.surface,
                                 borderRadius: BorderRadius.circular(8),
@@ -280,7 +294,9 @@ class StatusCard extends StatelessWidget {
                                 data.leftEncoderSpeed.abs(),
                                 max: 100,
                                 unit: 'cm/s',
-                                color: data.leftEncoderSpeed >= 0 ? colorScheme.primary : colorScheme.error,
+                                color: data.leftEncoderSpeed >= 0
+                                    ? colorScheme.primary
+                                    : colorScheme.error,
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -291,7 +307,9 @@ class StatusCard extends StatelessWidget {
                                 data.rightEncoderSpeed.abs(),
                                 max: 100,
                                 unit: 'cm/s',
-                                color: data.rightEncoderSpeed >= 0 ? colorScheme.primary : colorScheme.error,
+                                color: data.rightEncoderSpeed >= 0
+                                    ? colorScheme.primary
+                                    : colorScheme.error,
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -354,7 +372,7 @@ class StatusCard extends StatelessWidget {
     Color color = Colors.blue,
   }) {
     final percentage = (value / max).clamp(0.0, 1.0);
-    
+
     return Container(
       padding: const EdgeInsets.all(12.0),
       decoration: BoxDecoration(

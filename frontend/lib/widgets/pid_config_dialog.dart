@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import '../line_follower_state.dart';
+import '../app_state.dart';
 import '../arduino_data.dart';
 
 class PIDConfigDialog extends StatefulWidget {
-  final LineFollowerState provider;
+  final AppState provider;
 
   const PIDConfigDialog({
     super.key,
@@ -28,8 +28,10 @@ class _PIDConfigDialogState extends State<PIDConfigDialog> {
     _kpController = TextEditingController(text: config.kp.toString());
     _kiController = TextEditingController(text: config.ki.toString());
     _kdController = TextEditingController(text: config.kd.toString());
-    _setpointController = TextEditingController(text: config.setpoint.toString());
-    _baseSpeedController = TextEditingController(text: config.baseSpeed.toString());
+    _setpointController =
+        TextEditingController(text: config.setpoint.toString());
+    _baseSpeedController =
+        TextEditingController(text: config.baseSpeed.toString());
   }
 
   @override
@@ -192,7 +194,8 @@ class _PIDConfigDialogState extends State<PIDConfigDialog> {
     }
   }
 
-  void _loadPresetValues(double kp, double ki, double kd, double setpoint, double baseSpeed) {
+  void _loadPresetValues(
+      double kp, double ki, double kd, double setpoint, double baseSpeed) {
     setState(() {
       _kpController.text = kp.toString();
       _kiController.text = ki.toString();
@@ -213,9 +216,9 @@ class _PIDConfigDialogState extends State<PIDConfigDialog> {
       );
 
       widget.provider.updatePIDConfig(config);
-      
+
       Navigator.of(context).pop();
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Configuración PID guardada exitosamente'),

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_classic/flutter_blue_classic.dart';
-import '../line_follower_state.dart';
+import '../app_state.dart';
 
 class ConnectionCard extends StatelessWidget {
-  final LineFollowerState provider;
+  final AppState provider;
   final VoidCallback onShowConnectionDialog;
 
   const ConnectionCard({
@@ -16,7 +16,7 @@ class ConnectionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20.0),
@@ -38,11 +38,13 @@ class ConnectionCard extends StatelessWidget {
                   onTap: onShowConnectionDialog,
                   borderRadius: BorderRadius.circular(8),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
                       color: colorScheme.primary.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: colorScheme.primary.withOpacity(0.3)),
+                      border: Border.all(
+                          color: colorScheme.primary.withOpacity(0.3)),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -61,7 +63,6 @@ class ConnectionCard extends StatelessWidget {
                             return Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-
                                 Text(
                                   '${devices.length}',
                                   style: theme.textTheme.labelMedium?.copyWith(
@@ -129,7 +130,8 @@ class ConnectionCard extends StatelessWidget {
                                       Expanded(
                                         child: Text(
                                           'BT: ${device.address}',
-                                          style: theme.textTheme.bodySmall?.copyWith(
+                                          style: theme.textTheme.bodySmall
+                                              ?.copyWith(
                                             color: colorScheme.onSurfaceVariant,
                                             fontFamily: 'monospace',
                                             fontWeight: FontWeight.w600,
@@ -244,9 +246,10 @@ class ConnectionCard extends StatelessWidget {
     );
   }
 
-  Widget _buildStatItem(String label, String value, IconData icon, Color color, ThemeData theme) {
+  Widget _buildStatItem(
+      String label, String value, IconData icon, Color color, ThemeData theme) {
     final colorScheme = theme.colorScheme;
-    
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(

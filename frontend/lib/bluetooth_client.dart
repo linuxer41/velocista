@@ -1,12 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:io';
 import 'package:flutter_blue_classic/flutter_blue_classic.dart';
 import 'arduino_data.dart';
 
 class BluetoothClient {
   // Callbacks for data handling
-  final Function(ArduinoData)? onDataReceived;
+  final Function(dynamic)? onDataReceived;
+  final Function(StatusMessage)? onStatusReceived;
   final Function(String)? onError;
   final Function()? onConnected;
   final Function()? onDisconnected;
@@ -35,6 +37,7 @@ class BluetoothClient {
 
   BluetoothClient({
     this.onDataReceived,
+    this.onStatusReceived,
     this.onError,
     this.onConnected,
     this.onDisconnected,
@@ -245,41 +248,88 @@ class BluetoothClient {
   void _setupDataListener() {
     print('📡 [BT_CLIENT] Setting up data listener...');
     _dataSubscription?.cancel();
-    
+
     if (_connection == null) {
       print('❌ [BT_CLIENT] Cannot set up data listener - connection is null');
       return;
     }
-    
+
     if (_connection!.input == null) {
       print('❌ [BT_CLIENT] Cannot set up data listener - connection input is null');
       return;
     }
-    
-    _dataSubscription = _connection!.input!.listen(
-      (data) {
-        try {
-          // Convert Uint8List to string
-          final message = String.fromCharCodes(data);
-          _jsonBuffer += message;
-          
-          // Extract complete JSON objects
-          final result = _extractJsonObjects(_jsonBuffer);
-          for (final jsonStr in result['objects'] as List<String>) {
-            try {
-            final parsedData = ArduinoData.fromJson(jsonStr);
+
+    // Throttle telemetry printing to avoid console spam
+    DateTime? _lastTelemetryPrint;
+    const Duration _telemetryThrottle = Duration(seconds: 2);
+    DateTime? _lastRawPrint;
+
+    _dataSubscription = _connection!.input!.listen((data) {
+      try {
+        // Convert bytes to string
+        final message = utf8.decode(data);
+        _jsonBuffer += message;
+
+        // Split by newlines and process each line
+        final lines = _jsonBuffer.split('\n');
+        _jsonBuffer = lines.last; // Keep incomplete line for next iteration
+
+        // Process complete lines
+        for (int i = 0; i < lines.length - 1; i++) {
+          final line = lines[i].trim();
+          if (line.isEmpty) continue;
+
+          // Try to parse as ArduinoMessage wrapper
+          final message = ArduinoMessage.fromJson(line);
+          if (message != null) {
+            if (message.isTelemetry) {
+              final telemetryData = TelemetryData.fromPayload(message.payload);
+              if (telemetryData != null) {
+                onDataReceived?.call(telemetryData);
+
+                // Print telemetry data every 2 seconds to avoid console spam
+                final now = DateTime.now();
+                if (_lastTelemetryPrint == null ||
+                    now.difference(_lastTelemetryPrint!) >= _telemetryThrottle) {
+                  print('📊 [TELEMETRY] ${telemetryData.toString()}');
+                  _lastTelemetryPrint = now;
+                }
+              }
+            } else if (message.isStatus) {
+              final statusMessage = StatusMessage.fromPayload(message.payload);
+              if (statusMessage != null) {
+                onStatusReceived?.call(statusMessage);
+                print('📢 [STATUS] ${statusMessage.toString()}');
+              }
+            }
+            continue;
+          }
+
+          // Fallback: try to parse as legacy ArduinoData
+          try {
+            final parsedData = ArduinoData.fromJson(line);
             onDataReceived?.call(parsedData);
-            print('✅ [BT_CLIENT] Successfully parsed JSON data');
+
+            // Print telemetry data every 2 seconds to avoid console spam
+            final now = DateTime.now();
+            if (_lastTelemetryPrint == null ||
+                now.difference(_lastTelemetryPrint!) >= _telemetryThrottle) {
+              print('📊 [TELEMETRY] ${parsedData.toString()}');
+              _lastTelemetryPrint = now;
+            }
           } catch (e) {
-            print('❌ [BT_CLIENT] JSON parse error: $e');
+            // Only log actual parsing errors
+            if (e.toString().contains('JsonUnsupportedObjectError') ||
+                e.toString().contains('FormatException')) {
+              print('❌ [BT_CLIENT] JSON parse error: $e');
+            }
           }
-          }
-          _jsonBuffer = result['remainder'] as String;
-        } catch (e) {
-          print('❌ [BT_CLIENT] Data handling error: $e');
-          onError?.call('Data handling error: $e');
         }
-      },
+      } catch (e) {
+        print('❌ [BT_CLIENT] Data handling error: $e');
+        onError?.call('Data handling error: $e');
+      }
+    },
       onError: (error) {
         print('❌ [BT_CLIENT] Data stream error: $error');
         onError?.call('Data stream error: $error');
@@ -291,43 +341,8 @@ class BluetoothClient {
         disconnect();
       },
     );
-    
+
     print('✅ [BT_CLIENT] Data listener set up successfully');
-  }
-
-  /// Extract complete JSON objects from buffer
-  Map<String, Object> _extractJsonObjects(String buffer) {
-    final objects = <String>[];
-    int depth = 0;
-    int startIndex = -1;
-    int lastEnd = 0;
-
-    for (int i = 0; i < buffer.length; i++) {
-      final ch = buffer[i];
-      
-      if (depth == 0) {
-        if (ch == '{' || ch == '[') {
-          depth = 1;
-          startIndex = i;
-        }
-      } else {
-        if (ch == '{' || ch == '[') {
-          depth++;
-        } else if (ch == '}' || ch == ']') {
-          depth--;
-          if (depth == 0 && startIndex >= 0) {
-            objects.add(buffer.substring(startIndex, i + 1));
-            lastEnd = i + 1;
-            startIndex = -1;
-          }
-        }
-      }
-    }
-
-    return {
-      'objects': objects,
-      'remainder': lastEnd < buffer.length ? buffer.substring(lastEnd) : '',
-    };
   }
 
   /// Send JSON configuration to Arduino

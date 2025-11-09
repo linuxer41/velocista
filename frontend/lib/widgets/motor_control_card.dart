@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import '../line_follower_state.dart';
+import '../app_state.dart';
 import '../arduino_data.dart';
 
 class MotorControlCard extends StatelessWidget {
-  final LineFollowerState provider;
+  final AppState provider;
 
   const MotorControlCard({
     super.key,
@@ -14,7 +14,7 @@ class MotorControlCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20.0),
@@ -37,7 +37,8 @@ class MotorControlCard extends StatelessWidget {
                     children: [
                       // Mode indicator
                       Container(
-                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                        padding: const EdgeInsets.symmetric(
+                            vertical: 8, horizontal: 12),
                         decoration: BoxDecoration(
                           color: colorScheme.primaryContainer,
                           borderRadius: BorderRadius.circular(8),
@@ -71,7 +72,9 @@ class MotorControlCard extends StatelessWidget {
                               data.leftEncoderSpeed.abs(),
                               max: 100,
                               unit: 'cm/s',
-                              color: data.leftEncoderSpeed >= 0 ? colorScheme.primary : colorScheme.error,
+                              color: data.leftEncoderSpeed >= 0
+                                  ? colorScheme.primary
+                                  : colorScheme.error,
                             ),
                           ),
                           const SizedBox(width: 16),
@@ -81,16 +84,21 @@ class MotorControlCard extends StatelessWidget {
                               data.rightEncoderSpeed.abs(),
                               max: 100,
                               unit: 'cm/s',
-                              color: data.rightEncoderSpeed >= 0 ? colorScheme.primary : colorScheme.error,
+                              color: data.rightEncoderSpeed >= 0
+                                  ? colorScheme.primary
+                                  : colorScheme.error,
                             ),
                           ),
                         ],
                       ),
                       // Mode-specific data
-                      if (data.isAutopilotMode && (data.throttle != null || data.turn != null)) ...[
+                      if (data.isAutopilotMode &&
+                          (data.throttle != null || data.turn != null)) ...[
                         const SizedBox(height: 16),
                         _buildAutopilotData(data, theme, colorScheme),
-                      ] else if (data.isManualMode && (data.leftSpeed != null || data.rightSpeed != null)) ...[
+                      ] else if (data.isManualMode &&
+                          (data.leftSpeed != null ||
+                              data.rightSpeed != null)) ...[
                         const SizedBox(height: 16),
                         _buildManualData(data, theme, colorScheme),
                       ],
@@ -118,7 +126,8 @@ class MotorControlCard extends StatelessWidget {
     );
   }
 
-  Widget _buildAutopilotData(ArduinoData data, ThemeData theme, ColorScheme colorScheme) {
+  Widget _buildAutopilotData(
+      ArduinoData data, ThemeData theme, ColorScheme colorScheme) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -139,13 +148,17 @@ class MotorControlCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               if (data.throttle != null)
-                _buildDataPoint('Acelerador', '${(data.throttle! * 100).toStringAsFixed(0)}%'),
+                _buildDataPoint('Acelerador',
+                    '${(data.throttle! * 100).toStringAsFixed(0)}%'),
               if (data.turn != null)
-                _buildDataPoint('Dirección', '${(data.turn! * 100).toStringAsFixed(0)}%'),
+                _buildDataPoint(
+                    'Dirección', '${(data.turn! * 100).toStringAsFixed(0)}%'),
               if (data.brake != null)
-                _buildDataPoint('Freno', '${(data.brake! * 100).toStringAsFixed(0)}%'),
+                _buildDataPoint(
+                    'Freno', '${(data.brake! * 100).toStringAsFixed(0)}%'),
               if (data.direction != null)
-                _buildDataPoint('Marcha', data.direction! > 0 ? 'Adelante' : 'Atrás'),
+                _buildDataPoint(
+                    'Marcha', data.direction! > 0 ? 'Adelante' : 'Atrás'),
             ],
           ),
         ],
@@ -153,7 +166,8 @@ class MotorControlCard extends StatelessWidget {
     );
   }
 
-  Widget _buildManualData(ArduinoData data, ThemeData theme, ColorScheme colorScheme) {
+  Widget _buildManualData(
+      ArduinoData data, ThemeData theme, ColorScheme colorScheme) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -174,11 +188,14 @@ class MotorControlCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               if (data.leftSpeed != null)
-                _buildDataPoint('Rueda Izq', '${(data.leftSpeed! * 100).toStringAsFixed(0)}%'),
+                _buildDataPoint('Rueda Izq',
+                    '${(data.leftSpeed! * 100).toStringAsFixed(0)}%'),
               if (data.rightSpeed != null)
-                _buildDataPoint('Rueda Der', '${(data.rightSpeed! * 100).toStringAsFixed(0)}%'),
+                _buildDataPoint('Rueda Der',
+                    '${(data.rightSpeed! * 100).toStringAsFixed(0)}%'),
               if (data.maxSpeed != null)
-                _buildDataPoint('Vel Max', '${(data.maxSpeed! * 100).toStringAsFixed(0)}%'),
+                _buildDataPoint(
+                    'Vel Max', '${(data.maxSpeed! * 100).toStringAsFixed(0)}%'),
             ],
           ),
         ],
@@ -210,7 +227,7 @@ class MotorControlCard extends StatelessWidget {
     Color color = Colors.blue,
   }) {
     final percentage = (value / max).clamp(0.0, 1.0);
-    
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16.0),

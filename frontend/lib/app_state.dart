@@ -4,45 +4,49 @@ import 'package:flutter_blue_classic/flutter_blue_classic.dart';
 import 'bluetooth_client.dart';
 import 'arduino_data.dart';
 
-class LineFollowerState extends ChangeNotifier {
+class AppState extends ChangeNotifier {
   // Cliente Bluetooth
   late BluetoothClient _bluetoothClient;
-  
+
   // Estado de conexión con ValueNotifier
   final ValueNotifier<bool> isConnected = ValueNotifier(false);
   final ValueNotifier<BluetoothDevice?> connectedDevice = ValueNotifier(null);
   final ValueNotifier<String> connectionStatus = ValueNotifier('Desconectado');
-  final ValueNotifier<List<BluetoothDevice>> discoveredDevices = ValueNotifier([]);
+  final ValueNotifier<List<BluetoothDevice>> discoveredDevices =
+      ValueNotifier([]);
   final ValueNotifier<bool> isDiscovering = ValueNotifier(false);
-  
+
   // Estado de datos
   final ValueNotifier<ArduinoData?> currentData = ValueNotifier(null);
   final List<ArduinoData> _dataHistory = [];
   final int _maxHistorySize = 100;
-  
+
   // Configuración PID
-  final ValueNotifier<ArduinoPIDConfig> pidConfig = ValueNotifier(ArduinoPIDConfig());
+  final ValueNotifier<ArduinoPIDConfig> pidConfig =
+      ValueNotifier(ArduinoPIDConfig());
   final ValueNotifier<bool> isConfigurationMode = ValueNotifier(false);
-  
+
   // Estadísticas
   final ValueNotifier<DateTime?> connectionStartTime = ValueNotifier(null);
   final ValueNotifier<int> totalDataPackets = ValueNotifier(0);
   final ValueNotifier<double> averageResponseTime = ValueNotifier(0.0);
   final ValueNotifier<double> dataRate = ValueNotifier(0.0);
   final ValueNotifier<String> connectionDuration = ValueNotifier('0s');
-  
+
   // Datos de terminal para monitoreo
   final List<String> _terminalMessages = [];
   final int _maxTerminalMessages = 200; // Increased to handle raw data
   final ValueNotifier<bool> showTerminal = ValueNotifier(false);
-  final ValueNotifier<bool> showRawData = ValueNotifier(true); // Control raw data display
-  
+  final ValueNotifier<bool> showRawData =
+      ValueNotifier(true); // Control raw data display
+
   // Timer for real-time updates
   Timer? _realtimeUpdateTimer;
 
-  final ValueNotifier<OperationMode> currentMode = ValueNotifier(OperationMode.lineFollowing);
+  final ValueNotifier<OperationMode> currentMode =
+      ValueNotifier(OperationMode.autopilot);
 
-  LineFollowerState() {
+  appState() {
     _initializeBluetoothClient();
     _startRealtimeUpdates();
   }
@@ -50,6 +54,7 @@ class LineFollowerState extends ChangeNotifier {
   void _initializeBluetoothClient() {
     _bluetoothClient = BluetoothClient(
       onDataReceived: _handleDataReceived,
+      onStatusReceived: _handleStatusReceived,
       onError: _handleBluetoothError,
       onConnected: _handleConnected,
       onDisconnected: _handleDisconnected,
@@ -57,8 +62,8 @@ class LineFollowerState extends ChangeNotifier {
   }
 
   void _startRealtimeUpdates() {
-    // Update connection time and data rate every second
-    _realtimeUpdateTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+    // Update connection time and data rate every 2 seconds to reduce UI updates
+    _realtimeUpdateTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
       if (_isConnectedValue) {
         connectionDuration.value = getConnectionDuration();
         dataRate.value = getDataRate();
@@ -68,97 +73,133 @@ class LineFollowerState extends ChangeNotifier {
   }
 
   // Getters
-List<ArduinoData> get dataHistory => List.unmodifiable(_dataHistory);
-List<String> get terminalMessages => List.unmodifiable(_terminalMessages);
+  List<ArduinoData> get dataHistory => List.unmodifiable(_dataHistory);
+  List<String> get terminalMessages => List.unmodifiable(_terminalMessages);
 
 // Helper getters
-bool get _isConnectedValue => isConnected.value;
-bool get _isDiscoveringValue => isDiscovering.value;
-String get _connectionStatusValue => connectionStatus.value;
-List<BluetoothDevice> get _discoveredDevicesValue => discoveredDevices.value;
-BluetoothDevice? get _connectedDeviceValue => connectedDevice.value;
-ArduinoPIDConfig get _pidConfigValue => pidConfig.value;
+  bool get _isConnectedValue => isConnected.value;
+  bool get _isDiscoveringValue => isDiscovering.value;
+  String get _connectionStatusValue => connectionStatus.value;
+  List<BluetoothDevice> get _discoveredDevicesValue => discoveredDevices.value;
+  BluetoothDevice? get _connectedDeviceValue => connectedDevice.value;
+  ArduinoPIDConfig get _pidConfigValue => pidConfig.value;
 
 // Expose reactive values for UI
-double get currentDataRate => dataRate.value;
-String get currentConnectionDuration => connectionDuration.value;
+  double get currentDataRate => dataRate.value;
+  String get currentConnectionDuration => connectionDuration.value;
 
   // Manejar datos entrantes con throttling
   Timer? _updateTimer;
-  static const Duration _updateThrottle = Duration(milliseconds: 33); // ~30 FPS
-  
-  void _handleDataReceived(ArduinoData data) {
+  static const Duration _updateThrottle =
+      Duration(milliseconds: 100); // Reduced frequency to prevent UI overload
+
+  void _handleDataReceived(dynamic data) {
+    // Handle both ArduinoData (legacy) and TelemetryData (new format)
+    if (data is TelemetryData) {
+      // Convert TelemetryData to ArduinoData for backward compatibility
+      final arduinoData = ArduinoData(
+        operationMode: data.mode,
+        modeName: data.operationMode.displayName,
+        leftEncoderSpeed:
+            data.leftRpm * 0.1047, // Convert RPM to cm/s (approximate)
+        rightEncoderSpeed: data.rightRpm * 0.1047,
+        leftEncoderCount: data.leftEncoder,
+        rightEncoderCount: data.rightEncoder,
+        totalDistance: data.distance,
+        sensors: data.sensors,
+        position: data.position,
+        error: data.error,
+        correction: data.correction,
+      );
+      _handleArduinoData(arduinoData);
+    } else if (data is ArduinoData) {
+      _handleArduinoData(data);
+    }
+  }
+
+  void _handleArduinoData(ArduinoData data) {
     currentData.value = data;
     totalDataPackets.value = totalDataPackets.value + 1;
-    
+
     // Agregar al historial (mantener últimos N elementos)
     _dataHistory.add(data);
     if (_dataHistory.length > _maxHistorySize) {
       _dataHistory.removeAt(0);
     }
-    
+
     // Log ALL raw Bluetooth data to terminal in real-time
     _addRawDataToTerminal(data);
-    
+
     // Throttle terminal updates to prevent overwhelming UI
     _throttledTerminalUpdate(data);
-    
+
     // Throttle UI updates to prevent excessive rebuilds
     _throttledNotifyListeners();
   }
-  
+
   void _addRawDataToTerminal(ArduinoData data) {
     // Only add raw data if enabled
     if (!showRawData.value) return;
-    
+
     // Add mode-specific data
     if (data.isLineFollowingMode) {
-      _addTerminalMessage('📊 LINE: Pos=${data.position?.toStringAsFixed(1) ?? 'N/A'}, Error=${data.error?.toStringAsFixed(1) ?? 'N/A'}, Corr=${data.correction?.toStringAsFixed(3) ?? 'N/A'}');
-      _addTerminalMessage('🔧 LINE: L_Cmd=${data.leftSpeedCmd?.toStringAsFixed(3) ?? 'N/A'}, R_Cmd=${data.rightSpeedCmd?.toStringAsFixed(3) ?? 'N/A'}');
+      _addTerminalMessage(
+          '📊 LINE: Pos=${data.position?.toStringAsFixed(1) ?? 'N/A'}, Error=${data.error?.toStringAsFixed(1) ?? 'N/A'}, Corr=${data.correction?.toStringAsFixed(3) ?? 'N/A'}');
+      _addTerminalMessage(
+          '🔧 LINE: L_Cmd=${data.leftSpeedCmd?.toStringAsFixed(3) ?? 'N/A'}, R_Cmd=${data.rightSpeedCmd?.toStringAsFixed(3) ?? 'N/A'}');
     } else if (data.isAutopilotMode) {
-      _addTerminalMessage('🚗 AUTO: Throttle=${data.throttle?.toStringAsFixed(3) ?? 'N/A'}, Brake=${data.brake?.toStringAsFixed(3) ?? 'N/A'}, Turn=${data.turn?.toStringAsFixed(3) ?? 'N/A'}, Dir=${data.direction ?? 'N/A'}');
+      _addTerminalMessage(
+          '🚗 AUTO: Throttle=${data.throttle?.toStringAsFixed(3) ?? 'N/A'}, Brake=${data.brake?.toStringAsFixed(3) ?? 'N/A'}, Turn=${data.turn?.toStringAsFixed(3) ?? 'N/A'}, Dir=${data.direction ?? 'N/A'}');
     } else if (data.isManualMode) {
-      _addTerminalMessage('🎮 MANUAL: L_Speed=${data.leftSpeed?.toStringAsFixed(3) ?? 'N/A'}, R_Speed=${data.rightSpeed?.toStringAsFixed(3) ?? 'N/A'}, Max=${data.maxSpeed?.toStringAsFixed(3) ?? 'N/A'}');
+      _addTerminalMessage(
+          '🎮 MANUAL: L_Speed=${data.leftSpeed?.toStringAsFixed(3) ?? 'N/A'}, R_Speed=${data.rightSpeed?.toStringAsFixed(3) ?? 'N/A'}, Max=${data.maxSpeed?.toStringAsFixed(3) ?? 'N/A'}');
     }
-    
-    _addTerminalMessage('🔧 ENC: L=${data.leftEncoderSpeed.toStringAsFixed(2)}cm/s, R=${data.rightEncoderSpeed.toStringAsFixed(2)}cm/s');
-    _addTerminalMessage('📏 DIST: ${data.totalDistance.toStringAsFixed(1)}cm, L_Count=${data.leftEncoderCount}, R_Count=${data.rightEncoderCount}');
-    
+
+    _addTerminalMessage(
+        '🔧 ENC: L=${data.leftEncoderSpeed.toStringAsFixed(2)}cm/s, R=${data.rightEncoderSpeed.toStringAsFixed(2)}cm/s');
+    _addTerminalMessage(
+        '📏 DIST: ${data.totalDistance.toStringAsFixed(1)}cm, L_Count=${data.leftEncoderCount}, R_Count=${data.rightEncoderCount}');
+
     // Add sensor data only in line following mode
     if (data.isLineFollowingMode) {
-      final sensorString = data.sensors.map((s) => s.toString().padLeft(4, '0')).join(',');
-      _addTerminalMessage('🎯 SENSORS: [$sensorString], Count=${data.sensorCount}, Line=${data.isLineDetected ? 'YES' : 'NO'}');
+      final sensorString =
+          data.sensors.map((s) => s.toString().padLeft(4, '0')).join(',');
+      _addTerminalMessage(
+          '🎯 SENSORS: [$sensorString], Count=${data.sensorCount}, Line=${data.isLineDetected ? 'YES' : 'NO'}');
     } else {
-      _addTerminalMessage('🎯 SENSORS: Disabled in ${data.mode.displayName} mode');
+      _addTerminalMessage(
+          '🎯 SENSORS: Disabled in ${data.mode.displayName} mode');
     }
-    
+
     _addTerminalMessage('─' * 80); // Separator line
   }
-  
+
   void _throttledTerminalUpdate(ArduinoData data) {
     // Only add terminal message every 500ms to reduce overhead
     final now = DateTime.now();
     if (_lastTerminalUpdate == null ||
         now.difference(_lastTerminalUpdate!).inMilliseconds > 500) {
-      
       String statusMessage;
       if (data.isLineFollowingMode) {
-        statusMessage = '📊 LINE: Pos=${data.position?.toStringAsFixed(1) ?? 'N/A'}, Error=${data.error?.toStringAsFixed(1) ?? 'N/A'}';
+        statusMessage =
+            '📊 LINE: Pos=${data.position?.toStringAsFixed(1) ?? 'N/A'}, Error=${data.error?.toStringAsFixed(1) ?? 'N/A'}';
       } else if (data.isAutopilotMode) {
-        statusMessage = '🚗 AUTO: Throttle=${data.throttle?.toStringAsFixed(2) ?? 'N/A'}, Turn=${data.turn?.toStringAsFixed(2) ?? 'N/A'}';
+        statusMessage =
+            '🚗 AUTO: Throttle=${data.throttle?.toStringAsFixed(2) ?? 'N/A'}, Turn=${data.turn?.toStringAsFixed(2) ?? 'N/A'}';
       } else if (data.isManualMode) {
-        statusMessage = '🎮 MANUAL: L=${data.leftSpeed?.toStringAsFixed(2) ?? 'N/A'}, R=${data.rightSpeed?.toStringAsFixed(2) ?? 'N/A'}';
+        statusMessage =
+            '🎮 MANUAL: L=${data.leftSpeed?.toStringAsFixed(2) ?? 'N/A'}, R=${data.rightSpeed?.toStringAsFixed(2) ?? 'N/A'}';
       } else {
         statusMessage = '❓ UNKNOWN: Mode ${data.operationMode}';
       }
-      
+
       _addTerminalMessage(statusMessage);
       _lastTerminalUpdate = now;
     }
   }
-  
+
   DateTime? _lastTerminalUpdate;
-  
+
   void _throttledNotifyListeners() {
     _updateTimer?.cancel();
     _updateTimer = Timer(_updateThrottle, () {
@@ -181,7 +222,7 @@ String get currentConnectionDuration => connectionDuration.value;
     connectionStatus.value = 'Conectado a $deviceName';
     _addTerminalMessage('✅ Conectado a $deviceName');
     _addTerminalMessage('📡 Esperando datos del dispositivo...');
-    
+
     notifyListeners();
   }
 
@@ -195,21 +236,46 @@ String get currentConnectionDuration => connectionDuration.value;
     notifyListeners();
   }
 
+  // Manejar mensajes de status del Arduino
+  void _handleStatusReceived(StatusMessage status) {
+    switch (status.status) {
+      case 'eeprom_saved':
+        _addTerminalMessage('💾 Configuración guardada en EEPROM exitosamente');
+        break;
+      case 'points_loaded':
+        _addTerminalMessage('🛣️ Puntos de ruta cargados exitosamente');
+        break;
+      case 'servo_distance_completed':
+        _addTerminalMessage('📏 Movimiento servo-distance completado');
+        break;
+      case 'route_completed':
+        _addTerminalMessage('✅ Ruta completada exitosamente');
+        break;
+      case 'system_started':
+        _addTerminalMessage('🚀 Sistema Arduino iniciado');
+        break;
+      default:
+        _addTerminalMessage('📢 Status: ${status.status}');
+    }
+    notifyListeners();
+  }
+
   // Iniciar descubrimiento de dispositivos
   Future<void> startDiscovery() async {
     print('🔍 [STATE] StartDiscovery called');
-    
+
     if (_isDiscoveringValue) {
       print('⚠️ [STATE] Discovery already in progress, skipping');
       return;
     }
-    
+
     isDiscovering.value = true;
     discoveredDevices.value = [];
     connectionStatus.value = 'Buscando dispositivos...';
     _addTerminalMessage('🔍 Iniciando descubrimiento de dispositivos...');
-    _addTerminalMessage('💡 Tip: Make sure your Arduino Bluetooth module is paired with this device');
-    
+    _addTerminalMessage(
+        '💡 Tip: Make sure your Arduino Bluetooth module is paired with this device');
+
     print('📱 [STATE] Discovery status: ${connectionStatus.value}');
     notifyListeners();
 
@@ -217,19 +283,20 @@ String get currentConnectionDuration => connectionDuration.value;
       print('🚀 [STATE] Calling _bluetoothClient.startDiscovery()...');
       final devices = await _bluetoothClient.startDiscovery();
       print('📋 [STATE] Discovery returned ${devices.length} devices');
-      
+
       // CRITICAL: Update the device list and notify UI
       print('🔄 [STATE] Updating discovered devices list...');
       discoveredDevices.value = devices;
       print('📱 [STATE] Set discoveredDevices to ${devices.length} devices');
-      
+
       if (devices.isEmpty) {
         connectionStatus.value = 'No se encontraron dispositivos';
         _addTerminalMessage('📱 No se encontraron dispositivos');
         _addTerminalMessage('🔍 DEBUG: Bluetooth client returned empty list');
-        _addTerminalMessage('💡 Solution: 1) Enable Bluetooth on Android 2) Pair your Arduino 3) Try again');
+        _addTerminalMessage(
+            '💡 Solution: 1) Enable Bluetooth on Android 2) Pair your Arduino 3) Try again');
         print('❌ [STATE] No devices found');
-        
+
         // IMPORTANT: Always notify listeners even when no devices found
         print('🔔 [STATE] Notifying listeners - no devices found');
         notifyListeners();
@@ -239,31 +306,35 @@ String get currentConnectionDuration => connectionDuration.value;
         for (int i = 0; i < devices.length; i++) {
           final device = devices[i];
           final deviceInfo = '${device.name ?? 'Unknown'} (${device.address})';
-          _addTerminalMessage('   ${i+1}. $deviceInfo');
+          _addTerminalMessage('   ${i + 1}. $deviceInfo');
           print('📱 [STATE] Device $i: $deviceInfo');
         }
         print('✅ [STATE] Successfully found ${devices.length} devices');
-        
+
         // CRITICAL: Always notify listeners when devices are found
         print('🔔 [STATE] Notifying listeners - devices found');
-        print('📋 [STATE] Current discoveredDevices count: ${discoveredDevices.value.length}');
-        print('📋 [STATE] Devices list: ${discoveredDevices.value.map((d) => d.name).toList()}');
+        print(
+            '📋 [STATE] Current discoveredDevices count: ${discoveredDevices.value.length}');
+        print(
+            '📋 [STATE] Devices list: ${discoveredDevices.value.map((d) => d.name).toList()}');
         notifyListeners();
       }
     } catch (e, stackTrace) {
       connectionStatus.value = 'Descubrimiento fallido: $e';
       _addTerminalMessage('❌ Descubrimiento fallido: $e');
       _addTerminalMessage('🔍 DEBUG: Exception details: $e');
-      _addTerminalMessage('💡 Troubleshooting: 1) Check Bluetooth is enabled 2) Grant location permission 3) Restart app');
+      _addTerminalMessage(
+          '💡 Troubleshooting: 1) Check Bluetooth is enabled 2) Grant location permission 3) Restart app');
       print('💥 [STATE] Discovery failed with error: $e');
       print('📋 [STATE] Stack trace: $stackTrace');
-      
+
       // CRITICAL: Notify listeners even on error
       print('🔔 [STATE] Notifying listeners - discovery failed');
       notifyListeners();
     } finally {
       isDiscovering.value = false;
-      _addTerminalMessage('🏁 [STATE] Discovery completed, setting isDiscovering = false');
+      _addTerminalMessage(
+          '🏁 [STATE] Discovery completed, setting isDiscovering = false');
       print('🏁 [STATE] Discovery finished, isDiscovering = false');
       print('🔔 [STATE] Notifying listeners - discovery finished');
       notifyListeners();
@@ -279,7 +350,7 @@ String get currentConnectionDuration => connectionDuration.value;
       notifyListeners();
 
       await _bluetoothClient.connectToDevice(device);
-      
+
       // Configuration will be sent automatically in _handleConnected()
     } catch (e) {
       connectionStatus.value = 'Conexión fallida: $e';
@@ -292,7 +363,7 @@ String get currentConnectionDuration => connectionDuration.value;
   // Desconectar de dispositivo
   Future<void> disconnect() async {
     if (!_isConnectedValue) return;
-    
+
     connectionStatus.value = 'Desconectando...';
     _addTerminalMessage('🔌 Desconectando...');
     notifyListeners();
@@ -303,8 +374,9 @@ String get currentConnectionDuration => connectionDuration.value;
   // Actualizar configuración PID
   Future<void> updatePIDConfig(ArduinoPIDConfig newConfig) async {
     pidConfig.value = newConfig;
-    _addTerminalMessage('⚙️ PID actualizado: Kp=${newConfig.kp}, Ki=${newConfig.ki}, Kd=${newConfig.kd}');
-    
+    _addTerminalMessage(
+        '⚙️ PID actualizado: Kp=${newConfig.kp}, Ki=${newConfig.ki}, Kd=${newConfig.kd}');
+
     if (_isConnectedValue) {
       try {
         final success = await _bluetoothClient.sendConfiguration(newConfig);
@@ -319,7 +391,7 @@ String get currentConnectionDuration => connectionDuration.value;
     } else {
       _addTerminalMessage('ℹ️ Configuración guardada (no conectado)');
     }
-    
+
     notifyListeners();
   }
 
@@ -335,7 +407,8 @@ String get currentConnectionDuration => connectionDuration.value;
       if (success) {
         _addTerminalMessage('📤 Comando enviado: ${command.toString()}');
       } else {
-        _addTerminalMessage('❌ Fallo al enviar comando - dispositivo no responde');
+        _addTerminalMessage(
+            '❌ Fallo al enviar comando - dispositivo no responde');
       }
       return success;
     } catch (e) {
@@ -358,11 +431,11 @@ String get currentConnectionDuration => connectionDuration.value;
   Future<void> changeOperationMode(OperationMode mode) async {
     // Don't clear data, just update the mode for UI responsiveness
     final previousMode = currentMode.value;
-    
+
     // Update mode immediately for UI responsiveness
     currentMode.value = mode;
     notifyListeners();
-    
+
     final success = await sendCommand({'mode': mode.id});
     if (success) {
       _addTerminalMessage('🔄 Modo cambiado a: ${mode.displayName}');
@@ -372,6 +445,80 @@ String get currentConnectionDuration => connectionDuration.value;
       // Restore previous mode if change failed
       currentMode.value = previousMode;
       notifyListeners();
+    }
+  }
+
+  // Enviar comando servoDistance
+  Future<void> sendServoDistance(double distance) async {
+    final success = await sendCommand(ServoDistanceCommand(distance).toJson());
+    if (success) {
+      _addTerminalMessage('📏 Comando servoDistance enviado: ${distance}cm');
+    } else {
+      _addTerminalMessage('❌ Error al enviar comando servoDistance');
+    }
+  }
+
+  // Enviar comando routePoints
+  Future<void> sendRoutePoints(String routePoints) async {
+    final success = await sendCommand(RoutePointsCommand(routePoints).toJson());
+    if (success) {
+      _addTerminalMessage('🛣️ Comando routePoints enviado: $routePoints');
+    } else {
+      _addTerminalMessage('❌ Error al enviar comando routePoints');
+    }
+  }
+
+  // Configurar velocidad base
+  Future<void> setSpeedBase(double baseSpeed) async {
+    final success = await sendCommand(SpeedBaseCommand(baseSpeed).toJson());
+    if (success) {
+      _addTerminalMessage(
+          '⚙️ Velocidad base configurada: ${baseSpeed.toStringAsFixed(2)}');
+    } else {
+      _addTerminalMessage('❌ Error al configurar velocidad base');
+    }
+  }
+
+  // Guardar configuración en EEPROM
+  Future<void> saveToEeprom() async {
+    final success = await sendCommand(EepromSaveCommand().toJson());
+    if (success) {
+      _addTerminalMessage('💾 Guardando configuración en EEPROM...');
+    } else {
+      _addTerminalMessage('❌ Error al guardar en EEPROM');
+    }
+  }
+
+  // Solicitar telemetría completa
+  Future<void> requestTelemetry() async {
+    final success = await sendCommand(TelemetryRequestCommand().toJson());
+    if (success) {
+      _addTerminalMessage('📊 Solicitando telemetría completa...');
+    } else {
+      _addTerminalMessage('❌ Error al solicitar telemetría');
+    }
+  }
+
+  // Habilitar/deshabilidar telemetría automática
+  Future<void> setTelemetryEnabled(bool enabled) async {
+    final success = await sendCommand(TelemetryEnableCommand(enabled).toJson());
+    if (success) {
+      _addTerminalMessage(
+          '📡 Telemetría automática ${enabled ? 'habilitada' : 'deshabilitada'}');
+    } else {
+      _addTerminalMessage('❌ Error al cambiar estado de telemetría');
+    }
+  }
+
+  // Calibrar sensores QTR
+  Future<void> calibrateQtrSensors() async {
+    final success = await sendCommand(CalibrateQtrCommand().toJson());
+    if (success) {
+      _addTerminalMessage('🎯 Iniciando calibración de sensores QTR...');
+      _addTerminalMessage(
+          '💡 Mueva el robot sobre la línea y el fondo durante la calibración');
+    } else {
+      _addTerminalMessage('❌ Error al iniciar calibración QTR');
     }
   }
 
@@ -457,23 +604,28 @@ String get currentConnectionDuration => connectionDuration.value;
   void _addTerminalMessage(String message) {
     final timestamp = DateTime.now().toString().substring(11, 19);
     final logMessage = '[$timestamp] $message';
-    
+
     _terminalMessages.add(logMessage);
     if (_terminalMessages.length > _maxTerminalMessages) {
       _terminalMessages.removeAt(0);
     }
   }
 
+  // Public method to add terminal messages from external classes
+  void addTerminalMessage(String message) {
+    _addTerminalMessage(message);
+  }
+
   // Obtener duración de conexión
   String getConnectionDuration() {
     final startTime = connectionStartTime.value;
     if (startTime == null) return 'No conectado';
-    
+
     final duration = DateTime.now().difference(startTime);
     final hours = duration.inHours;
     final minutes = duration.inMinutes % 60;
     final seconds = duration.inSeconds % 60;
-    
+
     if (hours > 0) {
       return '${hours}h ${minutes}m ${seconds}s';
     } else if (minutes > 0) {
@@ -488,32 +640,45 @@ String get currentConnectionDuration => connectionDuration.value;
     final startTime = connectionStartTime.value;
     final packets = totalDataPackets.value;
     if (startTime == null || packets == 0) return 0.0;
-    
+
     final duration = DateTime.now().difference(startTime);
     final durationInSeconds = duration.inMilliseconds / 1000.0;
-    
+
     if (durationInSeconds <= 0) return 0.0;
-    
+
     return packets / durationInSeconds;
   }
 
   // Obtener estadísticas de sensores
   Map<String, dynamic> getSensorStatistics() {
     if (_dataHistory.isEmpty) return {};
-    
+
     final recentData = _dataHistory.take(20).toList(); // Últimas 20 lecturas
-    
+
     // Only calculate statistics for line following mode data
-    final lineFollowingData = recentData.where((d) => d.isLineFollowingMode).toList();
-    
+    final lineFollowingData =
+        recentData.where((d) => d.isLineFollowingMode).toList();
+
     final Map<String, dynamic> stats = {};
-    
+
     if (lineFollowingData.isNotEmpty) {
-      final positions = lineFollowingData.map((d) => d.position!).where((p) => p != null).toList();
-      final errors = lineFollowingData.map((d) => d.error!).where((e) => e != null).toList();
-      final leftSpeeds = lineFollowingData.map((d) => d.leftSpeedCmd!).where((s) => s != null).toList();
-      final rightSpeeds = lineFollowingData.map((d) => d.rightSpeedCmd!).where((s) => s != null).toList();
-      
+      final positions = lineFollowingData
+          .map((d) => d.position!)
+          .where((p) => p != null)
+          .toList();
+      final errors = lineFollowingData
+          .map((d) => d.error!)
+          .where((e) => e != null)
+          .toList();
+      final leftSpeeds = lineFollowingData
+          .map((d) => d.leftSpeedCmd!)
+          .where((s) => s != null)
+          .toList();
+      final rightSpeeds = lineFollowingData
+          .map((d) => d.rightSpeedCmd!)
+          .where((s) => s != null)
+          .toList();
+
       if (positions.isNotEmpty) {
         stats['position'] = {
           'min': positions.reduce((a, b) => a < b ? a : b),
@@ -521,7 +686,7 @@ String get currentConnectionDuration => connectionDuration.value;
           'avg': positions.reduce((a, b) => a + b) / positions.length,
         };
       }
-      
+
       if (errors.isNotEmpty) {
         stats['error'] = {
           'min': errors.reduce((a, b) => a < b ? a : b),
@@ -529,7 +694,7 @@ String get currentConnectionDuration => connectionDuration.value;
           'avg': errors.reduce((a, b) => a + b) / errors.length,
         };
       }
-      
+
       if (leftSpeeds.isNotEmpty) {
         stats['leftSpeed'] = {
           'min': leftSpeeds.reduce((a, b) => a < b ? a : b),
@@ -537,7 +702,7 @@ String get currentConnectionDuration => connectionDuration.value;
           'avg': leftSpeeds.reduce((a, b) => a + b) / leftSpeeds.length,
         };
       }
-      
+
       if (rightSpeeds.isNotEmpty) {
         stats['rightSpeed'] = {
           'min': rightSpeeds.reduce((a, b) => a < b ? a : b),
@@ -546,7 +711,7 @@ String get currentConnectionDuration => connectionDuration.value;
         };
       }
     }
-    
+
     return stats;
   }
 
@@ -560,21 +725,23 @@ String get currentConnectionDuration => connectionDuration.value;
 }
 
 // InheritedWidget for accessing state
-class LineFollowerInheritedWidget extends InheritedWidget {
-  final LineFollowerState state;
+class AppInheritedWidget extends InheritedWidget {
+  final AppState state;
 
-  const LineFollowerInheritedWidget({
+  const AppInheritedWidget({
     super.key,
     required this.state,
     required super.child,
   });
 
-  static LineFollowerState? of(BuildContext context) {
-    return context.dependOnInheritedWidgetOfExactType<LineFollowerInheritedWidget>()?.state;
+  static AppState? of(BuildContext context) {
+    return context
+        .dependOnInheritedWidgetOfExactType<AppInheritedWidget>()
+        ?.state;
   }
 
   @override
-  bool updateShouldNotify(LineFollowerInheritedWidget oldWidget) {
+  bool updateShouldNotify(AppInheritedWidget oldWidget) {
     return state != oldWidget.state;
   }
 }

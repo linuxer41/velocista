@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_classic/flutter_blue_classic.dart';
-import 'line_follower_state.dart';
+import 'app_state.dart';
 
 class ConnectionBottomSheet extends StatefulWidget {
   const ConnectionBottomSheet({super.key});
@@ -17,120 +17,155 @@ class _ConnectionBottomSheetState extends State<ConnectionBottomSheet> {
   static const int _connectionTimeoutSeconds = 10;
   int _remainingTime = _connectionTimeoutSeconds;
   Timer? _countdownTimer;
-  
+
   @override
   void initState() {
     super.initState();
     // Listen for connection status changes
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final provider = LineFollowerInheritedWidget.of(context);
+      final provider = AppInheritedWidget.of(context);
       if (provider != null) {
         provider.isConnected.addListener(_handleConnectionStatusChange);
       }
     });
   }
-  
+
   @override
-    void dispose() {
-      final provider = LineFollowerInheritedWidget.of(context);
-      if (provider != null) {
-        provider.isConnected.removeListener(_handleConnectionStatusChange);
-      }
-      _connectionTimeoutTimer?.cancel();
-      super.dispose();
+  void dispose() {
+    final provider = AppInheritedWidget.of(context);
+    if (provider != null) {
+      provider.isConnected.removeListener(_handleConnectionStatusChange);
     }
-    
-    void _handleConnectionStatusChange() {
-        final provider = LineFollowerInheritedWidget.of(context);
-        if (provider != null && provider.isConnected.value && _connectingDevice != null) {
-          // Connection succeeded, cancel timeout and close the dialog
-          _connectionTimeoutTimer?.cancel();
-          _countdownTimer?.cancel();
-          setState(() {
-            _remainingTime = _connectionTimeoutSeconds;
-          });
-          Navigator.of(context).pop();
-        } else if (provider != null && !provider.isConnected.value && _connectingDevice != null) {
-          // Connection failed, reset loading state
-          setState(() {
-            _connectingDevice = null;
-            _remainingTime = _connectionTimeoutSeconds;
-          });
-          _connectionTimeoutTimer?.cancel();
-          _countdownTimer?.cancel();
-        }
+    _connectionTimeoutTimer?.cancel();
+    super.dispose();
+  }
+
+  void _handleConnectionStatusChange() {
+    final provider = AppInheritedWidget.of(context);
+    if (provider != null &&
+        provider.isConnected.value &&
+        _connectingDevice != null) {
+      // Connection succeeded, cancel timeout and close the dialog
+      _connectionTimeoutTimer?.cancel();
+      _countdownTimer?.cancel();
+      setState(() {
+        _remainingTime = _connectionTimeoutSeconds;
+      });
+      Navigator.of(context).pop();
+    } else if (provider != null &&
+        !provider.isConnected.value &&
+        _connectingDevice != null) {
+      // Connection failed, reset loading state
+      setState(() {
+        _connectingDevice = null;
+        _remainingTime = _connectionTimeoutSeconds;
+      });
+      _connectionTimeoutTimer?.cancel();
+      _countdownTimer?.cancel();
+    }
+  }
+
+  Future<void> _handleDeviceTap(
+      BluetoothDevice device, AppState provider) async {
+    // Check if already connected to a different device
+    if (provider.isConnected.value &&
+        provider.connectedDevice.value?.address != device.address) {
+      print(
+          '🔄 [CONNECTION] Already connected to ${provider.connectedDevice.value?.name ?? 'unknown device'}, disconnecting first...');
+
+      // Show disconnecting message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'Desconectando de ${provider.connectedDevice.value?.name ?? 'dispositivo actual'}...'),
+            backgroundColor: Colors.orange,
+            duration: const Duration(seconds: 2),
+          ),
+        );
       }
-      
-      Future<void> _handleDeviceTap(BluetoothDevice device, LineFollowerState provider) async {
-        if (_connectingDevice != null) return; // Already connecting to a device
-        
+
+      // Disconnect from current device first
+      await provider.disconnect();
+
+      // Wait a moment for disconnection to complete
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
+
+    // Now proceed with connection to the target device
+    if (_connectingDevice != null) return; // Already connecting to a device
+
+    setState(() {
+      _connectingDevice = device;
+      _remainingTime = _connectionTimeoutSeconds;
+    });
+
+    // Start countdown timer for UI
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted && _connectingDevice != null && _remainingTime > 0) {
         setState(() {
-          _connectingDevice = device;
+          _remainingTime--;
+        });
+      }
+    });
+
+    // Start timeout timer
+    _connectionTimeoutTimer =
+        Timer(const Duration(seconds: _connectionTimeoutSeconds), () {
+      if (mounted && _connectingDevice != null) {
+        // Timeout reached, cancel connection
+        provider.disconnect();
+        setState(() {
+          _connectingDevice = null;
           _remainingTime = _connectionTimeoutSeconds;
         });
-        
-        // Start countdown timer for UI
-        _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-          if (mounted && _connectingDevice != null && _remainingTime > 0) {
-            setState(() {
-              _remainingTime--;
-            });
-          }
-        });
-        
-        // Start 30-second timeout timer
-        _connectionTimeoutTimer = Timer(const Duration(seconds: _connectionTimeoutSeconds), () {
-          if (mounted && _connectingDevice != null) {
-            // Timeout reached, cancel connection
-            provider.disconnect();
-            setState(() {
-              _connectingDevice = null;
-              _remainingTime = _connectionTimeoutSeconds;
-            });
-            _countdownTimer?.cancel();
-            // Show timeout error
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Timeout: No se pudo conectar en $_connectionTimeoutSeconds segundos. Verifica que el dispositivo esté disponible y cerca.'),
-                  backgroundColor: Colors.red,
-                  duration: Duration(seconds: 5),
-                ),
-              );
-            }
-          }
-        });
-        
-        try {
-          await provider.connectToDevice(device);
-          // Connection attempt completed, timeout will be handled by listener
-        } catch (e) {
-          // Connection failed immediately, cancel timeout and show error
-          _connectionTimeoutTimer?.cancel();
-          _countdownTimer?.cancel();
-          setState(() {
-            _connectingDevice = null;
-            _remainingTime = _connectionTimeoutSeconds;
-          });
-          // Show error message
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Error de conexión: $e'),
-                backgroundColor: Colors.red,
-                duration: const Duration(seconds: 5),
-              ),
-            );
-          }
+        _countdownTimer?.cancel();
+        // Show timeout error
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                  'Timeout: No se pudo conectar en 10 segundos. Verifica que el dispositivo esté disponible y cerca.'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 5),
+            ),
+          );
         }
       }
+    });
+
+    try {
+      print(
+          '🔗 [CONNECTION] Connecting to target device: ${device.name ?? 'Unknown'} (${device.address})');
+      await provider.connectToDevice(device);
+      // Connection attempt completed, timeout will be handled by listener
+    } catch (e) {
+      // Connection failed immediately, cancel timeout and show error
+      _connectionTimeoutTimer?.cancel();
+      _countdownTimer?.cancel();
+      setState(() {
+        _connectingDevice = null;
+        _remainingTime = _connectionTimeoutSeconds;
+      });
+      // Show error message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error de conexión: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final provider = LineFollowerInheritedWidget.of(context);
+    final provider = AppInheritedWidget.of(context);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    
+
     return DraggableScrollableSheet(
       initialChildSize: 0.9,
       minChildSize: 0.5,
@@ -157,14 +192,15 @@ class _ConnectionBottomSheetState extends State<ConnectionBottomSheet> {
                   ),
                   // Content
                   Expanded(
-                    child: provider == null 
-                      ? Center(
-                          child: Text(
-                            'Error: LineFollowerState not found',
-                            style: theme.textTheme.bodyLarge,
-                          ),
-                        )
-                      : _buildConnectionContent(provider, context, theme, colorScheme),
+                    child: provider == null
+                        ? Center(
+                            child: Text(
+                              'Error: appState not found',
+                              style: theme.textTheme.bodyLarge,
+                            ),
+                          )
+                        : _buildConnectionContent(
+                            provider, context, theme, colorScheme),
                   ),
                 ],
               ),
@@ -221,7 +257,8 @@ class _ConnectionBottomSheetState extends State<ConnectionBottomSheet> {
     );
   }
 
-  Widget _buildConnectionContent(LineFollowerState provider, BuildContext context, ThemeData theme, ColorScheme colorScheme) {
+  Widget _buildConnectionContent(AppState provider, BuildContext context,
+      ThemeData theme, ColorScheme colorScheme) {
     return Padding(
       padding: const EdgeInsets.all(8.0),
       child: Column(
@@ -251,7 +288,8 @@ class _ConnectionBottomSheetState extends State<ConnectionBottomSheet> {
                           height: 20,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.orange),
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.orange),
                           ),
                         );
                       } else {
@@ -261,7 +299,9 @@ class _ConnectionBottomSheetState extends State<ConnectionBottomSheet> {
                             color: colorScheme.primary,
                             size: 20,
                           ),
-                          onPressed: provider.isConnected.value ? null : provider.startDiscovery,
+                          onPressed: provider.isConnected.value
+                              ? null
+                              : provider.startDiscovery,
                         );
                       }
                     },
@@ -284,7 +324,8 @@ class _ConnectionBottomSheetState extends State<ConnectionBottomSheet> {
     );
   }
 
-  Widget _buildDeviceList(LineFollowerState provider, ThemeData theme, ColorScheme colorScheme) {
+  Widget _buildDeviceList(
+      AppState provider, ThemeData theme, ColorScheme colorScheme) {
     return RepaintBoundary(
       child: ValueListenableBuilder<List<BluetoothDevice>>(
         valueListenable: provider.discoveredDevices,
@@ -298,48 +339,59 @@ class _ConnectionBottomSheetState extends State<ConnectionBottomSheet> {
               itemBuilder: (context, index) {
                 final device = devices[index];
                 // Only consider connected if the connection is actually validated
-                final isConnected = provider.connectedDevice.value?.address == device.address && 
-                                   provider.isConnected.value;
+                final isConnected =
+                    provider.connectedDevice.value?.address == device.address &&
+                        provider.isConnected.value;
                 // Only show connecting state if this is the device being connected and not yet connected
-                final isConnecting = _connectingDevice?.address == device.address && 
-                                   !provider.isConnected.value;
+                final isConnecting =
+                    _connectingDevice?.address == device.address &&
+                        !provider.isConnected.value;
 
                 return Card(
-                  margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  margin:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   elevation: isConnected ? 2 : 1,
                   child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     leading: Container(
                       width: 32,
                       height: 32,
                       decoration: BoxDecoration(
-                        color: isConnected 
-                          ? colorScheme.primaryContainer
-                          : isConnecting 
-                            ? Colors.orange.withOpacity(0.2)
-                            : colorScheme.secondaryContainer,
+                        color: isConnected
+                            ? colorScheme.primaryContainer
+                            : isConnecting
+                                ? Colors.orange.withOpacity(0.2)
+                                : colorScheme.secondaryContainer,
                         borderRadius: BorderRadius.circular(16),
                       ),
                       child: isConnecting
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.orange),
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                    Colors.orange),
+                              ),
+                            )
+                          : Icon(
+                              isConnected
+                                  ? Icons.bluetooth_connected
+                                  : Icons.bluetooth,
+                              color: isConnected
+                                  ? colorScheme.primary
+                                  : colorScheme.secondary,
+                              size: 16,
                             ),
-                          )
-                        : Icon(
-                            isConnected ? Icons.bluetooth_connected : Icons.bluetooth,
-                            color: isConnected ? colorScheme.primary : colorScheme.secondary,
-                            size: 16,
-                          ),
                     ),
                     title: Text(
                       device.name ?? 'Dispositivo Desconocido',
                       style: theme.textTheme.labelLarge?.copyWith(
                         fontWeight: FontWeight.w600,
-                        color: isConnected ? colorScheme.primary : colorScheme.onSurface,
+                        color: isConnected
+                            ? colorScheme.primary
+                            : colorScheme.onSurface,
                       ),
                       overflow: TextOverflow.ellipsis,
                       maxLines: 1,
@@ -369,27 +421,27 @@ class _ConnectionBottomSheetState extends State<ConnectionBottomSheet> {
                               width: 8,
                               height: 8,
                               decoration: BoxDecoration(
-                                color: isConnected 
-                                  ? colorScheme.primary 
-                                  : isConnecting 
-                                    ? Colors.orange
-                                    : colorScheme.secondary,
+                                color: isConnected
+                                    ? colorScheme.primary
+                                    : isConnecting
+                                        ? Colors.orange
+                                        : colorScheme.secondary,
                                 shape: BoxShape.circle,
                               ),
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              isConnected 
-                                ? 'Dispositivo Conectado'
-                                : isConnecting
-                                  ? 'Conectando... ($_remainingTime s)'
-                                  : 'Dispositivo Disponible',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: isConnected 
-                                  ? colorScheme.primary 
+                              isConnected
+                                  ? 'Dispositivo Conectado'
                                   : isConnecting
-                                    ? Colors.orange
-                                    : colorScheme.secondary,
+                                      ? 'Conectando... ($_remainingTime s)'
+                                      : 'Dispositivo Disponible',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: isConnected
+                                    ? colorScheme.primary
+                                    : isConnecting
+                                        ? Colors.orange
+                                        : colorScheme.secondary,
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
@@ -404,22 +456,23 @@ class _ConnectionBottomSheetState extends State<ConnectionBottomSheet> {
                             size: 18,
                           )
                         : isConnecting
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.orange),
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.orange),
+                                ),
+                              )
+                            : Icon(
+                                Icons.arrow_forward_ios,
+                                color: colorScheme.primary,
+                                size: 16,
                               ),
-                            )
-                          : Icon(
-                              Icons.arrow_forward_ios,
-                              color: colorScheme.primary,
-                              size: 16,
-                            ),
-                    onTap: (isConnected || isConnecting) 
-                      ? null 
-                      : () => _handleDeviceTap(device, provider),
+                    onTap: (isConnected || isConnecting)
+                        ? null
+                        : () => _handleDeviceTap(device, provider),
                   ),
                 );
               },
@@ -432,7 +485,8 @@ class _ConnectionBottomSheetState extends State<ConnectionBottomSheet> {
     );
   }
 
-  Widget _buildNoDevicesFoundMessageFullScreen(ThemeData theme, ColorScheme colorScheme) {
+  Widget _buildNoDevicesFoundMessageFullScreen(
+      ThemeData theme, ColorScheme colorScheme) {
     return Container(
       width: double.infinity,
       height: double.infinity,
@@ -481,17 +535,33 @@ class _ConnectionBottomSheetState extends State<ConnectionBottomSheet> {
           ),
         ),
         const SizedBox(height: 8),
-        _buildStepItem('1', 'Enciende tu Arduino y asegúrate de que el LED de Bluetooth parpadee', theme, colorScheme),
-        _buildStepItem('2', 'Ve a Configuración → Bluetooth en tu teléfono', theme, colorScheme),
-        _buildStepItem('3', 'Activa el Bluetooth si no está habilitado', theme, colorScheme),
-        _buildStepItem('4', 'Busca dispositivos disponibles (ej: "HC-05", "Arduino-BT")', theme, colorScheme),
-        _buildStepItem('5', 'Toca "Emparejar" en tu Arduino cuando aparezca', theme, colorScheme),
-        _buildStepItem('6', 'Vuelve a esta app y presiona el botón de actualizar', theme, colorScheme),
+        _buildStepItem(
+            '1',
+            'Enciende tu Arduino y asegúrate de que el LED de Bluetooth parpadee',
+            theme,
+            colorScheme),
+        _buildStepItem('2', 'Ve a Configuración → Bluetooth en tu teléfono',
+            theme, colorScheme),
+        _buildStepItem('3', 'Activa el Bluetooth si no está habilitado', theme,
+            colorScheme),
+        _buildStepItem(
+            '4',
+            'Busca dispositivos disponibles (ej: "HC-05", "Arduino-BT")',
+            theme,
+            colorScheme),
+        _buildStepItem('5', 'Toca "Emparejar" en tu Arduino cuando aparezca',
+            theme, colorScheme),
+        _buildStepItem(
+            '6',
+            'Vuelve a esta app y presiona el botón de actualizar',
+            theme,
+            colorScheme),
       ],
     );
   }
 
-  Widget _buildStepItem(String number, String text, ThemeData theme, ColorScheme colorScheme) {
+  Widget _buildStepItem(
+      String number, String text, ThemeData theme, ColorScheme colorScheme) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(

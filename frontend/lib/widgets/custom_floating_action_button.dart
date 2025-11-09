@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import '../line_follower_state.dart';
+import '../app_state.dart';
 import '../arduino_data.dart';
 import '../theme_provider.dart';
 
 class CustomFloatingActionButton extends StatefulWidget {
-  final LineFollowerState provider;
+  final AppState provider;
   final ThemeProvider themeProvider;
 
   const CustomFloatingActionButton({
@@ -14,7 +14,8 @@ class CustomFloatingActionButton extends StatefulWidget {
   });
 
   @override
-  State<CustomFloatingActionButton> createState() => _CustomFloatingActionButtonState();
+  State<CustomFloatingActionButton> createState() =>
+      _CustomFloatingActionButtonState();
 }
 
 class _CustomFloatingActionButtonState extends State<CustomFloatingActionButton>
@@ -73,7 +74,9 @@ class _CustomFloatingActionButtonState extends State<CustomFloatingActionButton>
             children: [
               // Theme toggle button - icon only
               _buildControlButton(
-                icon: widget.themeProvider.isDarkMode ? Icons.light_mode : Icons.dark_mode,
+                icon: widget.themeProvider.isDarkMode
+                    ? Icons.light_mode
+                    : Icons.dark_mode,
                 onTap: () => _toggleTheme(),
                 gradient: const LinearGradient(
                   colors: [Color(0xFF667eea), Color(0xFF764ba2)],
@@ -93,18 +96,19 @@ class _CustomFloatingActionButtonState extends State<CustomFloatingActionButton>
             ],
           ),
         ),
-        
+
         const SizedBox(height: 8),
-        
+
         // Current mode indicator
         if (widget.provider.isConnected.value)
           ValueListenableBuilder<ArduinoData?>(
             valueListenable: widget.provider.currentData,
             builder: (context, data, child) {
               if (data == null) return const SizedBox.shrink();
-              
+
               return Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
                   color: colorScheme.surface,
                   borderRadius: BorderRadius.circular(20),
@@ -164,7 +168,8 @@ class _CustomFloatingActionButtonState extends State<CustomFloatingActionButton>
               borderRadius: BorderRadius.circular(16),
               boxShadow: [
                 BoxShadow(
-                  color: shadowColor.withOpacity(0.3 + _pulseAnimation.value * 0.2),
+                  color: shadowColor
+                      .withOpacity(0.3 + _pulseAnimation.value * 0.2),
                   blurRadius: 8 + _pulseAnimation.value * 4,
                   offset: const Offset(0, 4),
                 ),
@@ -183,14 +188,14 @@ class _CustomFloatingActionButtonState extends State<CustomFloatingActionButton>
 
   void _toggleTheme() {
     widget.themeProvider.toggleTheme();
-    
+
     // Show feedback message
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            widget.themeProvider.isDarkMode 
-                ? 'Cambiado a tema claro' 
+            widget.themeProvider.isDarkMode
+                ? 'Cambiado a tema claro'
                 : 'Cambiado a tema oscuro',
           ),
           backgroundColor: Colors.blue,
@@ -213,8 +218,9 @@ class _CustomFloatingActionButtonState extends State<CustomFloatingActionButton>
                 leading: Icon(mode.icon),
                 title: Text(mode.displayName),
                 subtitle: _getModeDescription(mode),
-                trailing: widget.provider.currentData.value?.mode == mode 
-                    ? Icon(Icons.check_circle, color: Theme.of(context).colorScheme.primary)
+                trailing: widget.provider.currentData.value?.mode == mode
+                    ? Icon(Icons.check_circle,
+                        color: Theme.of(context).colorScheme.primary)
                     : null,
                 onTap: () => _changeMode(mode),
               );
@@ -233,14 +239,18 @@ class _CustomFloatingActionButtonState extends State<CustomFloatingActionButton>
         return const Text('Control tipo vehículo triciclo');
       case OperationMode.manual:
         return const Text('Control directo de cada rueda');
+      case OperationMode.servoDistance:
+        return const Text('Avanza X cm y regresa automáticamente');
+      case OperationMode.pointList:
+        return const Text('Recorre lista de tramos (distancia, giro)');
     }
   }
 
   Future<void> _changeMode(OperationMode mode) async {
     Navigator.of(context).pop();
-    
+
     await widget.provider.changeOperationMode(mode);
-    
+
     // Show success message
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(

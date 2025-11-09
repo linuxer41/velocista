@@ -1,25 +1,25 @@
 import 'package:flutter/material.dart';
-import 'line_follower_state.dart';
-import 'line_follower_home.dart';
+import 'app_state.dart';
+import 'home.dart';
 import 'theme_provider.dart';
 
 void main() {
-  final lineFollowerState = LineFollowerState();
+  final appState = AppState();
   final themeProvider = ThemeProvider();
-  
+
   runApp(MyApp(
-    lineFollowerState: lineFollowerState,
+    appState: appState,
     themeProvider: themeProvider,
   ));
 }
 
 class MyApp extends StatefulWidget {
-  final LineFollowerState lineFollowerState;
+  final AppState appState;
   final ThemeProvider themeProvider;
 
   const MyApp({
-    super.key, 
-    required this.lineFollowerState,
+    super.key,
+    required this.appState,
     required this.themeProvider,
   });
 
@@ -49,13 +49,15 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    return LineFollowerInheritedWidget(
-      state: widget.lineFollowerState,
+    return AppInheritedWidget(
+      state: widget.appState,
       child: MaterialApp(
         title: 'Seguidor de Línea Bluetooth',
         debugShowCheckedModeBanner: false,
-        theme: widget.themeProvider.isDarkMode ? _buildDarkTheme() : _buildLightTheme(),
-        home: LineFollowerHome(themeProvider: widget.themeProvider),
+        theme: widget.themeProvider.isDarkMode
+            ? _buildDarkTheme()
+            : _buildLightTheme(),
+        home: Home(themeProvider: widget.themeProvider),
       ),
     );
   }
@@ -180,7 +182,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           borderRadius: BorderRadius.circular(8),
           borderSide: const BorderSide(color: Color(0xFFD32F2F), width: 1),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       ),
       progressIndicatorTheme: const ProgressIndicatorThemeData(
         color: primaryColor,
@@ -372,7 +375,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           borderRadius: BorderRadius.circular(8),
           borderSide: const BorderSide(color: Color(0xFFCF6679), width: 1),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       ),
       progressIndicatorTheme: const ProgressIndicatorThemeData(
         color: primaryColor,

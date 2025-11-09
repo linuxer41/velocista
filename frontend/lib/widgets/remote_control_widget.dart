@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../line_follower_state.dart';
+import '../app_state.dart';
 import '../arduino_data.dart';
 
 class RemoteControlWidget extends StatefulWidget {
-  final LineFollowerState provider;
+  final AppState provider;
 
   const RemoteControlWidget({
     super.key,
@@ -22,10 +22,10 @@ class _RemoteControlWidgetState extends State<RemoteControlWidget>
   bool _isLeftPressed = false;
   bool _isRightPressed = false;
   bool _isBrakePressed = false;
-  
+
   late AnimationController _brakeController;
   late Animation<double> _brakeAnimation;
-  
+
   final double _throttleValue = 0.8;
   final double _turnValue = 0.7;
 
@@ -151,7 +151,7 @@ class _RemoteControlWidgetState extends State<RemoteControlWidget>
     bool isLarge = false,
   }) {
     final size = isLarge ? 120.0 : 80.0;
-    
+
     return GestureDetector(
       onTapDown: (_) => onPressed(),
       onTapUp: (_) => onReleased(),

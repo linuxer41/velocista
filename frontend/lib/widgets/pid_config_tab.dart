@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import '../line_follower_state.dart';
+import '../app_state.dart';
 import '../arduino_data.dart';
 
 class PIDConfigTab extends StatelessWidget {
-  final LineFollowerState provider;
+  final AppState provider;
 
   const PIDConfigTab({
     super.key,
@@ -29,7 +29,7 @@ class PIDConfigTab extends StatelessWidget {
     );
   }
 
-  Widget _buildPIDControlCard(LineFollowerState provider, BuildContext context) {
+  Widget _buildPIDControlCard(AppState provider, BuildContext context) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20.0),
@@ -39,9 +39,9 @@ class PIDConfigTab extends StatelessWidget {
             Text(
               'Configuración PID',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: Theme.of(context).colorScheme.primary,
-              ),
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
             ),
             const SizedBox(height: 20),
             ValueListenableBuilder<ArduinoPIDConfig>(
@@ -59,20 +59,16 @@ class PIDConfigTab extends StatelessWidget {
                       _updatePIDConfig(provider, kd: value);
                     }),
                     _buildSliderRow(
-                      'Punto de Referencia',
-                      0.0,
-                      config.setpoint == 2500 ? 5000.0 : 7000.0,
-                      config.setpoint,
-                      (value) {
-                        _updatePIDConfig(provider, setpoint: value);
-                      }
-                    ),
+                        'Punto de Referencia',
+                        0.0,
+                        config.setpoint == 2500 ? 5000.0 : 7000.0,
+                        config.setpoint, (value) {
+                      _updatePIDConfig(provider, setpoint: value);
+                    }),
                     _buildSliderRow(
-                      'Velocidad Base', 0.0, 1.0, config.baseSpeed,
-                      (value) {
-                        _updatePIDConfig(provider, baseSpeed: value);
-                      }
-                    ),
+                        'Velocidad Base', 0.0, 1.0, config.baseSpeed, (value) {
+                      _updatePIDConfig(provider, baseSpeed: value);
+                    }),
                   ],
                 );
               },
@@ -111,7 +107,7 @@ class PIDConfigTab extends StatelessWidget {
     );
   }
 
-  void _updatePIDConfig(LineFollowerState provider,
+  void _updatePIDConfig(AppState provider,
       {double? kp,
       double? ki,
       double? kd,
@@ -127,5 +123,4 @@ class PIDConfigTab extends StatelessWidget {
     );
     provider.updatePIDConfig(config);
   }
-
 }
