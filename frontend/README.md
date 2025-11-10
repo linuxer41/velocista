@@ -8,11 +8,13 @@ Esta aplicación transforma el sistema original de control TCP basado en PIR/LDR
 
 ## Características
 
-### 🔗 Comunicación Bluetooth
-- **Descubrimiento de Dispositivos**: Encontrar y conectar a Arduino Nano vía módulo Bluetooth HC-09
-- **Datos en Tiempo Real**: Recibir datos de telemetría cada 100ms
-- **Control Bidireccional**: Enviar configuración PID y comandos
-- **Reconexión Automática**: Reconexión automática al desconectarse
+### 🔗 Comunicación (Plataforma-Dependiente)
+- **Android/iOS**: Comunicación Bluetooth Classic vía módulo HC-09
+- **Windows**: Comunicación Serial directa (USB/COM)
+- **Descubrimiento de Dispositivos**: Bluetooth discovery en móviles, selección de puerto COM en Windows
+- **Datos en Tiempo Real**: Recibir telemetría cada 1000ms (configurable)
+- **Control Bidireccional**: Enviar comandos JSON y recibir respuestas
+- **Reconexión Automática**: Reconexión automática al desconectarse (ambas plataformas)
 
 ### 📊 Visualización de Datos en Tiempo Real
 - **Estado del Sistema**: Posición, error, detección de línea, velocidades, distancia
@@ -28,11 +30,34 @@ Esta aplicación transforma el sistema original de control TCP basado en PIR/LDR
 - **Configuraciones Predefinidas**: Configuración rápida para 6 o 8 sensores
 - **Perfiles de Parámetros**: Guardar y cargar diferentes perfiles de ajuste
 
-### 📱 Terminal Bluetooth
-- **Monitoreo en Tiempo Real**: Visualización en vivo de comunicación Bluetooth
+### 📱 Terminal de Comunicación
+- **Monitoreo en Tiempo Real**: Visualización en vivo de comunicación (Bluetooth/Serial)
 - **Historial de Mensajes**: Rastrear todos los comandos enviados y datos recibidos
 - **Información de Depuración**: Estado de conexión y mensajes de error
 - **Registro de Comandos**: Log de mensajes basado en marcas de tiempo
+- **Selección de Puerto**: Para Windows, permite elegir puerto COM específico
+
+### 🎮 Modos de Operación
+
+#### Modo 0: LINE_FOLLOW (Seguidor de Línea)
+- Control PID automático para seguimiento de línea
+- Usa sensores QTR para calcular posición
+- Ajusta velocidad de motores basado en error
+
+#### Modo 1: REMOTE_CONTROL (Control Remoto Unificado)
+- **Dirección + Aceleración**: Control vectorial (0-360° + 0-1)
+- **Autopilot**: Control estilo coche (throttle/turn: -1.0 a +1.0)
+- **Manual**: Control directo de ruedas (left/right: -1.0 a +1.0)
+
+#### Modo 2: SERVO_DIST (Distancia con Giro)
+- Avanza distancia específica con giro opcional
+- Regresa automáticamente al punto de origen
+- Finaliza con mensaje de estado
+
+#### Modo 3: POINT_LIST (Lista de Puntos)
+- Ejecuta secuencia de distancias y giros
+- Formato: "distancia,grados,distancia,grados,..."
+- Giro positivo = derecha (diferencial)
 
 ### 🔧 Soporte para Sensores QTR de 6 y 8
 - **Conteo Dinámico de Sensores**: Detecta automáticamente 6 o 8 sensores
@@ -110,34 +135,84 @@ HC-09 RX → Arduino TX (D1)
 ### Arduino → Aplicación Telemetría
 ```json
 {
-  "position": 2456.78,
-  "error": -43.22,
-  "correction": 0.123,
-  "leftSpeedCmd": 0.754,
-  "rightSpeedCmd": 0.877,
-  "leftEncoderSpeed": 12.3,
-  "rightEncoderSpeed": 11.8,
-  "leftEncoderCount": 456,
-  "rightEncoderCount": 442,
-  "totalDistance": 125.6,
-  "sensors": [1023, 890, 756, 543, 321, 234]
+  "type": "telemetry",
+  "payload": {
+    "mode": 1,
+    "speed": 9.87,
+    "distance": 833.46,
+    "battery": 12.1,
+    "sensors": [1023,1023,1023,1023,1012,516],
+    "pid": [0.01, 0.01, 0.01],
+    "left_rpm": 39.7,
+    "right_rpm": 0,
+    "left_encoder": 23,
+    "right_encoder": 0,
+    "position": 2500,
+    "error": 0,
+    "correction": 0
+  }
 }
 ```
 
-### Aplicación → Arduino Configuración
+### Aplicación → Arduino Comandos
+
+#### Cambio de Modo
 ```json
-{
-  "Kp": 1.2,
-  "Ki": 0.05,
-  "Kd": 0.08,
-  "setpoint": 2500,
-  "baseSpeed": 0.7
-}
+{"mode": 0}
 ```
 
-### Comandos
+#### Configuración PID
 ```json
-{"command": "getStatus"}
+{"pid": [1.2, 0.05, 0.02]}
+```
+
+#### Velocidad Base
+```json
+{"speed": {"base": 0.7}}
+```
+
+#### Control Remoto (Unificado)
+```json
+// Dirección + Aceleración
+{"remote_control": {"direction": 90, "acceleration": 0.5}}
+
+// Autopilot
+{"remote_control": {"throttle": 0.5, "turn": -0.3}}
+
+// Manual
+{"remote_control": {"left": 0.8, "right": -0.8}}
+```
+
+#### Servo Distancia
+```json
+{"servoDistance": 30, "servoAngle": 45}
+```
+
+#### Ruta por Puntos
+```json
+{"routePoints": "20,0,10,-90,20,0"}
+```
+
+#### Otros Comandos
+```json
+{"eeprom": 1}           // Guardar configuración
+{"telemetry": 1}        // Solicitar telemetría única
+{"telemetry_enable": false}  // Habilitar/deshabiltar telemetría automática
+{"calibrate_qtr": 1}    // Calibrar sensores QTR
+```
+
+### Mensajes de Estado
+```json
+{"type": "status", "payload": {"status": "eeprom_saved"}}
+{"type": "status", "payload": {"status": "points_loaded"}}
+{"type": "status", "payload": {"status": "servo_distance_completed"}}
+{"type": "status", "payload": {"status": "route_completed"}}
+{"type": "status", "payload": {"status": "system_started"}}
+```
+
+### Eco de Comandos
+```json
+{"type": "cmd", "payload": {"buffer": "{\"mode\":1}"}}
 ```
 
 ## Estructura de la Aplicación
@@ -150,17 +225,18 @@ HC-09 RX → Arduino TX (D1)
 - `lib/arduino_data.dart` - Modelos de datos y análisis
 
 ### Pestañas de Interfaz
-1. **Pestaña Conectar**: Descubrimiento y conexión de dispositivos Bluetooth
+1. **Pestaña Conectar**: Descubrimiento y conexión de dispositivos (Bluetooth en Android/iOS, Serial en Windows)
 2. **Pestaña Dashboard**: Visualización y monitoreo de datos en tiempo real
 3. **Pestaña Configuración PID**: Ajuste y configuración de parámetros
-4. **Pestaña Terminal**: Monitoreo de comunicación Bluetooth
+4. **Pestaña Terminal**: Monitoreo de comunicación (Bluetooth/Serial)
 
 ## Instalación y Configuración
 
 ### 1. Dependencias
 La aplicación requiere estos paquetes Flutter:
 ```yaml
-flutter_bluetooth_classic_serial: ^1.3.2
+flutter_bluetooth_classic_serial: ^1.3.2  # Para Android/iOS
+serial_port_win32: ^0.1.0                 # Para Windows Serial
 fl_chart: ^1.1.1
 shared_preferences: ^2.5.3
 provider: ^6.1.5
@@ -183,11 +259,20 @@ flutter run
 
 ## Uso
 
-### 1. Conexión Bluetooth
+### 1. Conexión (Plataforma-Dependiente)
+
+#### Android/iOS - Bluetooth:
 1. Abrir la aplicación
 2. Ir a la pestaña "Conectar"
-3. Tocar "Buscar" para descubrir dispositivos
-4. Seleccionar dispositivo HC-09
+3. Tocar "Buscar" para descubrir dispositivos Bluetooth
+4. Seleccionar dispositivo HC-09 emparejado
+5. Conexión establecida automáticamente
+
+#### Windows - Serial:
+1. Abrir la aplicación
+2. Ir a la pestaña "Conectar"
+3. Seleccionar "Modo Serial" o puerto COM disponible
+4. Elegir el puerto COM donde está conectado Arduino (ej: COM3)
 5. Conexión establecida automáticamente
 
 ### 2. Monitoreo en Tiempo Real
@@ -205,51 +290,79 @@ flutter run
 
 ### 4. Monitoreo de Terminal
 1. Ir a la pestaña "Terminal"
-2. Ver log de comunicación en tiempo real
+2. Ver log de comunicación en tiempo real (Bluetooth/Serial)
 3. Monitorear estado de conexión y recepción de datos
-4. Limpiar historial de terminal según sea necesario
+4. En Windows, verificar puerto COM seleccionado
+5. Limpiar historial de terminal según sea necesario
 
 ## Ejemplos de Configuración
 
-### Configuración 6 Sensores
+### Configuración PID 6 Sensores
 ```json
-{
-  "Kp": 1.0,
-  "Ki": 0.0,
-  "Kd": 0.0,
-  "setpoint": 2500,
-  "baseSpeed": 0.8
-}
+{"pid": [1.0, 0.0, 0.0]}
+{"speed": {"base": 0.8}}
 ```
 
-### Configuración 8 Sensores
+### Configuración PID 8 Sensores
 ```json
-{
-  "Kp": 1.2,
-  "Ki": 0.05,
-  "Kd": 0.1,
-  "setpoint": 4500,
-  "baseSpeed": 0.75
-}
+{"pid": [1.2, 0.05, 0.1]}
+{"speed": {"base": 0.75}}
+```
+
+### Ejemplos de Sesión Interactiva
+```
+>> {"mode": 0}
+<< {"type": "cmd", "payload": {"buffer": "{\"mode\":0}"}}
+<< {"type": "status", "payload": {"status": "system_started"}}
+
+>> {"remote_control": {"direction": 90, "acceleration": 0.5}}
+<< {"type": "cmd", "payload": {"buffer": "{\"remote_control\":{\"direction\":90,\"acceleration\":0.5}}"}}
+
+>> {"servoDistance": 25}
+<< {"type": "cmd", "payload": {"buffer": "{\"servoDistance\":25}"}}
+<< {"type": "status", "payload": {"status": "servo_distance_completed"}}
+
+>> {"routePoints": "20,0,10,-90,20,0"}
+<< {"type": "cmd", "payload": {"buffer": "{\"routePoints\":\"20,0,10,-90,20,0\"}"}}
+<< {"type": "status", "payload": {"status": "route_completed"}}
 ```
 
 ## Integración con Código Arduino
 
-La aplicación está diseñada para trabajar con el código Arduino Nano proporcionado que:
-- Lee sensores QTR-8A con control IR
-- Calcula posición de línea usando promedio ponderado
-- Implementa control PID para velocidad de motores
-- Envía datos de telemetría cada 100ms
-- Recibe configuración vía Bluetooth
-- Maneja retroalimentación de encoders para distancia/velocidad
+La aplicación está diseñada para trabajar con el firmware "Velocista" v1.5 que:
+- Soporta comunicación JSON bidireccional por puerto serie (9600 bps)
+- Implementa 4 modos de operación: LINE_FOLLOW, REMOTE_CONTROL, SERVO_DIST, POINT_LIST
+- Envía telemetría automática cada 1000ms (configurable)
+- Recibe comandos JSON para control en tiempo real
+- Gestiona sensores QTR-8A (6 o 8 sensores) con control IR
+- Implementa control PID para seguimiento de línea
+- Maneja encoders para medición de velocidad y distancia
+- Soporta persistencia de configuración en EEPROM
+- Incluye funciones especiales: servo-distancia, rutas por puntos, calibración
+
+### Protocolo de Comunicación
+- **Formato**: JSON de una sola línea terminado en \n
+- **Codificación**: UTF-8
+- **Tamaño máximo**: 512 bytes
+- **Claves**: camelCase descriptivo
+- **Respuestas**: Telemetría automática + estados específicos + eco de comandos
 
 ## Solución de Problemas
 
 ### Problemas de Conexión
+
+#### Android/iOS (Bluetooth):
 - Asegurar que Bluetooth esté habilitado en el dispositivo
 - Verificar que HC-09 esté emparejado y sea detectable
 - Verificar fuente de alimentación de Arduino
 - Confirmar baud rate correcto (9600)
+
+#### Windows (Serial):
+- Verificar que Arduino esté conectado por USB
+- Confirmar puerto COM correcto en Administrador de Dispositivos
+- Asegurar que ningún otro programa use el puerto
+- Verificar drivers USB-Serial estén instalados
+- Confirmar baud rate correcto (9600, 8,N,1)
 
 ### Problemas de Sensores
 - Verificar conexiones QTR-8A
@@ -302,11 +415,13 @@ Para soporte y preguntas:
 
 ---
 
-**Versión**: 2.0.0 (Migrado a flutter_bluetooth_classic_serial)
+**Versión**: 2.1.0 (Actualizado para API Velocista v1.5)
 **Última Actualización**: Noviembre 2024
 **Versión Flutter**: 3.5.2+
-**Plataforma Objetivo**: Android, iOS
-**Biblioteca Bluetooth**: flutter_bluetooth_classic_serial ^1.3.2
+**Plataforma Objetivo**: Android, iOS, Windows
+**Biblioteca Bluetooth**: flutter_bluetooth_classic_serial ^1.3.2 (Android/iOS)
+**Biblioteca Serial**: serial_port_win32 ^0.1.0 (Windows)
+**Firmware Compatible**: Velocista v1.5 (telemetría extendida)
 
 ## 🔄 Migración a flutter_bluetooth_classic_serial
 

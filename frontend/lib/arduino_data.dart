@@ -3,11 +3,10 @@ import 'package:flutter/material.dart';
 
 /// Operation modes for the robot
 enum OperationMode {
-   lineFollowing(0, 'LINE_FOLLOW', Icons.route),
-   autopilot(1, 'AUTO_PILOT', Icons.directions_car),
-   manual(2, 'MANUAL', Icons.gamepad),
-   servoDistance(3, 'SERVO_DIST', Icons.straighten),
-   pointList(4, 'POINT_LIST', Icons.list_alt);
+    lineFollowing(0, 'SEGUIDOR DE LÍNEA', Icons.route),
+    remoteControl(1, 'CONTROL REMOTO', Icons.gamepad),
+    servoDistance(2, 'SERVO DISTANCIA', Icons.straighten),
+    pointList(3, 'LISTA DE PUNTOS', Icons.list_alt);
 
   const OperationMode(this.id, this.displayName, this.icon);
   final int id;
@@ -292,11 +291,8 @@ class ArduinoData {
   /// Check if this is line following mode
   bool get isLineFollowingMode => operationMode == 0;
   
-  /// Check if this is autopilot mode
-  bool get isAutopilotMode => operationMode == 1;
-  
-  /// Check if this is manual mode
-  bool get isManualMode => operationMode == 2;
+  /// Check if this is remote control mode
+  bool get isRemoteControlMode => operationMode == 1;
 
   /// Check if this is servo distance mode
   bool get isServoDistanceMode => operationMode == 3;
@@ -481,7 +477,7 @@ class AutopilotCommand {
   
   Map<String, dynamic> toJson() {
     final Map<String, Object> map = {
-      'mode': OperationMode.autopilot.id,
+      'mode': OperationMode.remoteControl.id,
     };
     if (throttle != null) map['throttle'] = throttle!;
     if (brake != null) map['brake'] = brake!;
@@ -507,7 +503,7 @@ class ManualCommand {
   
   Map<String, dynamic> toJson() {
     final Map<String, Object> map = {
-      'mode': OperationMode.manual.id,
+      'mode': OperationMode.remoteControl.id,
     };
     if (leftSpeed != null) map['leftSpeed'] = leftSpeed!;
     if (rightSpeed != null) map['rightSpeed'] = rightSpeed!;
@@ -605,6 +601,7 @@ class ArduinoMessage {
 
   bool get isTelemetry => type == 'telemetry';
   bool get isStatus => type == 'status';
+  bool get isCmd => type == 'cmd';
 
   @override
   String toString() {
@@ -675,7 +672,24 @@ class TelemetryData {
 
   @override
   String toString() {
-    return 'TelemetryData{mode: $mode, speed: ${speed.toStringAsFixed(2)}, distance: ${distance.toStringAsFixed(1)}, battery: ${battery.toStringAsFixed(1)}}';
+    return jsonEncode({
+      'type': 'telemetry',
+      'payload': {
+        'mode': mode,
+        'speed': speed,
+        'distance': distance,
+        'battery': battery,
+        'sensors': sensors,
+        'pid': pid,
+        'left_rpm': leftRpm,
+        'right_rpm': rightRpm,
+        'left_encoder': leftEncoder,
+        'right_encoder': rightEncoder,
+        if (position != null) 'position': position,
+        if (error != null) 'error': error,
+        if (correction != null) 'correction': correction,
+      }
+    });
   }
 }
 
@@ -698,7 +712,40 @@ class StatusMessage {
 
   @override
   String toString() {
-    return 'StatusMessage{status: $status}';
+    return jsonEncode({
+      'type': 'status',
+      'payload': {
+        'status': status,
+      }
+    });
+  }
+}
+
+/// Command messages from Arduino
+class CmdMessage {
+  final String buffer;
+
+  CmdMessage(this.buffer);
+
+  static CmdMessage? fromPayload(Map<String, dynamic> payload) {
+    try {
+      if (payload.containsKey('buffer') && payload['buffer'] is String) {
+        return CmdMessage(payload['buffer']);
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  @override
+  String toString() {
+    return jsonEncode({
+      'type': 'cmd',
+      'payload': {
+        'buffer': buffer,
+      }
+    });
   }
 }
 

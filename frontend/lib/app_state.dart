@@ -1,107 +1,231 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_classic/flutter_blue_classic.dart';
-import 'bluetooth_client.dart';
+import 'serial_client.dart';
 import 'arduino_data.dart';
 
+class ThemeProvider with ChangeNotifier {
+  bool _isDarkMode = false;
+
+  bool get isDarkMode => _isDarkMode;
+
+  void toggleTheme() {
+    _isDarkMode = !_isDarkMode;
+    notifyListeners();
+  }
+
+  void setDarkMode(bool isDark) {
+    _isDarkMode = isDark;
+    notifyListeners();
+  }
+}
+
 class AppState extends ChangeNotifier {
-  // Cliente Bluetooth
-  late BluetoothClient _bluetoothClient;
+  // Cliente unificado para Bluetooth y Serial
+  late SerialClient _serialClient;
 
   // Estado de conexión con ValueNotifier
   final ValueNotifier<bool> isConnected = ValueNotifier(false);
   final ValueNotifier<BluetoothDevice?> connectedDevice = ValueNotifier(null);
+  final ValueNotifier<String?> connectedSerialPort = ValueNotifier(null);
   final ValueNotifier<String> connectionStatus = ValueNotifier('Desconectado');
   final ValueNotifier<List<BluetoothDevice>> discoveredDevices =
       ValueNotifier([]);
+  final ValueNotifier<List<String>> availableSerialPorts = ValueNotifier([]);
   final ValueNotifier<bool> isDiscovering = ValueNotifier(false);
-
-  // Estado de datos
-  final ValueNotifier<ArduinoData?> currentData = ValueNotifier(null);
-  final List<ArduinoData> _dataHistory = [];
-  final int _maxHistorySize = 100;
+  final ValueNotifier<bool> showDeviceList = ValueNotifier(false);
 
   // Configuración PID
   final ValueNotifier<ArduinoPIDConfig> pidConfig =
       ValueNotifier(ArduinoPIDConfig());
-  final ValueNotifier<bool> isConfigurationMode = ValueNotifier(false);
 
-  // Estadísticas
-  final ValueNotifier<DateTime?> connectionStartTime = ValueNotifier(null);
-  final ValueNotifier<int> totalDataPackets = ValueNotifier(0);
-  final ValueNotifier<double> averageResponseTime = ValueNotifier(0.0);
-  final ValueNotifier<double> dataRate = ValueNotifier(0.0);
-  final ValueNotifier<String> connectionDuration = ValueNotifier('0s');
-
-  // Datos de terminal para monitoreo
-  final List<String> _terminalMessages = [];
-  final int _maxTerminalMessages = 200; // Increased to handle raw data
-  final ValueNotifier<bool> showTerminal = ValueNotifier(false);
-  final ValueNotifier<bool> showRawData =
-      ValueNotifier(true); // Control raw data display
-
-  // Timer for real-time updates
-  Timer? _realtimeUpdateTimer;
-
+  // Modo de operación actual
   final ValueNotifier<OperationMode> currentMode =
-      ValueNotifier(OperationMode.autopilot);
+      ValueNotifier(OperationMode.remoteControl);
 
-  appState() {
-    _initializeBluetoothClient();
-    _startRealtimeUpdates();
+  // Tema de la aplicación
+  final ValueNotifier<bool> isDarkMode = ValueNotifier(false);
+
+  // Datos de telemetría actuales
+  final ValueNotifier<ArduinoData?> currentData = ValueNotifier(null);
+
+  // Datos raw para terminal
+  final ValueNotifier<List<String>> rawDataBuffer = ValueNotifier([]);
+  final ValueNotifier<List<String>> sentCommandsBuffer = ValueNotifier([]);
+  final ValueNotifier<List<String>> receivedDataBuffer = ValueNotifier([]);
+
+  AppState() {
+    _initializeSerialClient();
   }
 
-  void _initializeBluetoothClient() {
-    _bluetoothClient = BluetoothClient(
+  void _initializeSerialClient() {
+    _serialClient = SerialClient(
       onDataReceived: _handleDataReceived,
       onStatusReceived: _handleStatusReceived,
+      onCmdReceived: _handleCmdReceived,
       onError: _handleBluetoothError,
       onConnected: _handleConnected,
       onDisconnected: _handleDisconnected,
+      onRawDataReceived: _handleRawDataReceived,
+      onCommandSent: _handleSentCommand,
     );
   }
 
-  void _startRealtimeUpdates() {
-    // Update connection time and data rate every 2 seconds to reduce UI updates
-    _realtimeUpdateTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
-      if (_isConnectedValue) {
-        connectionDuration.value = getConnectionDuration();
-        dataRate.value = getDataRate();
-        notifyListeners();
-      }
-    });
+
+
+  // Actualizar configuración PID
+  Future<void> updatePIDConfig(ArduinoPIDConfig newConfig) async {
+    pidConfig.value = newConfig;
+    notifyListeners();
   }
 
-  // Getters
-  List<ArduinoData> get dataHistory => List.unmodifiable(_dataHistory);
-  List<String> get terminalMessages => List.unmodifiable(_terminalMessages);
+  // Cambiar modo de operación
+  Future<void> changeOperationMode(OperationMode mode) async {
+    currentMode.value = mode;
+    notifyListeners();
+  }
 
-// Helper getters
-  bool get _isConnectedValue => isConnected.value;
-  bool get _isDiscoveringValue => isDiscovering.value;
-  String get _connectionStatusValue => connectionStatus.value;
-  List<BluetoothDevice> get _discoveredDevicesValue => discoveredDevices.value;
-  BluetoothDevice? get _connectedDeviceValue => connectedDevice.value;
-  ArduinoPIDConfig get _pidConfigValue => pidConfig.value;
+  // Cambiar tema
+  void toggleTheme() {
+    isDarkMode.value = !isDarkMode.value;
+    notifyListeners();
+  }
 
-// Expose reactive values for UI
-  double get currentDataRate => dataRate.value;
-  String get currentConnectionDuration => connectionDuration.value;
+  void setDarkMode(bool isDark) {
+    isDarkMode.value = isDark;
+    notifyListeners();
+  }
 
-  // Manejar datos entrantes con throttling
-  Timer? _updateTimer;
-  static const Duration _updateThrottle =
-      Duration(milliseconds: 100); // Reduced frequency to prevent UI overload
+  // Iniciar descubrimiento de dispositivos
+  Future<void> startDiscovery() async {
+    if (isDiscovering.value) return;
 
+    isDiscovering.value = true;
+    discoveredDevices.value = [];
+    availableSerialPorts.value = [];
+    connectionStatus.value = 'Buscando dispositivos...';
+    notifyListeners();
+
+    try {
+      if (Platform.isWindows) {
+        // Serial ports discovery (Windows only)
+        final ports = _serialClient.getAvailableSerialPorts();
+        availableSerialPorts.value = ports;
+
+        final totalDevices = availableSerialPorts.value.length;
+        if (totalDevices > 0) {
+          connectionStatus.value = 'Encontrados $totalDevices puertos serial';
+        } else {
+          connectionStatus.value = 'No se encontraron puertos serial';
+        }
+      } else {
+        // Bluetooth discovery
+        final devices = await _serialClient.startBluetoothDiscovery();
+        discoveredDevices.value = devices;
+
+        final totalDevices = devices.length;
+        if (totalDevices > 0) {
+          connectionStatus.value = 'Encontrados $totalDevices dispositivos';
+        } else {
+          connectionStatus.value = 'No se encontraron dispositivos';
+        }
+      }
+    } catch (e) {
+      connectionStatus.value = 'Error en descubrimiento: $e';
+    } finally {
+      isDiscovering.value = false;
+      notifyListeners();
+    }
+  }
+
+  // Conectar a dispositivo Bluetooth
+  Future<void> connectToDevice(BluetoothDevice device) async {
+    try {
+      connectionStatus.value = 'Conectando a ${device.name}...';
+      connectedDevice.value = device;
+      notifyListeners();
+
+      await _serialClient.connectBluetooth(device);
+    } catch (e) {
+      connectionStatus.value = 'Error de conexión: $e';
+      connectedDevice.value = null;
+      notifyListeners();
+    }
+  }
+
+  // Conectar a puerto serial (Windows)
+  Future<void> connectToSerialPort(String portName) async {
+    try {
+      connectionStatus.value = 'Conectando a $portName...';
+      connectedSerialPort.value = portName;
+      notifyListeners();
+
+      await _serialClient.connectSerial(portName);
+
+      // Double-check connection state after successful connection
+      if (_serialClient.isConnected) {
+        isConnected.value = true;
+        connectionStatus.value = 'Conectado a $portName';
+        notifyListeners();
+      }
+    } catch (e) {
+      connectionStatus.value = 'Error de conexión serial: $e';
+      connectedSerialPort.value = null;
+      isConnected.value = false;
+      notifyListeners();
+    }
+  }
+
+  // Desconectar
+  Future<void> disconnect() async {
+    if (!isConnected.value) return;
+
+    connectionStatus.value = 'Desconectando...';
+    notifyListeners();
+
+    await _serialClient.disconnect();
+
+    // Add a small delay to ensure port is fully released
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    isConnected.value = false;
+    connectedDevice.value = null;
+    connectedSerialPort.value = null;
+    connectionStatus.value = 'Desconectado';
+    _handleDisconnected();
+    notifyListeners();
+  }
+
+  // Limpiar dispositivos descubiertos
+  void clearDiscoveredDevices() {
+    discoveredDevices.value = [];
+    notifyListeners();
+  }
+
+  // Enviar comando al Arduino
+  Future<bool> sendCommand(Map<String, dynamic> command) async {
+    if (!isConnected.value) {
+      return false;
+    }
+
+    try {
+      return await _serialClient.sendCommand(command);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Handlers de Bluetooth
   void _handleDataReceived(dynamic data) {
-    // Handle both ArduinoData (legacy) and TelemetryData (new format)
+    // Solo manejar TelemetryData (nuevo formato)
     if (data is TelemetryData) {
-      // Convert TelemetryData to ArduinoData for backward compatibility
+      // Convertir TelemetryData a ArduinoData para compatibilidad con UI
       final arduinoData = ArduinoData(
         operationMode: data.mode,
         modeName: data.operationMode.displayName,
-        leftEncoderSpeed:
-            data.leftRpm * 0.1047, // Convert RPM to cm/s (approximate)
+        leftEncoderSpeed: data.leftRpm * 0.1047, // Convert RPM to cm/s
         rightEncoderSpeed: data.rightRpm * 0.1047,
         leftEncoderCount: data.leftEncoder,
         rightEncoderCount: data.rightEncoder,
@@ -111,615 +235,87 @@ class AppState extends ChangeNotifier {
         error: data.error,
         correction: data.correction,
       );
-      _handleArduinoData(arduinoData);
-    } else if (data is ArduinoData) {
-      _handleArduinoData(data);
-    }
-  }
-
-  void _handleArduinoData(ArduinoData data) {
-    currentData.value = data;
-    totalDataPackets.value = totalDataPackets.value + 1;
-
-    // Agregar al historial (mantener últimos N elementos)
-    _dataHistory.add(data);
-    if (_dataHistory.length > _maxHistorySize) {
-      _dataHistory.removeAt(0);
-    }
-
-    // Log ALL raw Bluetooth data to terminal in real-time
-    _addRawDataToTerminal(data);
-
-    // Throttle terminal updates to prevent overwhelming UI
-    _throttledTerminalUpdate(data);
-
-    // Throttle UI updates to prevent excessive rebuilds
-    _throttledNotifyListeners();
-  }
-
-  void _addRawDataToTerminal(ArduinoData data) {
-    // Only add raw data if enabled
-    if (!showRawData.value) return;
-
-    // Add mode-specific data
-    if (data.isLineFollowingMode) {
-      _addTerminalMessage(
-          '📊 LINE: Pos=${data.position?.toStringAsFixed(1) ?? 'N/A'}, Error=${data.error?.toStringAsFixed(1) ?? 'N/A'}, Corr=${data.correction?.toStringAsFixed(3) ?? 'N/A'}');
-      _addTerminalMessage(
-          '🔧 LINE: L_Cmd=${data.leftSpeedCmd?.toStringAsFixed(3) ?? 'N/A'}, R_Cmd=${data.rightSpeedCmd?.toStringAsFixed(3) ?? 'N/A'}');
-    } else if (data.isAutopilotMode) {
-      _addTerminalMessage(
-          '🚗 AUTO: Throttle=${data.throttle?.toStringAsFixed(3) ?? 'N/A'}, Brake=${data.brake?.toStringAsFixed(3) ?? 'N/A'}, Turn=${data.turn?.toStringAsFixed(3) ?? 'N/A'}, Dir=${data.direction ?? 'N/A'}');
-    } else if (data.isManualMode) {
-      _addTerminalMessage(
-          '🎮 MANUAL: L_Speed=${data.leftSpeed?.toStringAsFixed(3) ?? 'N/A'}, R_Speed=${data.rightSpeed?.toStringAsFixed(3) ?? 'N/A'}, Max=${data.maxSpeed?.toStringAsFixed(3) ?? 'N/A'}');
-    }
-
-    _addTerminalMessage(
-        '🔧 ENC: L=${data.leftEncoderSpeed.toStringAsFixed(2)}cm/s, R=${data.rightEncoderSpeed.toStringAsFixed(2)}cm/s');
-    _addTerminalMessage(
-        '📏 DIST: ${data.totalDistance.toStringAsFixed(1)}cm, L_Count=${data.leftEncoderCount}, R_Count=${data.rightEncoderCount}');
-
-    // Add sensor data only in line following mode
-    if (data.isLineFollowingMode) {
-      final sensorString =
-          data.sensors.map((s) => s.toString().padLeft(4, '0')).join(',');
-      _addTerminalMessage(
-          '🎯 SENSORS: [$sensorString], Count=${data.sensorCount}, Line=${data.isLineDetected ? 'YES' : 'NO'}');
-    } else {
-      _addTerminalMessage(
-          '🎯 SENSORS: Disabled in ${data.mode.displayName} mode');
-    }
-
-    _addTerminalMessage('─' * 80); // Separator line
-  }
-
-  void _throttledTerminalUpdate(ArduinoData data) {
-    // Only add terminal message every 500ms to reduce overhead
-    final now = DateTime.now();
-    if (_lastTerminalUpdate == null ||
-        now.difference(_lastTerminalUpdate!).inMilliseconds > 500) {
-      String statusMessage;
-      if (data.isLineFollowingMode) {
-        statusMessage =
-            '📊 LINE: Pos=${data.position?.toStringAsFixed(1) ?? 'N/A'}, Error=${data.error?.toStringAsFixed(1) ?? 'N/A'}';
-      } else if (data.isAutopilotMode) {
-        statusMessage =
-            '🚗 AUTO: Throttle=${data.throttle?.toStringAsFixed(2) ?? 'N/A'}, Turn=${data.turn?.toStringAsFixed(2) ?? 'N/A'}';
-      } else if (data.isManualMode) {
-        statusMessage =
-            '🎮 MANUAL: L=${data.leftSpeed?.toStringAsFixed(2) ?? 'N/A'}, R=${data.rightSpeed?.toStringAsFixed(2) ?? 'N/A'}';
-      } else {
-        statusMessage = '❓ UNKNOWN: Mode ${data.operationMode}';
-      }
-
-      _addTerminalMessage(statusMessage);
-      _lastTerminalUpdate = now;
-    }
-  }
-
-  DateTime? _lastTerminalUpdate;
-
-  void _throttledNotifyListeners() {
-    _updateTimer?.cancel();
-    _updateTimer = Timer(_updateThrottle, () {
+      currentData.value = arduinoData;
       notifyListeners();
-    });
+    }
   }
 
-  // Manejar errores Bluetooth
+  void _handleStatusReceived(StatusMessage status) {
+    // Solo mantener el estado de conexión
+  }
+
+  void _handleCmdReceived(CmdMessage cmd) {
+    // Cmd messages are handled through raw data buffer
+  }
+
   void _handleBluetoothError(String error) {
     connectionStatus.value = 'Error: $error';
-    _addTerminalMessage('❌ Error: $error');
     notifyListeners();
   }
 
-  // Manejar conexión establecida
-  Future<void> _handleConnected() async {
+  void _handleConnected() {
     isConnected.value = true;
-    connectionStartTime.value = DateTime.now();
-    final deviceName = _connectedDeviceValue?.name ?? 'Dispositivo Desconocido';
-    connectionStatus.value = 'Conectado a $deviceName';
-    _addTerminalMessage('✅ Conectado a $deviceName');
-    _addTerminalMessage('📡 Esperando datos del dispositivo...');
-
+    connectionStatus.value = 'Conectado a ${connectedDevice.value?.name ?? 'Dispositivo'}';
     notifyListeners();
   }
 
-  // Manejar desconexión
   void _handleDisconnected() {
     isConnected.value = false;
     connectedDevice.value = null;
     connectionStatus.value = 'Desconectado';
-    connectionStartTime.value = null;
-    _addTerminalMessage('🔌 Desconectado');
     notifyListeners();
   }
 
-  // Manejar mensajes de status del Arduino
-  void _handleStatusReceived(StatusMessage status) {
-    switch (status.status) {
-      case 'eeprom_saved':
-        _addTerminalMessage('💾 Configuración guardada en EEPROM exitosamente');
-        break;
-      case 'points_loaded':
-        _addTerminalMessage('🛣️ Puntos de ruta cargados exitosamente');
-        break;
-      case 'servo_distance_completed':
-        _addTerminalMessage('📏 Movimiento servo-distance completado');
-        break;
-      case 'route_completed':
-        _addTerminalMessage('✅ Ruta completada exitosamente');
-        break;
-      case 'system_started':
-        _addTerminalMessage('🚀 Sistema Arduino iniciado');
-        break;
-      default:
-        _addTerminalMessage('📢 Status: ${status.status}');
+  void _handleRawDataReceived(String rawData) {
+    // Add to combined buffer
+    final currentCombinedBuffer = List<String>.from(rawDataBuffer.value);
+    currentCombinedBuffer.add(rawData);
+    if (currentCombinedBuffer.length > 500) {
+      currentCombinedBuffer.removeRange(0, currentCombinedBuffer.length - 500);
     }
-    notifyListeners();
-  }
+    rawDataBuffer.value = currentCombinedBuffer;
 
-  // Iniciar descubrimiento de dispositivos
-  Future<void> startDiscovery() async {
-    print('🔍 [STATE] StartDiscovery called');
-
-    if (_isDiscoveringValue) {
-      print('⚠️ [STATE] Discovery already in progress, skipping');
-      return;
+    // Add to received buffer
+    final currentReceivedBuffer = List<String>.from(receivedDataBuffer.value);
+    currentReceivedBuffer.add(rawData);
+    if (currentReceivedBuffer.length > 500) {
+      currentReceivedBuffer.removeRange(0, currentReceivedBuffer.length - 500);
     }
+    receivedDataBuffer.value = currentReceivedBuffer;
+  }
 
-    isDiscovering.value = true;
-    discoveredDevices.value = [];
-    connectionStatus.value = 'Buscando dispositivos...';
-    _addTerminalMessage('🔍 Iniciando descubrimiento de dispositivos...');
-    _addTerminalMessage(
-        '💡 Tip: Make sure your Arduino Bluetooth module is paired with this device');
-
-    print('📱 [STATE] Discovery status: ${connectionStatus.value}');
-    notifyListeners();
-
-    try {
-      print('🚀 [STATE] Calling _bluetoothClient.startDiscovery()...');
-      final devices = await _bluetoothClient.startDiscovery();
-      print('📋 [STATE] Discovery returned ${devices.length} devices');
-
-      // CRITICAL: Update the device list and notify UI
-      print('🔄 [STATE] Updating discovered devices list...');
-      discoveredDevices.value = devices;
-      print('📱 [STATE] Set discoveredDevices to ${devices.length} devices');
-
-      if (devices.isEmpty) {
-        connectionStatus.value = 'No se encontraron dispositivos';
-        _addTerminalMessage('📱 No se encontraron dispositivos');
-        _addTerminalMessage('🔍 DEBUG: Bluetooth client returned empty list');
-        _addTerminalMessage(
-            '💡 Solution: 1) Enable Bluetooth on Android 2) Pair your Arduino 3) Try again');
-        print('❌ [STATE] No devices found');
-
-        // IMPORTANT: Always notify listeners even when no devices found
-        print('🔔 [STATE] Notifying listeners - no devices found');
-        notifyListeners();
-      } else {
-        connectionStatus.value = 'Encontrados ${devices.length} dispositivos';
-        _addTerminalMessage('📱 Encontrados ${devices.length} dispositivos');
-        for (int i = 0; i < devices.length; i++) {
-          final device = devices[i];
-          final deviceInfo = '${device.name ?? 'Unknown'} (${device.address})';
-          _addTerminalMessage('   ${i + 1}. $deviceInfo');
-          print('📱 [STATE] Device $i: $deviceInfo');
-        }
-        print('✅ [STATE] Successfully found ${devices.length} devices');
-
-        // CRITICAL: Always notify listeners when devices are found
-        print('🔔 [STATE] Notifying listeners - devices found');
-        print(
-            '📋 [STATE] Current discoveredDevices count: ${discoveredDevices.value.length}');
-        print(
-            '📋 [STATE] Devices list: ${discoveredDevices.value.map((d) => d.name).toList()}');
-        notifyListeners();
-      }
-    } catch (e, stackTrace) {
-      connectionStatus.value = 'Descubrimiento fallido: $e';
-      _addTerminalMessage('❌ Descubrimiento fallido: $e');
-      _addTerminalMessage('🔍 DEBUG: Exception details: $e');
-      _addTerminalMessage(
-          '💡 Troubleshooting: 1) Check Bluetooth is enabled 2) Grant location permission 3) Restart app');
-      print('💥 [STATE] Discovery failed with error: $e');
-      print('📋 [STATE] Stack trace: $stackTrace');
-
-      // CRITICAL: Notify listeners even on error
-      print('🔔 [STATE] Notifying listeners - discovery failed');
-      notifyListeners();
-    } finally {
-      isDiscovering.value = false;
-      _addTerminalMessage(
-          '🏁 [STATE] Discovery completed, setting isDiscovering = false');
-      print('🏁 [STATE] Discovery finished, isDiscovering = false');
-      print('🔔 [STATE] Notifying listeners - discovery finished');
-      notifyListeners();
+  void _handleSentCommand(String commandData) {
+    // Add to combined buffer
+    final currentCombinedBuffer = List<String>.from(rawDataBuffer.value);
+    currentCombinedBuffer.add(commandData);
+    if (currentCombinedBuffer.length > 500) {
+      currentCombinedBuffer.removeRange(0, currentCombinedBuffer.length - 500);
     }
-  }
+    rawDataBuffer.value = currentCombinedBuffer;
 
-  // Conectar a dispositivo
-  Future<void> connectToDevice(BluetoothDevice device) async {
-    try {
-      connectionStatus.value = 'Conectando a ${device.name}...';
-      _addTerminalMessage('🔗 Conectando a ${device.name}...');
-      connectedDevice.value = device;
-      notifyListeners();
-
-      await _bluetoothClient.connectToDevice(device);
-
-      // Configuration will be sent automatically in _handleConnected()
-    } catch (e) {
-      connectionStatus.value = 'Conexión fallida: $e';
-      _addTerminalMessage('❌ Conexión fallida: $e');
-      connectedDevice.value = null;
-      notifyListeners();
+    // Add to sent buffer
+    final currentSentBuffer = List<String>.from(sentCommandsBuffer.value);
+    currentSentBuffer.add(commandData);
+    if (currentSentBuffer.length > 500) {
+      currentSentBuffer.removeRange(0, currentSentBuffer.length - 500);
     }
+    sentCommandsBuffer.value = currentSentBuffer;
   }
 
-  // Desconectar de dispositivo
-  Future<void> disconnect() async {
-    if (!_isConnectedValue) return;
-
-    connectionStatus.value = 'Desconectando...';
-    _addTerminalMessage('🔌 Desconectando...');
-    notifyListeners();
-
-    await _bluetoothClient.disconnect();
+  // Getter for device name (supports both Bluetooth and Serial)
+  String? get deviceName {
+    if (connectedDevice.value != null) return connectedDevice.value!.name;
+    if (connectedSerialPort.value != null) return connectedSerialPort.value;
+    return null;
   }
 
-  // Actualizar configuración PID
-  Future<void> updatePIDConfig(ArduinoPIDConfig newConfig) async {
-    pidConfig.value = newConfig;
-    _addTerminalMessage(
-        '⚙️ PID actualizado: Kp=${newConfig.kp}, Ki=${newConfig.ki}, Kd=${newConfig.kd}');
 
-    if (_isConnectedValue) {
-      try {
-        final success = await _bluetoothClient.sendConfiguration(newConfig);
-        if (success) {
-          _addTerminalMessage('✅ Configuración enviada exitosamente');
-        } else {
-          _addTerminalMessage('❌ Fallo al enviar configuración');
-        }
-      } catch (e) {
-        _addTerminalMessage('❌ Error enviando configuración: $e');
-      }
-    } else {
-      _addTerminalMessage('ℹ️ Configuración guardada (no conectado)');
-    }
 
-    notifyListeners();
-  }
 
-  // Enviar comando personalizado
-  Future<bool> sendCommand(Map<String, dynamic> command) async {
-    if (!_isConnectedValue) {
-      _addTerminalMessage('❌ No conectado - no se puede enviar comando');
-      return false;
-    }
-
-    try {
-      final success = await _bluetoothClient.sendCommand(command);
-      if (success) {
-        _addTerminalMessage('📤 Comando enviado: ${command.toString()}');
-      } else {
-        _addTerminalMessage(
-            '❌ Fallo al enviar comando - dispositivo no responde');
-      }
-      return success;
-    } catch (e) {
-      _addTerminalMessage('❌ Fallo al enviar comando: $e');
-      return false;
-    }
-  }
-
-  // Solicitar estado de Arduino
-  Future<void> requestStatus() async {
-    final success = await sendCommand({'command': 'getStatus'});
-    if (success) {
-      _addTerminalMessage('📊 Solicitud de estado enviada');
-    } else {
-      _addTerminalMessage('❌ Fallo al solicitar estado');
-    }
-  }
-
-  // Cambiar modo de operación
-  Future<void> changeOperationMode(OperationMode mode) async {
-    // Don't clear data, just update the mode for UI responsiveness
-    final previousMode = currentMode.value;
-
-    // Update mode immediately for UI responsiveness
-    currentMode.value = mode;
-    notifyListeners();
-
-    final success = await sendCommand({'mode': mode.id});
-    if (success) {
-      _addTerminalMessage('🔄 Modo cambiado a: ${mode.displayName}');
-      // Data will be updated when Arduino responds with new mode data
-    } else {
-      _addTerminalMessage('❌ Error al cambiar el modo de operación');
-      // Restore previous mode if change failed
-      currentMode.value = previousMode;
-      notifyListeners();
-    }
-  }
-
-  // Enviar comando servoDistance
-  Future<void> sendServoDistance(double distance) async {
-    final success = await sendCommand(ServoDistanceCommand(distance).toJson());
-    if (success) {
-      _addTerminalMessage('📏 Comando servoDistance enviado: ${distance}cm');
-    } else {
-      _addTerminalMessage('❌ Error al enviar comando servoDistance');
-    }
-  }
-
-  // Enviar comando routePoints
-  Future<void> sendRoutePoints(String routePoints) async {
-    final success = await sendCommand(RoutePointsCommand(routePoints).toJson());
-    if (success) {
-      _addTerminalMessage('🛣️ Comando routePoints enviado: $routePoints');
-    } else {
-      _addTerminalMessage('❌ Error al enviar comando routePoints');
-    }
-  }
-
-  // Configurar velocidad base
-  Future<void> setSpeedBase(double baseSpeed) async {
-    final success = await sendCommand(SpeedBaseCommand(baseSpeed).toJson());
-    if (success) {
-      _addTerminalMessage(
-          '⚙️ Velocidad base configurada: ${baseSpeed.toStringAsFixed(2)}');
-    } else {
-      _addTerminalMessage('❌ Error al configurar velocidad base');
-    }
-  }
-
-  // Guardar configuración en EEPROM
-  Future<void> saveToEeprom() async {
-    final success = await sendCommand(EepromSaveCommand().toJson());
-    if (success) {
-      _addTerminalMessage('💾 Guardando configuración en EEPROM...');
-    } else {
-      _addTerminalMessage('❌ Error al guardar en EEPROM');
-    }
-  }
-
-  // Solicitar telemetría completa
-  Future<void> requestTelemetry() async {
-    final success = await sendCommand(TelemetryRequestCommand().toJson());
-    if (success) {
-      _addTerminalMessage('📊 Solicitando telemetría completa...');
-    } else {
-      _addTerminalMessage('❌ Error al solicitar telemetría');
-    }
-  }
-
-  // Habilitar/deshabilidar telemetría automática
-  Future<void> setTelemetryEnabled(bool enabled) async {
-    final success = await sendCommand(TelemetryEnableCommand(enabled).toJson());
-    if (success) {
-      _addTerminalMessage(
-          '📡 Telemetría automática ${enabled ? 'habilitada' : 'deshabilitada'}');
-    } else {
-      _addTerminalMessage('❌ Error al cambiar estado de telemetría');
-    }
-  }
-
-  // Calibrar sensores QTR
-  Future<void> calibrateQtrSensors() async {
-    final success = await sendCommand(CalibrateQtrCommand().toJson());
-    if (success) {
-      _addTerminalMessage('🎯 Iniciando calibración de sensores QTR...');
-      _addTerminalMessage(
-          '💡 Mueva el robot sobre la línea y el fondo durante la calibración');
-    } else {
-      _addTerminalMessage('❌ Error al iniciar calibración QTR');
-    }
-  }
-
-  // Comandos de seguridad para autopilot
-  Future<void> sendEmergencyStop() async {
-    final success = await sendCommand({'emergencyStop': true});
-    if (success) {
-      _addTerminalMessage('🆘 PARADA DE EMERGENCIA ACTIVADA');
-    } else {
-      _addTerminalMessage('❌ Error al enviar parada de emergencia');
-    }
-  }
-
-  Future<void> sendParkingBrake() async {
-    final success = await sendCommand({'park': true});
-    if (success) {
-      _addTerminalMessage('🅿️ Freno de estacionamiento activado');
-    } else {
-      _addTerminalMessage('❌ Error al activar freno de estacionamiento');
-    }
-  }
-
-  Future<void> sendStopCommand() async {
-    final success = await sendCommand({'stop': true});
-    if (success) {
-      _addTerminalMessage('⏹️ Parada normal activada');
-    } else {
-      _addTerminalMessage('❌ Error al enviar comando de parada');
-    }
-  }
-
-  // Limpiar historial de datos
-  void clearDataHistory() {
-    _dataHistory.clear();
-    totalDataPackets.value = 0;
-    _addTerminalMessage('🧹 Historial de datos limpiado');
-    notifyListeners();
-  }
-
-  // Alternar visibilidad del terminal
-  void toggleTerminal() {
-    showTerminal.value = !showTerminal.value;
-    notifyListeners();
-  }
-
-  // Limpiar mensajes del terminal
-  void clearTerminal() {
-    _terminalMessages.clear();
-    notifyListeners();
-  }
-
-  // Alternar mostrar datos en bruto
-  void toggleRawData() {
-    showRawData.value = !showRawData.value;
-    notifyListeners();
-  }
-
-  // Limpiar dispositivos descubiertos
-  void clearDiscoveredDevices() {
-    discoveredDevices.value = [];
-    connectionStatus.value = 'Dispositivos limpiados';
-    notifyListeners();
-  }
-
-  // Obtener ayuda para problemas de descubrimiento
-  String getDiscoveryHelp() {
-    return '''
-📱 SOLUCIÓN: No aparecen dispositivos Bluetooth
-
-1. ✅ Habilita Bluetooth en tu Android
-2. 🔗 Empareja tu Arduino en Configuración > Bluetooth
-   - Busca: HC-05, HC-06, ESP32, o nombre de tu módulo
-   - Código PIN típico: 1234 o 0000
-3. 🔄 Reinicia la app después del emparejamiento
-4. 📍 Habilita permisos de ubicación si se solicitan
-5. 🔍 Intenta el descubrimiento nuevamente
-
-💡 La app solo muestra dispositivos ya emparejados
-''';
-  }
-
-  // Agregar mensaje al terminal
-  void _addTerminalMessage(String message) {
-    final timestamp = DateTime.now().toString().substring(11, 19);
-    final logMessage = '[$timestamp] $message';
-
-    _terminalMessages.add(logMessage);
-    if (_terminalMessages.length > _maxTerminalMessages) {
-      _terminalMessages.removeAt(0);
-    }
-  }
-
-  // Public method to add terminal messages from external classes
-  void addTerminalMessage(String message) {
-    _addTerminalMessage(message);
-  }
-
-  // Obtener duración de conexión
-  String getConnectionDuration() {
-    final startTime = connectionStartTime.value;
-    if (startTime == null) return 'No conectado';
-
-    final duration = DateTime.now().difference(startTime);
-    final hours = duration.inHours;
-    final minutes = duration.inMinutes % 60;
-    final seconds = duration.inSeconds % 60;
-
-    if (hours > 0) {
-      return '${hours}h ${minutes}m ${seconds}s';
-    } else if (minutes > 0) {
-      return '${minutes}m ${seconds}s';
-    } else {
-      return '${seconds}s';
-    }
-  }
-
-  // Obtener tasa de datos (paquetes por segundo)
-  double getDataRate() {
-    final startTime = connectionStartTime.value;
-    final packets = totalDataPackets.value;
-    if (startTime == null || packets == 0) return 0.0;
-
-    final duration = DateTime.now().difference(startTime);
-    final durationInSeconds = duration.inMilliseconds / 1000.0;
-
-    if (durationInSeconds <= 0) return 0.0;
-
-    return packets / durationInSeconds;
-  }
-
-  // Obtener estadísticas de sensores
-  Map<String, dynamic> getSensorStatistics() {
-    if (_dataHistory.isEmpty) return {};
-
-    final recentData = _dataHistory.take(20).toList(); // Últimas 20 lecturas
-
-    // Only calculate statistics for line following mode data
-    final lineFollowingData =
-        recentData.where((d) => d.isLineFollowingMode).toList();
-
-    final Map<String, dynamic> stats = {};
-
-    if (lineFollowingData.isNotEmpty) {
-      final positions = lineFollowingData
-          .map((d) => d.position!)
-          .where((p) => p != null)
-          .toList();
-      final errors = lineFollowingData
-          .map((d) => d.error!)
-          .where((e) => e != null)
-          .toList();
-      final leftSpeeds = lineFollowingData
-          .map((d) => d.leftSpeedCmd!)
-          .where((s) => s != null)
-          .toList();
-      final rightSpeeds = lineFollowingData
-          .map((d) => d.rightSpeedCmd!)
-          .where((s) => s != null)
-          .toList();
-
-      if (positions.isNotEmpty) {
-        stats['position'] = {
-          'min': positions.reduce((a, b) => a < b ? a : b),
-          'max': positions.reduce((a, b) => a > b ? a : b),
-          'avg': positions.reduce((a, b) => a + b) / positions.length,
-        };
-      }
-
-      if (errors.isNotEmpty) {
-        stats['error'] = {
-          'min': errors.reduce((a, b) => a < b ? a : b),
-          'max': errors.reduce((a, b) => a > b ? a : b),
-          'avg': errors.reduce((a, b) => a + b) / errors.length,
-        };
-      }
-
-      if (leftSpeeds.isNotEmpty) {
-        stats['leftSpeed'] = {
-          'min': leftSpeeds.reduce((a, b) => a < b ? a : b),
-          'max': leftSpeeds.reduce((a, b) => a > b ? a : b),
-          'avg': leftSpeeds.reduce((a, b) => a + b) / leftSpeeds.length,
-        };
-      }
-
-      if (rightSpeeds.isNotEmpty) {
-        stats['rightSpeed'] = {
-          'min': rightSpeeds.reduce((a, b) => a < b ? a : b),
-          'max': rightSpeeds.reduce((a, b) => a > b ? a : b),
-          'avg': rightSpeeds.reduce((a, b) => a + b) / rightSpeeds.length,
-        };
-      }
-    }
-
-    return stats;
-  }
 
   @override
   void dispose() {
-    _updateTimer?.cancel();
-    _realtimeUpdateTimer?.cancel();
-    _bluetoothClient.dispose();
+    _serialClient.dispose();
     super.dispose();
   }
 }

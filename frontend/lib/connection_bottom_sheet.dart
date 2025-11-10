@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_classic/flutter_blue_classic.dart';
 import 'app_state.dart';
@@ -17,33 +18,32 @@ class _ConnectionBottomSheetState extends State<ConnectionBottomSheet> {
   static const int _connectionTimeoutSeconds = 10;
   int _remainingTime = _connectionTimeoutSeconds;
   Timer? _countdownTimer;
+  AppState? _provider;
 
   @override
   void initState() {
     super.initState();
     // Listen for connection status changes
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final provider = AppInheritedWidget.of(context);
-      if (provider != null) {
-        provider.isConnected.addListener(_handleConnectionStatusChange);
+      _provider = AppInheritedWidget.of(context);
+      if (_provider != null) {
+        _provider!.isConnected.addListener(_handleConnectionStatusChange);
       }
     });
   }
 
   @override
   void dispose() {
-    final provider = AppInheritedWidget.of(context);
-    if (provider != null) {
-      provider.isConnected.removeListener(_handleConnectionStatusChange);
+    if (_provider != null) {
+      _provider!.isConnected.removeListener(_handleConnectionStatusChange);
     }
     _connectionTimeoutTimer?.cancel();
     super.dispose();
   }
 
   void _handleConnectionStatusChange() {
-    final provider = AppInheritedWidget.of(context);
-    if (provider != null &&
-        provider.isConnected.value &&
+    if (_provider != null &&
+        _provider!.isConnected.value &&
         _connectingDevice != null) {
       // Connection succeeded, cancel timeout and close the dialog
       _connectionTimeoutTimer?.cancel();
@@ -52,8 +52,8 @@ class _ConnectionBottomSheetState extends State<ConnectionBottomSheet> {
         _remainingTime = _connectionTimeoutSeconds;
       });
       Navigator.of(context).pop();
-    } else if (provider != null &&
-        !provider.isConnected.value &&
+    } else if (_provider != null &&
+        !_provider!.isConnected.value &&
         _connectingDevice != null) {
       // Connection failed, reset loading state
       setState(() {
@@ -62,6 +62,54 @@ class _ConnectionBottomSheetState extends State<ConnectionBottomSheet> {
       });
       _connectionTimeoutTimer?.cancel();
       _countdownTimer?.cancel();
+    }
+  }
+
+  Future<void> _handleSerialPortTap(String portName, AppState provider) async {
+    // Always disconnect first to ensure clean state, even if connecting to the same port
+    if (provider.isConnected.value) {
+      print(
+          '🔄 [CONNECTION] Already connected to ${provider.connectedSerialPort.value ?? 'a port'}, disconnecting first...');
+
+      // Show disconnecting message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'Desconectando de ${provider.connectedSerialPort.value ?? 'puerto actual'}...'),
+            backgroundColor: Colors.orange,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+
+      // Disconnect from current connection first
+      await provider.disconnect();
+
+      // Wait longer for serial port to be fully released
+      await Future.delayed(const Duration(milliseconds: 1500));
+    }
+
+    // Now proceed with connection to the target serial port
+    setState(() {
+      _connectingDevice = null; // Reset Bluetooth connecting state
+    });
+
+    try {
+      print('🔗 [CONNECTION] Connecting to serial port: $portName');
+      await provider.connectToSerialPort(portName);
+      // Connection attempt completed
+    } catch (e) {
+      // Show error message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error de conexión serial: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
     }
   }
 
@@ -269,7 +317,7 @@ class _ConnectionBottomSheetState extends State<ConnectionBottomSheet> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Dispositivos Bluetooth',
+                Platform.isWindows ? 'Puertos Serial' : 'Dispositivos Bluetooth',
                 style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.bold,
                   color: colorScheme.primary,
@@ -330,156 +378,270 @@ class _ConnectionBottomSheetState extends State<ConnectionBottomSheet> {
       child: ValueListenableBuilder<List<BluetoothDevice>>(
         valueListenable: provider.discoveredDevices,
         builder: (context, devices, child) {
-          if (devices.isNotEmpty) {
-            return ListView.builder(
-              itemCount: devices.length,
-              physics: const BouncingScrollPhysics(
-                parent: AlwaysScrollableScrollPhysics(),
-              ),
-              itemBuilder: (context, index) {
-                final device = devices[index];
-                // Only consider connected if the connection is actually validated
-                final isConnected =
-                    provider.connectedDevice.value?.address == device.address &&
-                        provider.isConnected.value;
-                // Only show connecting state if this is the device being connected and not yet connected
-                final isConnecting =
-                    _connectingDevice?.address == device.address &&
-                        !provider.isConnected.value;
+          return ValueListenableBuilder<List<String>>(
+            valueListenable: provider.availableSerialPorts,
+            builder: (context, serialPorts, child) {
+              final totalItems = devices.length + serialPorts.length;
 
-                return Card(
-                  margin:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  elevation: isConnected ? 2 : 1,
-                  child: ListTile(
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    leading: Container(
-                      width: 32,
-                      height: 32,
-                      decoration: BoxDecoration(
-                        color: isConnected
-                            ? colorScheme.primaryContainer
-                            : isConnecting
-                                ? Colors.orange.withOpacity(0.2)
-                                : colorScheme.secondaryContainer,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: isConnecting
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                    Colors.orange),
+              if (totalItems > 0) {
+                return ListView.builder(
+                  itemCount: totalItems,
+                  physics: const BouncingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
+                  ),
+                  itemBuilder: (context, index) {
+                    if (index < devices.length) {
+                      // Bluetooth device
+                      final device = devices[index];
+                      final isConnected =
+                          provider.connectedDevice.value?.address == device.address &&
+                              provider.isConnected.value;
+                      final isConnecting =
+                          _connectingDevice?.address == device.address &&
+                              !provider.isConnected.value;
+
+                      return Card(
+                        margin:
+                            const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        elevation: isConnected ? 2 : 1,
+                        child: ListTile(
+                          contentPadding:
+                              const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          leading: Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              color: isConnected
+                                  ? colorScheme.primaryContainer
+                                  : isConnecting
+                                      ? Colors.orange.withOpacity(0.2)
+                                      : colorScheme.secondaryContainer,
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: isConnecting
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                          Colors.orange),
+                                    ),
+                                  )
+                                : Icon(
+                                    isConnected
+                                        ? Icons.bluetooth_connected
+                                        : Icons.bluetooth,
+                                    color: isConnected
+                                        ? colorScheme.primary
+                                        : colorScheme.secondary,
+                                    size: 16,
+                                  ),
+                          ),
+                          title: Text(
+                            device.name ?? 'Dispositivo Desconocido',
+                            style: theme.textTheme.labelLarge?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: isConnected
+                                  ? colorScheme.primary
+                                  : colorScheme.onSurface,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      'BT: ${device.address}',
+                                      style: theme.textTheme.labelSmall?.copyWith(
+                                        color: colorScheme.onSurfaceVariant,
+                                        fontFamily: 'monospace',
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
-                            )
-                          : Icon(
-                              isConnected
-                                  ? Icons.bluetooth_connected
-                                  : Icons.bluetooth,
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  Container(
+                                    width: 8,
+                                    height: 8,
+                                    decoration: BoxDecoration(
+                                      color: isConnected
+                                          ? colorScheme.primary
+                                          : isConnecting
+                                              ? Colors.orange
+                                              : colorScheme.secondary,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    isConnected
+                                        ? 'Dispositivo Conectado'
+                                        : isConnecting
+                                            ? 'Conectando... ($_remainingTime s)'
+                                            : 'Dispositivo Disponible',
+                                    style: theme.textTheme.labelSmall?.copyWith(
+                                      color: isConnected
+                                          ? colorScheme.primary
+                                          : isConnecting
+                                              ? Colors.orange
+                                              : colorScheme.secondary,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                          trailing: isConnected
+                              ? Icon(
+                                  Icons.check_circle,
+                                  color: colorScheme.primary,
+                                  size: 18,
+                                )
+                              : isConnecting
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor: AlwaysStoppedAnimation<Color>(
+                                            Colors.orange),
+                                      ),
+                                    )
+                                  : Icon(
+                                      Icons.arrow_forward_ios,
+                                      color: colorScheme.primary,
+                                      size: 16,
+                                    ),
+                          onTap: (isConnected || isConnecting)
+                              ? null
+                              : () => _handleDeviceTap(device, provider),
+                        ),
+                      );
+                    } else {
+                      // Serial port
+                      final portIndex = index - devices.length;
+                      final portName = serialPorts[portIndex];
+                      final isConnected =
+                          provider.connectedSerialPort.value == portName &&
+                              provider.isConnected.value;
+
+                      return Card(
+                        margin:
+                            const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        elevation: isConnected ? 2 : 1,
+                        child: ListTile(
+                          contentPadding:
+                              const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          leading: Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              color: isConnected
+                                  ? colorScheme.primaryContainer
+                                  : colorScheme.secondaryContainer,
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Icon(
+                              isConnected ? Icons.usb : Icons.settings_input_hdmi,
                               color: isConnected
                                   ? colorScheme.primary
                                   : colorScheme.secondary,
                               size: 16,
                             ),
-                    ),
-                    title: Text(
-                      device.name ?? 'Dispositivo Desconocido',
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: isConnected
-                            ? colorScheme.primary
-                            : colorScheme.onSurface,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1,
-                    ),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const SizedBox(height: 2),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                'BT: ${device.address}',
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  color: colorScheme.onSurfaceVariant,
-                                  fontFamily: 'monospace',
-                                  fontWeight: FontWeight.w600,
+                          ),
+                          title: Text(
+                            'Puerto Serial',
+                            style: theme.textTheme.labelLarge?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: isConnected
+                                  ? colorScheme.primary
+                                  : colorScheme.onSurface,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      portName,
+                                      style: theme.textTheme.labelSmall?.copyWith(
+                                        color: colorScheme.onSurfaceVariant,
+                                        fontFamily: 'monospace',
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  Container(
+                                    width: 8,
+                                    height: 8,
+                                    decoration: BoxDecoration(
+                                      color: isConnected
+                                          ? colorScheme.primary
+                                          : colorScheme.secondary,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    isConnected
+                                        ? 'Puerto Conectado'
+                                        : 'Puerto Disponible',
+                                    style: theme.textTheme.labelSmall?.copyWith(
+                                      color: isConnected
+                                          ? colorScheme.primary
+                                          : colorScheme.secondary,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                          trailing: isConnected
+                              ? Icon(
+                                  Icons.check_circle,
+                                  color: colorScheme.primary,
+                                  size: 18,
+                                )
+                              : Icon(
+                                  Icons.arrow_forward_ios,
+                                  color: colorScheme.primary,
+                                  size: 16,
                                 ),
-                              ),
-                            ),
-                          ],
+                          onTap: isConnected
+                              ? null
+                              : () => _handleSerialPortTap(portName, provider),
                         ),
-                        const SizedBox(height: 2),
-                        Row(
-                          children: [
-                            Container(
-                              width: 8,
-                              height: 8,
-                              decoration: BoxDecoration(
-                                color: isConnected
-                                    ? colorScheme.primary
-                                    : isConnecting
-                                        ? Colors.orange
-                                        : colorScheme.secondary,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              isConnected
-                                  ? 'Dispositivo Conectado'
-                                  : isConnecting
-                                      ? 'Conectando... ($_remainingTime s)'
-                                      : 'Dispositivo Disponible',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: isConnected
-                                    ? colorScheme.primary
-                                    : isConnecting
-                                        ? Colors.orange
-                                        : colorScheme.secondary,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    trailing: isConnected
-                        ? Icon(
-                            Icons.check_circle,
-                            color: colorScheme.primary,
-                            size: 18,
-                          )
-                        : isConnecting
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                      Colors.orange),
-                                ),
-                              )
-                            : Icon(
-                                Icons.arrow_forward_ios,
-                                color: colorScheme.primary,
-                                size: 16,
-                              ),
-                    onTap: (isConnected || isConnecting)
-                        ? null
-                        : () => _handleDeviceTap(device, provider),
-                  ),
+                      );
+                    }
+                  },
                 );
-              },
-            );
-          } else {
-            return _buildNoDevicesFoundMessageFullScreen(theme, colorScheme);
-          }
+              } else {
+                return _buildNoDevicesFoundMessageFullScreen(theme, colorScheme);
+              }
+            },
+          );
         },
       ),
     );
@@ -535,27 +697,44 @@ class _ConnectionBottomSheetState extends State<ConnectionBottomSheet> {
           ),
         ),
         const SizedBox(height: 8),
-        _buildStepItem(
-            '1',
-            'Enciende tu Arduino y asegúrate de que el LED de Bluetooth parpadee',
-            theme,
-            colorScheme),
-        _buildStepItem('2', 'Ve a Configuración → Bluetooth en tu teléfono',
-            theme, colorScheme),
-        _buildStepItem('3', 'Activa el Bluetooth si no está habilitado', theme,
-            colorScheme),
-        _buildStepItem(
-            '4',
-            'Busca dispositivos disponibles (ej: "HC-05", "Arduino-BT")',
-            theme,
-            colorScheme),
-        _buildStepItem('5', 'Toca "Emparejar" en tu Arduino cuando aparezca',
-            theme, colorScheme),
-        _buildStepItem(
-            '6',
-            'Vuelve a esta app y presiona el botón de actualizar',
-            theme,
-            colorScheme),
+        if (Platform.isWindows) ...[
+          _buildStepItem(
+              '1',
+              'Conecta tu Arduino por USB al computador',
+              theme,
+              colorScheme),
+          _buildStepItem('2', 'Asegúrate de que los drivers USB-Serial estén instalados',
+              theme, colorScheme),
+          _buildStepItem(
+              '3',
+              'Verifica el puerto COM en Administrador de Dispositivos',
+              theme,
+              colorScheme),
+          _buildStepItem('4', 'Vuelve a esta app y presiona el botón de actualizar',
+              theme, colorScheme),
+        ] else ...[
+          _buildStepItem(
+              '1',
+              'Enciende tu Arduino y asegúrate de que el LED de Bluetooth parpadee',
+              theme,
+              colorScheme),
+          _buildStepItem('2', 'Ve a Configuración → Bluetooth en tu teléfono',
+              theme, colorScheme),
+          _buildStepItem('3', 'Activa el Bluetooth si no está habilitado', theme,
+              colorScheme),
+          _buildStepItem(
+              '4',
+              'Busca dispositivos disponibles (ej: "HC-05", "Arduino-BT")',
+              theme,
+              colorScheme),
+          _buildStepItem('5', 'Toca "Emparejar" en tu Arduino cuando aparezca',
+              theme, colorScheme),
+          _buildStepItem(
+              '6',
+              'Vuelve a esta app y presiona el botón de actualizar',
+              theme,
+              colorScheme),
+        ],
       ],
     );
   }
