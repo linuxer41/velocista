@@ -3,6 +3,7 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  bluetooth_classic_multiplatform
   permission_handler_windows
 )
 

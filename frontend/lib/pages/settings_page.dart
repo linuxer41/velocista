@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_blue_classic/flutter_blue_classic.dart';
 import '../app_state.dart';
-import '../arduino_data.dart';
 
 class SettingsPage extends StatefulWidget {
   final AppState appState;
@@ -18,326 +16,535 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
+  final TextEditingController _pController = TextEditingController(text: '0.5');
+  final TextEditingController _iController = TextEditingController(text: '0.1');
+  final TextEditingController _dController = TextEditingController(text: '0.2');
+  double _maxSpeed = 80.0;
+  double _maxAcceleration = 65.0;
+
+  @override
+  void dispose() {
+    _pController.dispose();
+    _iController.dispose();
+    _dController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Configuración'),
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        foregroundColor: Theme.of(context).colorScheme.onSurface,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        actions: [
-          // Device discovery button in app bar
-          Container(
-            margin: const EdgeInsets.only(right: 8),
-            child: ElevatedButton.icon(
-              onPressed: () => _startDeviceDiscovery(),
-              icon: const Icon(Icons.bluetooth_searching, size: 18),
-              label: const Text('Buscar'),
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                backgroundColor: Theme.of(context).colorScheme.primary,
-                foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                elevation: 0,
+      backgroundColor: colorScheme.surface,
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Compact Header
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              color: colorScheme.surface,
+              child: Row(
+                children: [
+                  // Back button
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: Icon(
+                      Icons.arrow_back,
+                      color: colorScheme.onSurface,
+                      size: 24,
+                    ),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                  const SizedBox(width: 16),
+                  // Title
+                  Text(
+                    'Ajustes',
+                    style: TextStyle(
+                      color: colorScheme.onSurface,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      fontFamily: 'Space Grotesk',
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(16.0),
-          children: [
-            // Theme Settings
-            _buildCompactSection('Tema', Icons.palette, _buildThemeToggle()),
 
-            const Divider(),
+            // Main Content
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Calibración Section
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 6),
+                            child: Text(
+                              'Calibración',
+                              style: TextStyle(
+                                color: colorScheme.onSurface,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                fontFamily: 'Space Grotesk',
+                              ),
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: colorScheme.primary.withOpacity(0.05),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: colorScheme.outline.withOpacity(0.1),
+                                width: 1,
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Presiona el botón para iniciar el proceso de calibración de los sensores del vehículo.',
+                                  style: TextStyle(
+                                    color: colorScheme.onSurface.withOpacity(0.7),
+                                    fontSize: 14,
+                                    fontFamily: 'Space Grotesk',
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                SizedBox(
+                                  width: double.infinity,
+                                  height: 44,
+                                  child: ElevatedButton(
+                                    onPressed: _startCalibration,
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: colorScheme.primary,
+                                      foregroundColor: colorScheme.onPrimary,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      padding: EdgeInsets.zero,
+                                    ),
+                                    child: const Text(
+                                      'Iniciar Calibración de Sensores',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w700,
+                                        fontFamily: 'Space Grotesk',
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
 
-            // Robot Mode Settings
-            _buildCompactSection('Modo Robot', Icons.settings, _buildModeSelection()),
+                    // PID Parameters Section
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Text(
+                              'Parámetros PID',
+                              style: TextStyle(
+                                color: colorScheme.onSurface,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                fontFamily: 'Space Grotesk',
+                              ),
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: colorScheme.primary.withOpacity(0.05),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: colorScheme.outline.withOpacity(0.1),
+                                width: 1,
+                              ),
+                            ),
+                            child: Column(
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: _buildCompactParameterInput(
+                                        'P',
+                                        _pController,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: _buildCompactParameterInput(
+                                        'I',
+                                        _iController,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: _buildCompactParameterInput(
+                                        'D',
+                                        _dController,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                SizedBox(
+                                  width: double.infinity,
+                                  height: 40,
+                                  child: ElevatedButton(
+                                    onPressed: _saveSettings,
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: colorScheme.primary,
+                                      foregroundColor: colorScheme.onPrimary,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      padding: EdgeInsets.zero,
+                                    ),
+                                    child: const Text(
+                                      'Guardar',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w700,
+                                        fontFamily: 'Space Grotesk',
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
 
-            const Divider(),
+                    const SizedBox(height: 32),
 
-            // Connection Settings
-            _buildCompactSection('Conexión', Icons.bluetooth, _buildConnectionSettings()),
+                    // Limits Section
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 6),
+                            child: Text(
+                              'Límites',
+                              style: TextStyle(
+                                color: colorScheme.onSurface,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                fontFamily: 'Space Grotesk',
+                              ),
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: colorScheme.primary.withOpacity(0.05),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: colorScheme.outline.withOpacity(0.1),
+                                width: 1,
+                              ),
+                            ),
+                            child: Column(
+                              children: [
+                                _buildCompactSlider(
+                                  'Velocidad Máxima',
+                                  _maxSpeed,
+                                  (value) => setState(() => _maxSpeed = value),
+                                ),
+                                const SizedBox(height: 16),
+                                _buildCompactSlider(
+                                  'Aceleración Máxima',
+                                  _maxAcceleration,
+                                  (value) => setState(() => _maxAcceleration = value),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildCompactSection(String title, IconData icon, Widget content) {
+
+  Widget _buildParameterInput(String label, TextEditingController controller) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: colorScheme.onSurface.withOpacity(0.7),
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            fontFamily: 'Space Grotesk',
+          ),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 56,
+          child: TextField(
+            controller: controller,
+            keyboardType: TextInputType.numberWithOptions(decimal: true),
+            style: TextStyle(
+              color: colorScheme.onSurface,
+              fontSize: 16,
+              fontFamily: 'Space Grotesk',
+            ),
+            decoration: InputDecoration(
+              filled: true,
+              fillColor: colorScheme.surfaceContainerHighest.withOpacity(0.5),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(
+                  color: colorScheme.outline.withOpacity(0.2),
+                  width: 1,
+                ),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(
+                  color: colorScheme.outline.withOpacity(0.2),
+                  width: 1,
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(
+                  color: colorScheme.primary,
+                  width: 2,
+                ),
+              ),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCompactParameterInput(String label, TextEditingController controller) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: colorScheme.onSurface.withOpacity(0.7),
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+            fontFamily: 'Space Grotesk',
+          ),
+        ),
+        const SizedBox(height: 4),
+        SizedBox(
+          height: 40,
+          child: TextField(
+            controller: controller,
+            keyboardType: TextInputType.numberWithOptions(decimal: true),
+            style: TextStyle(
+              color: colorScheme.onSurface,
+              fontSize: 14,
+              fontFamily: 'Space Grotesk',
+            ),
+            decoration: InputDecoration(
+              filled: true,
+              fillColor: colorScheme.surfaceContainerHighest.withOpacity(0.3),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(6),
+                borderSide: BorderSide(
+                  color: colorScheme.outline.withOpacity(0.2),
+                  width: 1,
+                ),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(6),
+                borderSide: BorderSide(
+                  color: colorScheme.outline.withOpacity(0.2),
+                  width: 1,
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(6),
+                borderSide: BorderSide(
+                  color: colorScheme.primary,
+                  width: 1.5,
+                ),
+              ),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSlider(String label, double value, ValueChanged<double> onChanged) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Icon(icon, size: 20, color: Theme.of(context).colorScheme.primary),
-            const SizedBox(width: 8),
             Text(
-              title,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+              label,
+              style: TextStyle(
+                color: colorScheme.onSurface.withOpacity(0.7),
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                fontFamily: 'Space Grotesk',
+              ),
+            ),
+            Text(
+              '${value.round()}%',
+              style: TextStyle(
+                color: colorScheme.onSurface,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                fontFamily: 'Space Grotesk',
+              ),
             ),
           ],
         ),
         const SizedBox(height: 8),
-        content,
+        SliderTheme(
+          data: SliderThemeData(
+            trackHeight: 4,
+            activeTrackColor: colorScheme.primary,
+            inactiveTrackColor: colorScheme.surfaceContainerHighest.withOpacity(0.5),
+            thumbColor: colorScheme.primary,
+            overlayColor: colorScheme.primary.withOpacity(0.2),
+            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10),
+            overlayShape: const RoundSliderOverlayShape(overlayRadius: 20),
+          ),
+          child: Slider(
+            value: value,
+            min: 0,
+            max: 100,
+            onChanged: onChanged,
+          ),
+        ),
       ],
     );
   }
 
-  Widget _buildThemeToggle() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
+  Widget _buildCompactSlider(String label, double value, ValueChanged<double> onChanged) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Row(
-              children: [
-                Icon(
-                  widget.themeProvider.isDarkMode ? Icons.dark_mode : Icons.light_mode,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  'Tema Oscuro',
-                  style: Theme.of(context).textTheme.bodyLarge,
-                ),
-              ],
+            Text(
+              label,
+              style: TextStyle(
+                color: colorScheme.onSurface.withOpacity(0.7),
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                fontFamily: 'Space Grotesk',
+              ),
             ),
-            Switch(
-              value: widget.themeProvider.isDarkMode,
-              onChanged: (value) {
-                widget.themeProvider.setDarkMode(value);
-                setState(() {});
-              },
+            Text(
+              '${value.round()}%',
+              style: TextStyle(
+                color: colorScheme.onSurface,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                fontFamily: 'Space Grotesk',
+              ),
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildModeSelection() {
-    return ValueListenableBuilder<OperationMode>(
-      valueListenable: widget.appState.currentMode,
-      builder: (context, currentMode, child) {
-        return Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: OperationMode.values.map((mode) {
-                    final isSelected = mode == currentMode;
-                    return FilterChip(
-                      label: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(mode.icon, size: 16),
-                          const SizedBox(width: 4),
-                          Text(mode.displayName),
-                        ],
-                      ),
-                      selected: isSelected,
-                      onSelected: (selected) {
-                        if (selected && !isSelected) {
-                          _changeMode(mode);
-                        }
-                      },
-                    );
-                  }).toList(),
-                ),
-              ],
-            ),
+        const SizedBox(height: 6),
+        SliderTheme(
+          data: SliderThemeData(
+            trackHeight: 3,
+            activeTrackColor: colorScheme.primary,
+            inactiveTrackColor: colorScheme.surfaceContainerHighest.withOpacity(0.3),
+            thumbColor: colorScheme.primary,
+            overlayColor: colorScheme.primary.withOpacity(0.2),
+            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+            overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
           ),
-        );
-      },
-    );
-  }
-
-  Widget _buildConnectionSettings() {
-    return ValueListenableBuilder<bool>(
-      valueListenable: widget.appState.isConnected,
-      builder: (context, isConnected, child) {
-        return Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          isConnected ? Icons.bluetooth_connected : Icons.bluetooth_disabled,
-                          color: isConnected ? Colors.green : Colors.red,
-                        ),
-                        const SizedBox(width: 12),
-                        Text(
-                          isConnected ? 'Conectado' : 'Desconectado',
-                          style: Theme.of(context).textTheme.bodyLarge,
-                        ),
-                      ],
-                    ),
-                    if (isConnected)
-                      TextButton.icon(
-                        onPressed: () => widget.appState.disconnect(),
-                        icon: const Icon(Icons.bluetooth_disabled),
-                        label: const Text('Desconectar'),
-                        style: TextButton.styleFrom(
-                          foregroundColor: Colors.red,
-                        ),
-                      )
-                    else
-                      const SizedBox.shrink(), // Button moved to top of settings page
-                  ],
-                ),
-                if (isConnected) ...[
-                  const SizedBox(height: 12),
-                  ValueListenableBuilder<BluetoothDevice?>(
-                    valueListenable: widget.appState.connectedDevice,
-                    builder: (context, device, child) {
-                      return Text(
-                        'Dispositivo: ${device?.name ?? 'Desconocido'}',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
-                            ),
-                      );
-                    },
-                  ),
-                ],
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildAdvancedSettings() {
-    return Column(
-      children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.save),
-                  title: const Text('Guardar Configuración'),
-                  subtitle: const Text('Guarda la configuración actual en EEPROM'),
-                  trailing: ElevatedButton(
-                    onPressed: () => widget.appState.sendCommand({'eeprom': 1}),
-                    child: const Text('Guardar'),
-                  ),
-                ),
-                const Divider(),
-                ListTile(
-                  leading: const Icon(Icons.refresh),
-                  title: const Text('Solicitar Telemetría'),
-                  subtitle: const Text('Obtiene datos actuales del robot'),
-                  trailing: ElevatedButton(
-                    onPressed: () => widget.appState.sendCommand({'telemetry': 1}),
-                    child: const Text('Solicitar'),
-                  ),
-                ),
-                const Divider(),
-                ListTile(
-                  leading: const Icon(Icons.tune),
-                  title: const Text('Calibrar Sensores'),
-                  subtitle: const Text('Calibra los sensores QTR'),
-                  trailing: ElevatedButton(
-                    onPressed: () => widget.appState.sendCommand({'calibrate_qtr': 1}),
-                    child: const Text('Calibrar'),
-                  ),
-                ),
-              ],
-            ),
+          child: Slider(
+            value: value,
+            min: 0,
+            max: 100,
+            onChanged: onChanged,
           ),
         ),
       ],
     );
   }
 
-  Future<void> _changeMode(OperationMode mode) async {
-    await widget.appState.changeOperationMode(mode);
-    await widget.appState.sendCommand({'mode': mode.id});
+  void _saveSettings() {
+    // Save PID parameters and limits
+    final p = double.tryParse(_pController.text) ?? 0.5;
+    final i = double.tryParse(_iController.text) ?? 0.1;
+    final d = double.tryParse(_dController.text) ?? 0.2;
+
+    // Send PID configuration
+    widget.appState.sendCommand({
+      'pid': [p, i, d],
+      'max_speed': _maxSpeed / 100.0,
+      'max_acceleration': _maxAcceleration / 100.0,
+    });
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Modo cambiado a: ${mode.displayName}'),
-          duration: const Duration(seconds: 2),
+        const SnackBar(
+          content: Text('Configuración guardada'),
+          duration: Duration(seconds: 2),
         ),
       );
     }
   }
 
-  Future<void> _startDeviceDiscovery() async {
-    try {
-      // Show loading dialog
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          title: const Text('Buscando dispositivos...'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const CircularProgressIndicator(),
-              const SizedBox(height: 16),
-              const Text('Buscando dispositivos Bluetooth emparejados...'),
-              const SizedBox(height: 8),
-              const Text(
-                'Asegúrate de que tu Arduino esté encendido y emparejado.',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
+  void _startCalibration() {
+    // Send calibration command
+    widget.appState.sendCommand({'calibrate_qtr': 1});
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Iniciando calibración de sensores...'),
+          duration: Duration(seconds: 2),
         ),
       );
-
-      await widget.appState.startDiscovery();
-
-      // Close loading dialog
-      if (mounted) {
-        Navigator.of(context).pop();
-      }
-
-      // Show device list automatically if devices found
-      if (mounted && widget.appState.discoveredDevices.value.isNotEmpty) {
-        widget.appState.showDeviceList.value = true;
-      }
-    } catch (e) {
-      // Close loading dialog
-      if (mounted) {
-        Navigator.of(context).pop();
-      }
-
-      // Show error
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error al buscar dispositivos: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 5),
-          ),
-        );
-      }
     }
   }
 }

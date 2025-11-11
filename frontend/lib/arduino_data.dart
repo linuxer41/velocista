@@ -1,17 +1,18 @@
 import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 /// Operation modes for the robot
 enum OperationMode {
-    lineFollowing(0, 'SEGUIDOR DE LÍNEA', Icons.route),
-    remoteControl(1, 'CONTROL REMOTO', Icons.gamepad),
-    servoDistance(2, 'SERVO DISTANCIA', Icons.straighten),
-    pointList(3, 'LISTA DE PUNTOS', Icons.list_alt);
+    lineFollowing(0, 'SEGUIDOR DE LÍNEA', Icons.route, 'SEGUID'),
+    remoteControl(1, 'CONTROL REMOTO', Icons.gamepad, 'CONTROL'),
+    servo(2, 'SERVO', Icons.straighten, 'SERVO');
 
-  const OperationMode(this.id, this.displayName, this.icon);
+  const OperationMode(this.id, this.displayName, this.icon, this.shortName);
   final int id;
   final String displayName;
   final IconData icon;
+  final String shortName;
 
   static OperationMode fromId(int id) {
     return OperationMode.values.firstWhere(
@@ -59,6 +60,7 @@ class ArduinoData {
   final int rightEncoderCount; // Total right encoder pulses
   final double totalDistance; // Total distance traveled (cm)
   final List<int> sensors; // QTR sensor values (0 in non-lineal modes)
+  final double battery; // Battery percentage
 
   // Line Following specific data
   final double? position; // Line position (2000-7000 for 6 sensors, 1000-8000 for 8)
@@ -78,6 +80,10 @@ class ArduinoData {
   final double? rightSpeed; // Velocidad rueda derecha (-1.0 a 1.0)
   final double? maxSpeed; // Velocidad máxima global (0.0 a 1.0)
 
+  // PID and base speed data
+  final List<double>? pid; // [Kp, Ki, Kd]
+  final double? baseSpeed; // Base speed (0-1)
+
   ArduinoData({
     required this.operationMode,
     required this.modeName,
@@ -87,6 +93,7 @@ class ArduinoData {
     required this.rightEncoderCount,
     required this.totalDistance,
     required this.sensors,
+    this.battery = 0.0,
     this.position,
     this.error,
     this.correction,
@@ -99,6 +106,8 @@ class ArduinoData {
     this.leftSpeed,
     this.rightSpeed,
     this.maxSpeed,
+    this.pid,
+    this.baseSpeed,
   });
 
   /// Parse JSON from Arduino according to the new 3-mode system
@@ -114,6 +123,7 @@ class ArduinoData {
       rightEncoderCount: map['sensors']?['encoders']?['right'] ?? map[_keyRightEncoderCount] ?? 0,
       totalDistance: _parseDoubleValue(map['distance']?['total_cm'] ?? map[_keyTotalDistance]),
       sensors: _parseSensorsData(map['sensors']?['qtr'] ?? map[_keySensors]),
+      battery: _parseDoubleValue(map['battery'] ?? 0.0),
       
       // Line Following specific fields
       position: (map[_keyPosition] is num) 
@@ -168,6 +178,7 @@ class ArduinoData {
       _keyRightEncoderCount: rightEncoderCount,
       _keyTotalDistance: totalDistance,
       _keySensors: sensors,
+      'battery': battery,
     };
 
     // Add mode-specific fields
@@ -333,7 +344,7 @@ class ArduinoData {
 
       return [];
     } catch (e) {
-      print('Error parsing sensors data: $e, data: $sensorsData');
+      // Error parsing sensors data: $e, data: $sensorsData
       return [];
     }
   }
@@ -371,13 +382,18 @@ class ModeChangeCommand {
   }
 }
 
-class ServoDistanceCommand {
+class ServoCommand {
   final double distance; // Distance in cm
+  final double? angle; // Optional angle in degrees
 
-  ServoDistanceCommand(this.distance);
+  ServoCommand(this.distance, {this.angle});
 
   Map<String, dynamic> toJson() {
-    return {'servoDistance': distance};
+    final servoMap = <String, dynamic>{'distance': distance};
+    if (angle != null) {
+      servoMap['angle'] = angle;
+    }
+    return {'servo': servoMap};
   }
 }
 
@@ -429,86 +445,71 @@ class CalibrateQtrCommand {
   }
 }
 
-class LineFollowingConfigCommand {
+class PidCommand {
   final double kp;
   final double ki;
   final double kd;
-  final double setpoint;
-  final double baseSpeed;
-  
-  LineFollowingConfigCommand({
-    this.kp = 1.0,
-    this.ki = 0.0,
-    this.kd = 0.0,
-    this.setpoint = 2500.0,
-    this.baseSpeed = 0.8,
+
+  PidCommand({
+    required this.kp,
+    required this.ki,
+    required this.kd,
   });
-  
+
   Map<String, dynamic> toJson() {
     return {
-      'mode': OperationMode.lineFollowing.id,
-      'Kp': kp,
-      'Ki': ki,
-      'Kd': kd,
-      'setpoint': setpoint,
-      'baseSpeed': baseSpeed,
+      'pid': [kp, ki, kd],
     };
   }
 }
 
-class AutopilotCommand {
-  final double? throttle; // -1.0 a 1.0
-  final double? brake; // 0.0 a 1.0
-  final double? turn; // -1.0 a 1.0
-  final int? direction; // 1=adelante, -1=atrás
-  final bool? emergencyStop; // Parada de emergencia inmediata
-  final bool? park; // Freno de estacionamiento completo
-  final bool? stop; // Parada normal controlada
-  
-  AutopilotCommand({
-    this.throttle,
-    this.brake,
-    this.turn,
+class RcCommand {
+  // Direction + Acceleration mode
+  final double? direction; // 0-360 degrees
+  final double? acceleration; // 0.0-1.0
+
+  // Autopilot mode (throttle/turn)
+  final double? throttle; // -1.0 to 1.0
+  final double? turn; // -1.0 to 1.0
+
+  // Manual mode (left/right)
+  final double? left; // -1.0 to 1.0
+  final double? right; // -1.0 to 1.0
+
+  RcCommand({
     this.direction,
-    this.emergencyStop,
-    this.park,
-    this.stop,
-  });
-  
-  Map<String, dynamic> toJson() {
-    final Map<String, Object> map = {
-      'mode': OperationMode.remoteControl.id,
-    };
-    if (throttle != null) map['throttle'] = throttle!;
-    if (brake != null) map['brake'] = brake!;
-    if (turn != null) map['turn'] = turn!;
-    if (direction != null) map['direction'] = direction!;
-    if (emergencyStop != null) map['emergencyStop'] = emergencyStop!;
-    if (park != null) map['park'] = park!;
-    if (stop != null) map['stop'] = stop!;
-    return map;
-  }
-}
+    this.acceleration,
+    this.throttle,
+    this.turn,
+    this.left,
+    this.right,
+  }) {
+    // Validate that only one mode is used
+    final modesUsed = [
+      direction != null || acceleration != null,
+      throttle != null || turn != null,
+      left != null || right != null,
+    ].where((mode) => mode).length;
 
-class ManualCommand {
-  final double? leftSpeed; // -1.0 a 1.0
-  final double? rightSpeed; // -1.0 a 1.0
-  final double? maxSpeed; // 0.0 a 1.0
-  
-  ManualCommand({
-    this.leftSpeed,
-    this.rightSpeed,
-    this.maxSpeed,
-  });
-  
+    if (modesUsed > 1) {
+      throw ArgumentError('Only one RC control mode can be used at a time');
+    }
+    if (modesUsed == 0) {
+      throw ArgumentError('At least one RC control mode must be specified');
+    }
+  }
+
   Map<String, dynamic> toJson() {
-    final Map<String, Object> map = {
-      'mode': OperationMode.remoteControl.id,
-    };
-    if (leftSpeed != null) map['leftSpeed'] = leftSpeed!;
-    if (rightSpeed != null) map['rightSpeed'] = rightSpeed!;
-    if (maxSpeed != null) map['maxSpeed'] = maxSpeed!;
-    return map;
+    final rcMap = <String, dynamic>{};
+
+    if (direction != null) rcMap['direction'] = direction;
+    if (acceleration != null) rcMap['acceleration'] = acceleration;
+    if (throttle != null) rcMap['throttle'] = throttle;
+    if (turn != null) rcMap['turn'] = turn;
+    if (left != null) rcMap['left'] = left;
+    if (right != null) rcMap['right'] = right;
+
+    return {'rc': rcMap};
   }
 }
 
@@ -611,52 +612,55 @@ class ArduinoMessage {
 
 /// Telemetry data from Arduino
 class TelemetryData {
+  final int timestamp;
   final int mode;
-  final double speed;
+  final double velocity;
+  final double acceleration;
   final double distance;
+  final MotorData left;
+  final MotorData right;
   final double battery;
-  final List<int> sensors;
+  final List<int> qtr;
   final List<double> pid;
-  final double leftRpm;
-  final double rightRpm;
-  final int leftEncoder;
-  final int rightEncoder;
-  final double? position;
-  final double? error;
-  final double? correction;
+  final double setPoint;
+  final double baseSpeed;
+  final double error;
+  final double correction;
 
   TelemetryData({
+    required this.timestamp,
     required this.mode,
-    required this.speed,
+    required this.velocity,
+    required this.acceleration,
     required this.distance,
+    required this.left,
+    required this.right,
     required this.battery,
-    required this.sensors,
+    required this.qtr,
     required this.pid,
-    required this.leftRpm,
-    required this.rightRpm,
-    required this.leftEncoder,
-    required this.rightEncoder,
-    this.position,
-    this.error,
-    this.correction,
+    required this.setPoint,
+    required this.baseSpeed,
+    required this.error,
+    required this.correction,
   });
 
   static TelemetryData? fromPayload(Map<String, dynamic> payload) {
     try {
       return TelemetryData(
+        timestamp: payload['timestamp'] ?? 0,
         mode: payload['mode'] ?? 0,
-        speed: (payload['speed'] as num?)?.toDouble() ?? 0.0,
+        velocity: (payload['velocity'] as num?)?.toDouble() ?? 0.0,
+        acceleration: (payload['acceleration'] as num?)?.toDouble() ?? 0.0,
         distance: (payload['distance'] as num?)?.toDouble() ?? 0.0,
+        left: MotorData.fromJson(payload['left'] as Map<String, dynamic>? ?? {}),
+        right: MotorData.fromJson(payload['right'] as Map<String, dynamic>? ?? {}),
         battery: (payload['battery'] as num?)?.toDouble() ?? 0.0,
-        sensors: (payload['sensors'] as List<dynamic>?)?.map((e) => (e as num).toInt()).toList() ?? [],
+        qtr: (payload['qtr'] as List<dynamic>?)?.map((e) => (e as num).toInt()).toList() ?? [],
         pid: (payload['pid'] as List<dynamic>?)?.map((e) => (e as num).toDouble()).toList() ?? [0.0, 0.0, 0.0],
-        leftRpm: (payload['left_rpm'] as num?)?.toDouble() ?? 0.0,
-        rightRpm: (payload['right_rpm'] as num?)?.toDouble() ?? 0.0,
-        leftEncoder: payload['left_encoder'] ?? 0,
-        rightEncoder: payload['right_encoder'] ?? 0,
-        position: (payload['position'] as num?)?.toDouble(),
-        error: (payload['error'] as num?)?.toDouble(),
-        correction: (payload['correction'] as num?)?.toDouble(),
+        setPoint: (payload['set_point'] as num?)?.toDouble() ?? 0.0,
+        baseSpeed: (payload['base_speed'] as num?)?.toDouble() ?? 0.0,
+        error: (payload['error'] as num?)?.toDouble() ?? 0.0,
+        correction: (payload['correction'] as num?)?.toDouble() ?? 0.0,
       );
     } catch (e) {
       return null;
@@ -665,31 +669,67 @@ class TelemetryData {
 
   OperationMode get operationMode => OperationMode.fromId(mode);
   bool get isLineFollowingMode => mode == 0;
-  bool get isAutopilotMode => mode == 1;
-  bool get isManualMode => mode == 2;
-  bool get isServoDistanceMode => mode == 3;
-  bool get isPointListMode => mode == 4;
+  bool get isRemoteControlMode => mode == 1;
+  bool get isServoMode => mode == 2;
 
   @override
   String toString() {
     return jsonEncode({
       'type': 'telemetry',
       'payload': {
+        'timestamp': timestamp,
         'mode': mode,
-        'speed': speed,
+        'velocity': velocity,
+        'acceleration': acceleration,
         'distance': distance,
+        'left': left.toJson(),
+        'right': right.toJson(),
         'battery': battery,
-        'sensors': sensors,
+        'qtr': qtr,
         'pid': pid,
-        'left_rpm': leftRpm,
-        'right_rpm': rightRpm,
-        'left_encoder': leftEncoder,
-        'right_encoder': rightEncoder,
-        if (position != null) 'position': position,
-        if (error != null) 'error': error,
-        if (correction != null) 'correction': correction,
+        'set_point': setPoint,
+        'base_speed': baseSpeed,
+        'error': error,
+        'correction': correction,
       }
     });
+  }
+}
+
+/// Motor data structure
+class MotorData {
+  final double vel;
+  final double acc;
+  final double rpm;
+  final int encoder;
+  final double distance;
+
+  MotorData({
+    required this.vel,
+    required this.acc,
+    required this.rpm,
+    required this.encoder,
+    required this.distance,
+  });
+
+  static MotorData fromJson(Map<String, dynamic> json) {
+    return MotorData(
+      vel: (json['vel'] as num?)?.toDouble() ?? 0.0,
+      acc: (json['acc'] as num?)?.toDouble() ?? 0.0,
+      rpm: (json['rpm'] as num?)?.toDouble() ?? 0.0,
+      encoder: (json['encoder'] as num?)?.toInt() ?? 0,
+      distance: (json['distance'] as num?)?.toDouble() ?? 0.0,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'vel': vel,
+      'acc': acc,
+      'rpm': rpm,
+      'encoder': encoder,
+      'distance': distance,
+    };
   }
 }
 

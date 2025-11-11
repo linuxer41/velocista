@@ -1,6 +1,18 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../app_state.dart';
+
+enum TerminalTab { all, received, sent }
+
+enum MessageType { sent, received, system }
+
+class TerminalMessage {
+  final String text;
+  final MessageType type;
+
+  TerminalMessage(this.text, this.type);
+}
 
 class TerminalPage extends StatefulWidget {
   final AppState provider;
@@ -17,16 +29,12 @@ class TerminalPage extends StatefulWidget {
 class _TerminalPageState extends State<TerminalPage> {
   final TextEditingController _commandController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  final ScrollController _sentScrollController = ScrollController();
-  final ScrollController _receivedScrollController = ScrollController();
-  int _selectedTerminalTab = 0; // 0 = All, 1 = Sent, 2 = Received
+  TerminalTab _selectedTab = TerminalTab.all;
 
   @override
   void dispose() {
     _commandController.dispose();
     _scrollController.dispose();
-    _sentScrollController.dispose();
-    _receivedScrollController.dispose();
     super.dispose();
   }
 
@@ -36,99 +44,89 @@ class _TerminalPageState extends State<TerminalPage> {
     final colorScheme = theme.colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Terminal'),
-        backgroundColor: colorScheme.surface,
-        foregroundColor: colorScheme.onSurface,
-        elevation: 0,
-        actions: [
-          // Connection status indicator
-          ValueListenableBuilder<bool>(
-            valueListenable: widget.provider.isConnected,
-            builder: (context, isConnected, child) {
-              return Container(
-                margin: const EdgeInsets.only(right: 16),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: isConnected
-                      ? colorScheme.primaryContainer
-                      : colorScheme.errorContainer,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      isConnected ? Icons.bluetooth_connected : Icons.bluetooth_disabled,
-                      size: 16,
-                      color: isConnected
-                          ? colorScheme.onPrimaryContainer
-                          : colorScheme.onErrorContainer,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      isConnected ? 'Conectado' : 'Desconectado',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: isConnected
-                            ? colorScheme.onPrimaryContainer
-                            : colorScheme.onErrorContainer,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ],
-      ),
+      backgroundColor: colorScheme.surface,
       body: SafeArea(
         child: Column(
           children: [
-            // Compact command input section
+            // Header with back button and action buttons
             Container(
-              margin: const EdgeInsets.all(16.0),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              color: colorScheme.surface,
               child: Row(
                 children: [
+                  // Back button on the left
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: Icon(
+                      Icons.arrow_back,
+                      color: colorScheme.onSurface,
+                      size: 24,
+                    ),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                  // Centered title
                   Expanded(
-                    child: TextField(
-                      controller: _commandController,
-                      decoration: InputDecoration(
-                        hintText: 'Ej: {"mode":1} o {"servoDistance":25}',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
+                    child: Center(
+                      child: Text(
+                        'Terminal',
+                        style: TextStyle(
+                          color: colorScheme.onSurface,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          fontFamily: 'Space Grotesk',
                         ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
-                        ),
-                        filled: true,
-                        fillColor: colorScheme.surfaceContainerHighest.withOpacity(0.3),
                       ),
-                      style: const TextStyle(
-                        fontFamily: 'monospace',
-                        fontSize: 14,
-                      ),
-                      onSubmitted: (_) => _sendCommand(),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  FilledButton.icon(
-                    onPressed: widget.provider.isConnected.value
-                        ? _sendCommand
-                        : null,
-                    icon: const Icon(Icons.send, size: 18),
-                    label: const Text('Enviar'),
-                    style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    ),
+                  // Action buttons on the right
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        onPressed: _clearConsole,
+                        icon: Icon(
+                          Icons.delete,
+                          color: colorScheme.onSurfaceVariant,
+                          size: 20,
+                        ),
+                        tooltip: 'Limpiar Consola',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        onPressed: _exportLog,
+                        icon: Icon(
+                          Icons.ios_share,
+                          color: colorScheme.onSurfaceVariant,
+                          size: 20,
+                        ),
+                        tooltip: 'Exportar Log',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
 
-            // Quick commands in a single horizontal scrollable row (original style)
+            // Tabs
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  _buildTabButton('Todos', TerminalTab.all),
+                  const SizedBox(width: 4),
+                  _buildTabButton('Recibidos', TerminalTab.received),
+                  const SizedBox(width: 4),
+                  _buildTabButton('Enviados', TerminalTab.sent),
+                ],
+              ),
+            ),
+
+            // Quick Commands
             Container(
               height: 50,
               margin: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -172,37 +170,112 @@ class _TerminalPageState extends State<TerminalPage> {
               ),
             ),
 
-            // Terminal tabs - more compact
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: Row(
-                children: [
-                  _buildTerminalTabButton('Todo', 0),
-                  const SizedBox(width: 4),
-                  _buildTerminalTabButton('Enviados', 1),
-                  const SizedBox(width: 4),
-                  _buildTerminalTabButton('Recibidos', 2),
-                ],
-              ),
-            ),
 
-            const SizedBox(height: 8),
-
-            // Terminal content
+            // Console Output
             Expanded(
               child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 16.0),
+                margin: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: colorScheme.surfaceContainerHighest.withOpacity(0.1),
-                  border: Border.all(color: colorScheme.outline.withOpacity(0.3)),
+                  color: colorScheme.surfaceContainerHighest.withOpacity(0.3),
                   borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: colorScheme.outline.withOpacity(0.2),
+                    width: 1,
+                  ),
                 ),
                 child: _buildTerminalContent(),
               ),
             ),
 
-            const SizedBox(height: 8),
+            // Command Input Footer
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: colorScheme.surface,
+               
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: TextField(
+                        controller: _commandController,
+                        style: TextStyle(
+                          color: colorScheme.onSurface,
+                          fontFamily: 'monospace',
+                          fontSize: 16,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: 'Enviar Comando...',
+                          hintStyle: TextStyle(
+                            color: colorScheme.onSurfaceVariant,
+                            fontFamily: 'Space Grotesk',
+                          ),
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                        ),
+                        onSubmitted: (_) => _sendCommand(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: colorScheme.primary,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: IconButton(
+                      onPressed: widget.provider.isConnected.value ? _sendCommand : null,
+                      icon: Icon(
+                        Icons.send,
+                        color: colorScheme.onPrimary,
+                        size: 24,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTabButton(String label, TerminalTab tab) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isSelected = _selectedTab == tab;
+
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _selectedTab = tab),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: isSelected ? colorScheme.primary : colorScheme.surface,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: isSelected ? colorScheme.onPrimary : colorScheme.onSurface,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              fontFamily: 'Space Grotesk',
+            ),
+          ),
         ),
       ),
     );
@@ -231,39 +304,118 @@ class _TerminalPageState extends State<TerminalPage> {
     );
   }
 
-  Widget _buildQuickCommandButton(String label, String command, IconData icon) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final isEnabled = widget.provider.isConnected.value;
 
-    return ElevatedButton(
-      onPressed: isEnabled ? () => _sendQuickCommand(command) : null,
-      style: ElevatedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-        backgroundColor: isEnabled
-            ? colorScheme.secondaryContainer
-            : colorScheme.surfaceContainerHighest.withOpacity(0.3),
-        foregroundColor: isEnabled
-            ? colorScheme.onSecondaryContainer
-            : colorScheme.onSurface.withOpacity(0.5),
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
+  Widget _buildTerminalContent() {
+    switch (_selectedTab) {
+      case TerminalTab.all:
+        return ValueListenableBuilder<List<TerminalMessage>>(
+          valueListenable: widget.provider.rawDataBuffer,
+          builder: (context, messages, child) => _buildMixedMessageList(messages),
+        );
+      case TerminalTab.received:
+        return ValueListenableBuilder<List<TerminalMessage>>(
+          valueListenable: widget.provider.receivedDataBuffer,
+          builder: (context, messages, child) => _buildMessageList(messages, MessageType.received),
+        );
+      case TerminalTab.sent:
+        return ValueListenableBuilder<List<TerminalMessage>>(
+          valueListenable: widget.provider.sentCommandsBuffer,
+          builder: (context, messages, child) => _buildMessageList(messages, MessageType.sent),
+        );
+    }
+  }
+
+  Widget _buildMessageList(List<TerminalMessage> messages, MessageType messageType) {
+    // Auto-scroll to bottom when new messages arrive
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+
+    return ListView.builder(
+      controller: _scrollController,
+      itemCount: messages.length,
+      padding: EdgeInsets.zero,
+      itemBuilder: (context, index) {
+        return _buildLogMessage(messages[index].text, messageType);
+      },
+    );
+  }
+
+  Widget _buildMixedMessageList(List<TerminalMessage> messages) {
+    // Auto-scroll to bottom when new messages arrive
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+
+    return ListView.builder(
+      controller: _scrollController,
+      itemCount: messages.length,
+      padding: EdgeInsets.zero,
+      itemBuilder: (context, index) {
+        final message = messages[index];
+        return _buildLogMessage(message.text, message.type);
+      },
+    );
+  }
+
+  Widget _buildLogMessage(String message, MessageType messageType) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    // Determine message type and color based on MessageType enum
+    Color messageColor = colorScheme.onSurface;
+    String category = '[SISTEMA]';
+
+    switch (messageType) {
+      case MessageType.sent:
+        messageColor = colorScheme.primary;
+        category = '[ENVIADO]';
+        break;
+      case MessageType.received:
+        messageColor = Colors.green;
+        category = '[RECIBIDO]';
+        break;
+      case MessageType.system:
+        messageColor = colorScheme.onSurfaceVariant;
+        category = '[SISTEMA]';
+        break;
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: SelectableText.rich(
+        TextSpan(
+          children: [
+            TextSpan(
+              text: '$category ',
+              style: TextStyle(
+                color: messageColor,
+                fontSize: 12,
+                fontFamily: 'monospace',
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            TextSpan(
+              text: message,
+              style: TextStyle(
+                color: colorScheme.onSurface,
+                fontSize: 12,
+                fontFamily: 'monospace',
+              ),
+            ),
+          ],
         ),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: const TextStyle(fontSize: 10),
-            textAlign: TextAlign.center,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
       ),
     );
   }
@@ -276,112 +428,48 @@ class _TerminalPageState extends State<TerminalPage> {
     _commandController.clear();
   }
 
-  Widget _buildTerminalTabButton(String label, int index) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final isSelected = _selectedTerminalTab == index;
-    return Expanded(
-      child: ElevatedButton(
-        onPressed: () => setState(() => _selectedTerminalTab = index),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: isSelected ? colorScheme.primary : colorScheme.surface,
-          foregroundColor: isSelected ? colorScheme.onPrimary : colorScheme.onSurface,
-          elevation: isSelected ? 2 : 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
-        ),
-        child: Text(
-          label,
-          style: const TextStyle(fontSize: 12),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTerminalContent() {
-    switch (_selectedTerminalTab) {
-      case 0: // All
-        return ValueListenableBuilder<List<String>>(
-          valueListenable: widget.provider.rawDataBuffer,
-          builder: (context, messages, child) => _buildMessageList(messages, _scrollController),
-        );
-      case 1: // Sent
-        return ValueListenableBuilder<List<String>>(
-          valueListenable: widget.provider.sentCommandsBuffer,
-          builder: (context, messages, child) => _buildMessageList(messages, _sentScrollController),
-        );
-      case 2: // Received
-        return ValueListenableBuilder<List<String>>(
-          valueListenable: widget.provider.receivedDataBuffer,
-          builder: (context, messages, child) => _buildMessageList(messages, _receivedScrollController),
-        );
-      default:
-        return const SizedBox.shrink();
-    }
-  }
-
-  Widget _buildMessageList(List<String> messages, ScrollController controller) {
-    // Auto-scroll to bottom when new messages arrive
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (controller.hasClients) {
-        controller.animateTo(
-          controller.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-        );
-      }
-    });
-
-    return ListView.builder(
-      controller: controller,
-      itemCount: messages.length,
-      physics: const BouncingScrollPhysics(
-        parent: AlwaysScrollableScrollPhysics(),
-      ),
-      padding: const EdgeInsets.all(8.0),
-      itemBuilder: (context, index) {
-        final message = messages[index];
-        // Limit the number of messages displayed to prevent UI overload
-        final maxDisplayMessages = 500;
-        if (messages.length > maxDisplayMessages &&
-            index < messages.length - maxDisplayMessages) {
-          return const SizedBox.shrink(); // Skip older messages
-        }
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2.0),
-          child: SelectableText(
-            message,
-            style: const TextStyle(
-              fontFamily: 'monospace',
-              fontSize: 12,
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   Future<void> _sendQuickCommand(String command) async {
     if (!widget.provider.isConnected.value) {
       return;
     }
 
     try {
-      // Parse JSON command
       final Map<String, dynamic> parsedCommand;
       if (command.startsWith('{')) {
-        // It's a JSON string, parse it
         parsedCommand = Map<String, dynamic>.from(
             command.contains('"') ? jsonDecode(command) : {'raw': command});
       } else {
-        // It's a raw string, wrap it
         parsedCommand = {'raw': command};
       }
 
       await widget.provider.sendCommand(parsedCommand);
     } catch (e) {
       // Error de formato JSON - silently fail
+    }
+  }
+
+  void _clearConsole() {
+    // Clear the buffers
+    widget.provider.rawDataBuffer.value = [];
+    widget.provider.sentCommandsBuffer.value = [];
+    widget.provider.receivedDataBuffer.value = [];
+  }
+
+  void _exportLog() {
+    // Export clean messages
+    final cleanMessages = widget.provider.rawDataBuffer.value.map((message) {
+      return message.text;
+    }).join('\n');
+
+    Clipboard.setData(ClipboardData(text: cleanMessages));
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Log copiado al portapapeles'),
+          duration: Duration(seconds: 2),
+        ),
+      );
     }
   }
 }

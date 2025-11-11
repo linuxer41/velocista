@@ -9,6 +9,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.11.0"
+  bluetooth_classic_multiplatform:
+    dependency: "direct main"
+    description:
+      name: bluetooth_classic_multiplatform
+      sha256: "987946a82fbef3dd5c915e192e3acc56894ee4f9b9ed5a344e686b17460901ea"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.0"
   boolean_selector:
     dependency: transitive
     description:
@@ -94,14 +102,14 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
-  flutter_blue_classic:
+  flutter_joystick:
     dependency: "direct main"
     description:
-      name: flutter_blue_classic
-      sha256: b644b3ade97879e6f9b4a90e98137e5e66f60ad03b42e459781dcb0109b834d6
+      name: flutter_joystick
+      sha256: "119f5798305645527dbc0346ce98e9d3d16d4005b041c6b655dca093dc6a9272"
       url: "https://pub.dev"
     source: hosted
-    version: "0.0.7"
+    version: "0.2.2"
   flutter_lints:
     dependency: "direct dev"
     description:
@@ -296,14 +304,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.1.8"
-  serial_port_win32:
-    dependency: "direct main"
-    description:
-      name: serial_port_win32
-      sha256: a9ca3b95a15341ae95e6c190591acbdbbf47b9f0e7fb363ecd15e8a937e54a20
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.3.0"
   shared_preferences:
     dependency: "direct main"
     description:
@@ -453,14 +453,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.1.0"
-  win32:
-    dependency: transitive
-    description:
-      name: win32
-      sha256: d7cb55e04cd34096cd3a79b3330245f54cb96a370a1c27adb3c84b917de8b08e
-      url: "https://pub.dev"
-    source: hosted
-    version: "5.15.0"
   xdg_directories:
     dependency: transitive
     description:

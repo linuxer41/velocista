@@ -1,10 +1,9 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter_blue_classic/flutter_blue_classic.dart';
+import 'package:bluetooth_classic_multiplatform/bluetooth_classic_multiplatform.dart';
 import 'serial_client.dart';
 import 'arduino_data.dart';
+import 'pages/terminal_page.dart';
 
 class ThemeProvider with ChangeNotifier {
   bool _isDarkMode = false;
@@ -29,11 +28,9 @@ class AppState extends ChangeNotifier {
   // Estado de conexión con ValueNotifier
   final ValueNotifier<bool> isConnected = ValueNotifier(false);
   final ValueNotifier<BluetoothDevice?> connectedDevice = ValueNotifier(null);
-  final ValueNotifier<String?> connectedSerialPort = ValueNotifier(null);
   final ValueNotifier<String> connectionStatus = ValueNotifier('Desconectado');
   final ValueNotifier<List<BluetoothDevice>> discoveredDevices =
       ValueNotifier([]);
-  final ValueNotifier<List<String>> availableSerialPorts = ValueNotifier([]);
   final ValueNotifier<bool> isDiscovering = ValueNotifier(false);
   final ValueNotifier<bool> showDeviceList = ValueNotifier(false);
 
@@ -52,9 +49,9 @@ class AppState extends ChangeNotifier {
   final ValueNotifier<ArduinoData?> currentData = ValueNotifier(null);
 
   // Datos raw para terminal
-  final ValueNotifier<List<String>> rawDataBuffer = ValueNotifier([]);
-  final ValueNotifier<List<String>> sentCommandsBuffer = ValueNotifier([]);
-  final ValueNotifier<List<String>> receivedDataBuffer = ValueNotifier([]);
+  final ValueNotifier<List<TerminalMessage>> rawDataBuffer = ValueNotifier([]);
+  final ValueNotifier<List<TerminalMessage>> sentCommandsBuffer = ValueNotifier([]);
+  final ValueNotifier<List<TerminalMessage>> receivedDataBuffer = ValueNotifier([]);
 
   AppState() {
     _initializeSerialClient();
@@ -62,13 +59,10 @@ class AppState extends ChangeNotifier {
 
   void _initializeSerialClient() {
     _serialClient = SerialClient(
-      onDataReceived: _handleDataReceived,
-      onStatusReceived: _handleStatusReceived,
-      onCmdReceived: _handleCmdReceived,
       onError: _handleBluetoothError,
       onConnected: _handleConnected,
       onDisconnected: _handleDisconnected,
-      onRawDataReceived: _handleRawDataReceived,
+      onDataReceived: _handleRawDataReceived,
       onCommandSent: _handleSentCommand,
     );
   }
@@ -85,6 +79,8 @@ class AppState extends ChangeNotifier {
   Future<void> changeOperationMode(OperationMode mode) async {
     currentMode.value = mode;
     notifyListeners();
+    // Send command to Arduino
+    await sendCommand(ModeChangeCommand(mode).toJson());
   }
 
   // Cambiar tema
@@ -104,33 +100,19 @@ class AppState extends ChangeNotifier {
 
     isDiscovering.value = true;
     discoveredDevices.value = [];
-    availableSerialPorts.value = [];
     connectionStatus.value = 'Buscando dispositivos...';
     notifyListeners();
 
     try {
-      if (Platform.isWindows) {
-        // Serial ports discovery (Windows only)
-        final ports = _serialClient.getAvailableSerialPorts();
-        availableSerialPorts.value = ports;
+      // Bluetooth discovery
+      final devices = await _serialClient.startBluetoothDiscovery();
+      discoveredDevices.value = devices;
 
-        final totalDevices = availableSerialPorts.value.length;
-        if (totalDevices > 0) {
-          connectionStatus.value = 'Encontrados $totalDevices puertos serial';
-        } else {
-          connectionStatus.value = 'No se encontraron puertos serial';
-        }
+      final totalDevices = devices.length;
+      if (totalDevices > 0) {
+        connectionStatus.value = 'Encontrados $totalDevices dispositivos';
       } else {
-        // Bluetooth discovery
-        final devices = await _serialClient.startBluetoothDiscovery();
-        discoveredDevices.value = devices;
-
-        final totalDevices = devices.length;
-        if (totalDevices > 0) {
-          connectionStatus.value = 'Encontrados $totalDevices dispositivos';
-        } else {
-          connectionStatus.value = 'No se encontraron dispositivos';
-        }
+        connectionStatus.value = 'No se encontraron dispositivos';
       }
     } catch (e) {
       connectionStatus.value = 'Error en descubrimiento: $e';
@@ -155,28 +137,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // Conectar a puerto serial (Windows)
-  Future<void> connectToSerialPort(String portName) async {
-    try {
-      connectionStatus.value = 'Conectando a $portName...';
-      connectedSerialPort.value = portName;
-      notifyListeners();
-
-      await _serialClient.connectSerial(portName);
-
-      // Double-check connection state after successful connection
-      if (_serialClient.isConnected) {
-        isConnected.value = true;
-        connectionStatus.value = 'Conectado a $portName';
-        notifyListeners();
-      }
-    } catch (e) {
-      connectionStatus.value = 'Error de conexión serial: $e';
-      connectedSerialPort.value = null;
-      isConnected.value = false;
-      notifyListeners();
-    }
-  }
 
   // Desconectar
   Future<void> disconnect() async {
@@ -187,12 +147,8 @@ class AppState extends ChangeNotifier {
 
     await _serialClient.disconnect();
 
-    // Add a small delay to ensure port is fully released
-    await Future.delayed(const Duration(milliseconds: 500));
-
     isConnected.value = false;
     connectedDevice.value = null;
-    connectedSerialPort.value = null;
     connectionStatus.value = 'Desconectado';
     _handleDisconnected();
     notifyListeners();
@@ -225,28 +181,24 @@ class AppState extends ChangeNotifier {
       final arduinoData = ArduinoData(
         operationMode: data.mode,
         modeName: data.operationMode.displayName,
-        leftEncoderSpeed: data.leftRpm * 0.1047, // Convert RPM to cm/s
-        rightEncoderSpeed: data.rightRpm * 0.1047,
-        leftEncoderCount: data.leftEncoder,
-        rightEncoderCount: data.rightEncoder,
+        leftEncoderSpeed: data.left.vel,
+        rightEncoderSpeed: data.right.vel,
+        leftEncoderCount: data.left.encoder,
+        rightEncoderCount: data.right.encoder,
         totalDistance: data.distance,
-        sensors: data.sensors,
-        position: data.position,
+        sensors: data.qtr,
+        battery: data.battery,
+        position: data.setPoint, // set_point is the position reference
         error: data.error,
         correction: data.correction,
+        pid: data.pid,
+        baseSpeed: data.baseSpeed,
       );
       currentData.value = arduinoData;
       notifyListeners();
     }
   }
 
-  void _handleStatusReceived(StatusMessage status) {
-    // Solo mantener el estado de conexión
-  }
-
-  void _handleCmdReceived(CmdMessage cmd) {
-    // Cmd messages are handled through raw data buffer
-  }
 
   void _handleBluetoothError(String error) {
     connectionStatus.value = 'Error: $error';
@@ -267,45 +219,70 @@ class AppState extends ChangeNotifier {
   }
 
   void _handleRawDataReceived(String rawData) {
+    // Parse the raw JSON data and handle it
+    final line = rawData.trim();
+    if (line.isEmpty) return;
+
     // Add to combined buffer
-    final currentCombinedBuffer = List<String>.from(rawDataBuffer.value);
-    currentCombinedBuffer.add(rawData);
+    final currentCombinedBuffer = List<TerminalMessage>.from(rawDataBuffer.value);
+    currentCombinedBuffer.add(TerminalMessage(line, MessageType.received));
     if (currentCombinedBuffer.length > 500) {
       currentCombinedBuffer.removeRange(0, currentCombinedBuffer.length - 500);
     }
     rawDataBuffer.value = currentCombinedBuffer;
 
     // Add to received buffer
-    final currentReceivedBuffer = List<String>.from(receivedDataBuffer.value);
-    currentReceivedBuffer.add(rawData);
+    final currentReceivedBuffer = List<TerminalMessage>.from(receivedDataBuffer.value);
+    currentReceivedBuffer.add(TerminalMessage(line, MessageType.received));
     if (currentReceivedBuffer.length > 500) {
       currentReceivedBuffer.removeRange(0, currentReceivedBuffer.length - 500);
     }
     receivedDataBuffer.value = currentReceivedBuffer;
+
+    // Parse JSON for UI updates
+    try {
+      // Try to parse as ArduinoMessage wrapper
+      final message = ArduinoMessage.fromJson(line);
+      if (message != null) {
+        if (message.isTelemetry) {
+          final telemetryData = TelemetryData.fromPayload(message.payload);
+          if (telemetryData != null) {
+            _handleDataReceived(telemetryData);
+          }
+        }
+        return;
+      }
+
+    } catch (e) {
+      if (e.toString().contains('JsonUnsupportedObjectError') ||
+          e.toString().contains('FormatException')) {
+        print('JSON parse error: $e');
+        print('Raw JSON: "$line"');
+      }
+    }
   }
 
   void _handleSentCommand(String commandData) {
     // Add to combined buffer
-    final currentCombinedBuffer = List<String>.from(rawDataBuffer.value);
-    currentCombinedBuffer.add(commandData);
+    final currentCombinedBuffer = List<TerminalMessage>.from(rawDataBuffer.value);
+    currentCombinedBuffer.add(TerminalMessage(commandData, MessageType.sent));
     if (currentCombinedBuffer.length > 500) {
       currentCombinedBuffer.removeRange(0, currentCombinedBuffer.length - 500);
     }
     rawDataBuffer.value = currentCombinedBuffer;
 
     // Add to sent buffer
-    final currentSentBuffer = List<String>.from(sentCommandsBuffer.value);
-    currentSentBuffer.add(commandData);
+    final currentSentBuffer = List<TerminalMessage>.from(sentCommandsBuffer.value);
+    currentSentBuffer.add(TerminalMessage(commandData, MessageType.sent));
     if (currentSentBuffer.length > 500) {
       currentSentBuffer.removeRange(0, currentSentBuffer.length - 500);
     }
     sentCommandsBuffer.value = currentSentBuffer;
   }
 
-  // Getter for device name (supports both Bluetooth and Serial)
+  // Getter for device name
   String? get deviceName {
     if (connectedDevice.value != null) return connectedDevice.value!.name;
-    if (connectedSerialPort.value != null) return connectedSerialPort.value;
     return null;
   }
 
