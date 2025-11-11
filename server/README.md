@@ -1,443 +1,184 @@
-# Bot Velocista Triciclo - 3 Modos de Operación
+📘 README – API JSON del Robot "Velocista"
+Revisado: noviembre-2024
+Versión firmware: 2.0 (modos unificados + rc simplificado)
 
-Robot velocista con Arduino Nano que incluye 3 modos de operación: Line Following, Autopilot (triciclo) y Manual. Sistema optimizado para rendimiento con control Bluetooth en tiempo real.
+1. Objetivo
+Documento de referencia para cualquier capa front-end (App móvil, web, desktop) que desee:
+Enviar órdenes al robot (modos, PID, rutas, etc.)
+Recibir telemetría en tiempo real (motores, sensores, batería, distancias, etc.)
+El robot siempre habla por el puerto-serie hardware (0-RX / 1-TX) a 9600 bps.
+Cuando BT está emparejado la app solo tiene que abrir el puerto serie estándar del SO; cuando está por USB abrir COMx / /dev/ttyUSB0.
 
-## 📋 Índice
-1. [Habilitación y Conexión](#habilitación-y-conexión)
-2. [Modos de Operación](#modos-de-operación)
-3. [Comandos Bluetooth](#comandos-bluetooth)
-4. [Hardware y Configuración](#hardware-y-configuración)
-5. [Telemetría](#telemetría)
+2. Formato general
+Entrada → JSON de una sola línea terminada en \n
+Salida → JSON de una sola línea terminada en \n
+Codificación → UTF-8
+Tamaño recomendado ≤ 512 bytes (lado robot)
+Claves en inglés descriptivo (camelCase) para facilitar parseo automático
 
----
+3. Comandos (robot → RECIBE)
 
-## 🔧 Habilitación y Conexión
+| Clave | Tipo | Descripción | Ejemplo |
+|-------|------|-------------|---------|
+| mode | int | Cambia modo operación (0-2) | {"mode":0} |
+| pid | array[float] | Ajusta [Kp, Ki, Kd] | {"pid":[1.2,0.05,0.02]} |
+| speed.base | float | Velocidad base 0-1 | {"speed":{"base":0.7}} |
+| rc | object | Control remoto: dirección (0-360°) + aceleración (0-1), autopilot (throttle/turn) o manual (left/right) | {"rc":{"direction":90,"acceleration":0.5}} o {"rc":{"throttle":0.5,"turn":-0.3}} o {"rc":{"left":0.8,"right":-0.8}} |
+| servo | object | Modo servo: distancia en cm y ángulo opcional en grados | {"servo":{"distance":30,"angle":45}} |
+| eeprom | int 1 | Guarda config actual en EEPROM | {"eeprom":1} |
+| telemetry | int 1 | Solicita telemetría completa una vez | {"telemetry":1} |
+| telemetry_enable | bool | Habilita/deshabilita telemetría automática | {"telemetry_enable":false} |
+| calibrate_qtr | int 1 | Calibra sensores QTR (mueve robot sobre línea y fondo) | {"calibrate_qtr":1} |
 
-### Componentes del Sistema
-- **Microcontrolador**: Arduino Nano (ATmega328P)
-- **Sensores**: 6 sensores QTR-8A (posiciones 2-7)
-- **Motores**: 2 motores DC traseros
-- **Controlador**: DRV8833 (puente H dual)
-- **Comunicación**: Bluetooth HC-06
-- **Estructura**: Triciclo (2 ruedas traseras motorizadas + 1 rueda delantera libre)
-
-### Conexión de Hardware
-
-#### Sensores QTR-8A
-```
-QTR Sensor 2 → A0 (Pin 14)
-QTR Sensor 3 → A1 (Pin 15)
-QTR Sensor 4 → A2 (Pin 16)
-QTR Sensor 5 → A3 (Pin 17)
-QTR Sensor 6 → A4 (Pin 18)
-QTR Sensor 7 → A5 (Pin 19)
-QTR IR Control → D13
-```
-
-#### Motores DRV8833
-```
-Motor Izquierdo Trasero:
-  IN1 → D5
-  IN2 → D6
-
-Motor Derecho Trasero:
-  IN1 → D9
-  IN2 → D10
-
-Alimentación:
-  DRV8833 VM → 7.4V (batería)
-  DRV8833 VCC → 5V (Arduino)
-```
-
-#### Encoders de Motores
-```
-Motor Izquierdo:
-  Encoder A → D2 (Interrupción real)
-  Encoder B → D4
-
-Motor Derecho:
-  Encoder A → D7 (PinChangeInterrupt)
-  Encoder B → D8
-```
-
-#### Bluetooth HC-06
-```
-HC-06 VCC → 5V
-HC-06 GND → GND
-HC-06 RX → D1 (Arduino TX)
-HC-06 TX → D0 (Arduino RX)
-```
-
-### Configuración HC-06
-1. **Conecta el HC-06 a Arduino** (pines D0/D1)
-2. **Configura via comandos AT**:
-   ```
-   AT           // Verificar comunicación
-   AT+BAUD4     // 9600 bps
-   AT+NAMEBotVelocista  // Nombre del dispositivo
-   AT+PIN1234   // PIN opcional
-   ```
-
-### Memoria No Volátil (EEPROM)
-El bot utiliza memoria EEPROM para recordar la configuración incluso cuando se apaga:
-- **Auto-guardado**: Los cambios de PID, modo y velocidad se guardan automáticamente
-- **Carga automática**: Al encenderse, carga la última configuración guardada
-- **Validación**: Verifica la integridad de los datos con número mágico
-- **Reset**: Posibilidad de restaurar valores por defecto
-
-### Conexión con Smartphone
-1. **Activa Bluetooth** en el smartphone
-2. **Busca dispositivos** → "BotVelocista"
-3. **Conecta** → Introduce PIN si se configuró
-4. **Usa app serie** (como Serial WiFi Terminal) para comunicación
-
-### Alimentación
-- **Arduino Nano**: 5V via regulador
-- **Motores**: 7.4V LiPo directamente a DRV8833
-- **Sensores/HC-06**: 5V desde Arduino
-
----
-
-## 🚗 Modos de Operación
-
-El robot cuenta con 3 modos seleccionables via Bluetooth:
-
-### Modo 0: Line Following (Seguidor de Línea)
-- **Uso**: Seguimiento automático de línea negra
-- **Sensores**: Utiliza QTR para detección
-- **Control**: PID automático
-- **Aplicación**: Carreras de velocistas
-
-### Modo 1: Autopilot (Piloto Automático)
-- **Uso**: Control tipo vehículo triciclo
-- **Sensores**: NO utiliza sensores
-- **Control**: Acelerador, freno, direccional, marcha
-- **Lógica**: Diferencial de ruedas traseras
-- **Aplicación**: Navegación autónoma sin línea
-
-### Modo 2: Manual (Control Manual)
-- **Uso**: Control directo de cada rueda
-- **Sensores**: NO utiliza sensores
-- **Control**: Velocidad individual de ruedas
-- **Aplicación**: Pruebas y debugging
-
----
-
-## 📡 Comandos Bluetooth
-
-### Cambio de Modo
+Respuestas rápidas del robot (solo status):
 ```json
-{"mode": 0}  // Line Following
-{"mode": 1}  // Autopilot
-{"mode": 2}  // Manual
+{"type": "status", "payload": {"status": "eeprom_saved"}}
+{"type": "status", "payload": {"status": "servo_completed"}}
+{"type": "status", "payload": {"status": "system_started"}}
 ```
 
-### Consulta de Estado
+Mensajes de comando (comando recibido - solo si telemetría está habilitada):
 ```json
-{"getMode": true}
-// Respuesta:
-// {"currentMode": 1, "modeName": "Autopilot"}
+{"type": "cmd", "payload": {"buffer": "{\"mode\":1}"}}
 ```
 
-### Modo Line Following - Configuración
-```json
-// Parámetros PID
-{"Kp": 1.2, "Ki": 0.05, "Kd": 0.08}
-
-// Setpoint (posición central de línea)
-{"setpoint": 2500}
-
-// Velocidad base (0.0 a 1.0)
-{"baseSpeed": 0.7}
-
-// Configuración completa
-{
-  "mode": 0,
-  "Kp": 1.0,
-  "Ki": 0.0,
-  "Kd": 0.0,
-  "setpoint": 2500,
-  "baseSpeed": 0.8
-}
-```
-
-### Modo Autopilot - Controles
-```json
-// Acelerador/Retroceso (-1.0 a 1.0)
-{"throttle": 0.6}     // Acelerar
-{"throttle": -0.3}    // Retroceder
-
-// Freno (0.0 sin freno a 1.0 freno total)
-{"brake": 0.3}
-
-// Dirección de giro (-1.0 izquierda a 1.0 derecha)
-{"turn": 0.5}         // Girar derecha
-{"turn": -0.3}        // Girar izquierda
-
-// Dirección de marcha
-{"direction": 1}      // Adelante
-{"direction": -1}     // Atrás
-
-// Comando completo de movimiento
-{
-  "mode": 1,
-  "throttle": 0.7,
-  "brake": 0.0,
-  "turn": 0.3,
-  "direction": 1
-}
-
-// Parada y estacionamiento
-{"emergencyStop": true}  // Parada de emergencia - detiene inmediatamente
-{"park": true}           // Estacionar - freno total y dirección recta
-{"stop": true}           // Parada normal - freno suave
-
-// Ejemplos prácticos:
-// Avanzar recto: {"mode": 1, "throttle": 0.6, "turn": 0.0}
-// Girar derecha: {"mode": 1, "throttle": 0.5, "turn": 0.4}
-// Frenar: {"mode": 1, "throttle": 0.3, "brake": 0.6}
-// Retroceder: {"mode": 1, "throttle": -0.4, "direction": -1}
-// Estacionar: {"park": true}
-// Parada emergencia: {"emergencyStop": true}
-```
-
-### Modo Manual - Controles
-```json
-// Velocidad individual de ruedas (-1.0 a 1.0)
-{"leftSpeed": 0.7, "rightSpeed": 0.7}    // Avanzar
-{"leftSpeed": -0.5, "rightSpeed": -0.5}  // Retroceder
-{"leftSpeed": 0.8, "rightSpeed": 0.2}    // Girar derecha
-{"leftSpeed": 0.2, "rightSpeed": 0.8}    // Girar izquierda
-
-// Velocidad máxima global (0.0 a 1.0)
-{"maxSpeed": 0.5}
-
-// Comando completo
-{
-  "mode": 2,
-  "leftSpeed": 0.6,
-  "rightSpeed": 0.6,
-  "maxSpeed": 0.8
-}
-
-// Ejemplos prácticos:
-// Parar: {"leftSpeed": 0, "rightSpeed": 0}
-// Giro en el lugar: {"leftSpeed": 0.8, "rightSpeed": -0.8}
-// Control independiente: {"leftSpeed": 0.5, "rightSpeed": 0.8}
-```
-
-### Gestión de Configuración (EEPROM)
-```json
-// Guardar configuración actual en EEPROM
-{"saveConfig": true}
-
-// Cargar configuración desde EEPROM
-{"loadConfig": true}
-
-// Restaurar valores por defecto
-{"resetConfig": true}
-
-// Ejemplos de uso:
-// Después de ajustar PID: {"Kp": 1.2, "Ki": 0.05, "Kd": 0.08}  // Se guarda automáticamente
-// Cambiar modo: {"mode": 1}  // Se guarda automáticamente
-// Recuperar configuración: {"loadConfig": true}
-```
-
----
-
-## ⚙️ Hardware y Configuración
-
-### Pines Arduino Nano
-```cpp
-// Sensores QTR
-const uint8_t QTR_PINS[6] = {14, 15, 16, 17, 18, 19}; // A0-A5
-const uint8_t QTR_IR_PIN = 13;
-
-// Motores DRV8833
-const uint8_t MOTOR_LEFT_IN1 = 5;   // Motor izquierdo
-const uint8_t MOTOR_LEFT_IN2 = 6;
-const uint8_t MOTOR_RIGHT_IN1 = 9;  // Motor derecho
-const uint8_t MOTOR_RIGHT_IN2 = 10;
-
-// Encoders
-const uint8_t ENC_LEFT_A = 2;    // Interrupción real
-const uint8_t ENC_LEFT_B = 4;
-const uint8_t ENC_RIGHT_A = 7;   // PinChangeInterrupt
-const uint8_t ENC_RIGHT_B = 8;
-
-// Bluetooth (Hardware Serial)
-const uint8_t BLUETOOTH_RX_PIN = 0; // D0
-const uint8_t BLUETOOTH_TX_PIN = 1; // D1
-```
-
-### Configuración de Encoders
-```cpp
-float wheelCircumference = 21.0; // cm (ajustar según tu rueda)
-int encoderCPR = 90; // Pulsos por revolución
-```
-
-### Parámetros PID Iniciales
-```cpp
-float Kp = 1.0;        // Ganancia proporcional
-float Ki = 0.0;        // Ganancia integral
-float Kd = 0.0;        // Ganancia derivativa
-float setpoint = 2500; // Centro de línea para 6 sensores
-float baseSpeed = 0.8; // 80% velocidad máxima
-```
-
----
-
-## 📊 Telemetría
-
-El robot envía datos cada 100ms en formato JSON:
-
-### Datos Comunes (Todos los Modos)
+4. Telemetría (robot → ENVÍA)
+Se emite automáticamente cada 1000 ms.
+Ejemplo completo:
 ```json
 {
-  "operationMode": 1,
-  "modeName": "Autopilot",
-  "leftEncoderSpeed": 15.2,
-  "rightEncoderSpeed": 15.8,
-  "leftEncoderCount": 1234,
-  "rightEncoderCount": 1267,
-  "totalDistance": 245.6,
-  "sensors": [0, 0, 0, 0, 0, 0]  // 0 en modos no-lineales
-}
-```
-
-### Modo Line Following
-```json
-{
-  "operationMode": 0,
-  "modeName": "Line Following",
-  "position": 2500.0,
-  "error": 0.0,
-  "correction": 0.15,
-  "leftSpeedCmd": 0.65,
-  "rightSpeedCmd": 0.95,
-  "sensors": [100, 150, 800, 850, 200, 120]
-}
-```
-
-### Modo Autopilot
-```json
-{
-  "operationMode": 1,
-  "modeName": "Autopilot",
-  "throttle": 0.6,
-  "brake": 0.0,
-  "turn": 0.3,
-  "direction": 1,
-  "parkingState": "MOVING",    // MOVING, STOPPED, PARKED
-  "leftSpeedCmd": 0.45,
-  "rightSpeedCmd": 0.75
-}
-
-// Estado estacionado:
-{
-  "operationMode": 1,
-  "modeName": "Autopilot",
-  "throttle": 0.0,
-  "brake": 1.0,
-  "turn": 0.0,
-  "direction": 1,
-  "parkingState": "PARKED",
-  "leftSpeedCmd": 0.0,
-  "rightSpeedCmd": 0.0
-}
-```
-
-### Modo Manual
-```json
-{
-  "operationMode": 2,
-  "modeName": "Manual",
-  "leftSpeed": 0.56,
-  "rightSpeed": 0.56,
-  "maxSpeed": 0.8,
-  "leftSpeedCmd": 0.56,
-  "rightSpeedCmd": 0.56
-}
-```
-
----
-
-## 🛠️ Compilación y Uso
-
-### Dependencias Arduino
-- ArduinoJson v7.4.2
-- PinChangeInterrupt v1.2.9
-- DRV8833.h (incluido)
-
-### Compilación PlatformIO
-```bash
-pio run --target upload  # Subir firmware
-pio device monitor       # Monitor serie
-```
-
-### Apps Recomendadas
-- **Android**: Serial WiFi Terminal, Bluetooth Terminal
-- **iOS**: BlueTool, Network Analyzer
-- **PC**: PuTTY, Screen, PlatformIO Monitor
-
-### Ejemplo de Conexión Python
-```python
-import bluetooth
-import json
-
-# Conectar
-sock = bluetooth.BluetoothSocket(bluetooth.RFCOMM)
-sock.connect(("00:11:22:33:44:55", 1))  # MAC del HC-06
-
-# Cambiar a autopilot y mover
-command = {
+  "type": "telemetry",
+  "payload": {
+    "timestamp": 12345,
     "mode": 1,
-    "throttle": 0.6,
-    "turn": 0.3,
-    "direction": 1
+    "velocity": 9.87,
+    "acceleration": 0.5,
+    "distance": 833.46,
+    "left": {
+      "vel": 9.87,
+      "acc": 0.5,
+      "rpm": 39.7,
+      "encoder": 23,
+      "distance": 833.46
+    },
+    "right": {
+      "vel": 0,
+      "acc": 0.5,
+      "rpm": 0,
+      "encoder": 0,
+      "distance": 0
+    },
+    "battery": 12.1,
+    "qtr": [1023,1023,1023,1023,1012,516],
+    "pid": [0.01, 0.01, 0.01],
+    "set_point": 2500,
+    "base_speed": 0.8,
+    "error": 0,
+    "correction": 0
+  }
 }
-sock.send(json.dumps(command))
-
-# Recibir telemetría
-data = sock.recv(1024)
-telemetry = json.loads(data.decode())
-print(f"Velocidad: {telemetry['leftEncoderSpeed']:.1f} cm/s")
 ```
 
----
+Descripción de campos:
 
-## 🎯 Casos de Uso
+| Campo | Tipo | Unidad | Significado |
+|-------|------|--------|-------------|
+| type | string | - | Siempre "telemetry" |
+| payload.timestamp | uint32_t | ms | Tiempo desde inicio (millis) |
+| payload.mode | int | - | Modo activo (0-2) |
+| payload.velocity | float | cm/s | Velocidad promedio |
+| payload.acceleration | float | cm/s² | Aceleración promedio |
+| payload.distance | float | cm | Distancia total recorrida (odometría) |
+| payload.left | object | - | Datos motor izquierdo |
+| payload.left.vel | float | cm/s | Velocidad motor izquierdo |
+| payload.left.acc | float | cm/s² | Aceleración motor izquierdo |
+| payload.left.rpm | float | rpm | RPM motor izquierdo |
+| payload.left.encoder | int32_t | ticks | Conteo encoder izquierdo |
+| payload.left.distance | float | cm | Distancia recorrida motor izquierdo |
+| payload.right | object | - | Datos motor derecho |
+| payload.right.vel | float | cm/s | Velocidad motor derecho |
+| payload.right.acc | float | cm/s² | Aceleración motor derecho |
+| payload.right.rpm | float | rpm | RPM motor derecho |
+| payload.right.encoder | int32_t | ticks | Conteo encoder derecho |
+| payload.right.distance | float | cm | Distancia recorrida motor derecho |
+| payload.battery | float | V | Voltaje de batería |
+| payload.qtr[] | array[int] | 0-1023 | Valores crudos de los 6 sensores QTR |
+| payload.pid[] | array[float] | - | Ganancias PID [Kp, Ki, Kd] |
+| payload.set_point | float | - | Punto de referencia de línea (0-5000) |
+| payload.base_speed | float | - | Velocidad base configurada (0-1) |
+| payload.error | float | - | Error PID actual |
+| payload.correction | float | - | Corrección PID aplicada |
 
-### Competencia Velocista
+| type | string | - | "cmd" para mensajes de comando |
+| payload.buffer | string | - | Comando JSON recibido por serial (sin \r) |
+
+5. Modos de operación
+
+| ID | Nombre | Descripción |
+|----|--------|-------------|
+| 0 | LINE_FOLLOW | Seguidor de línea PID |
+| 1 | REMOTE_CONTROL | Control remoto: autopilot (throttle/turn) o manual (left/right) |
+| 2 | SERVO | Modo servo: avanza distancia con giro opcional y espera instrucciones |
+
+Cambio instantáneo: {"mode":2}
+
+6. Control en tiempo real (modo 1 - REMOTE_CONTROL)
+6.1 Dirección + Aceleración
 ```json
-{"mode": 0, "Kp": 1.2, "Ki": 0.05, "Kd": 0.08, "baseSpeed": 0.9}
+{"rc":{"direction":90,"acceleration":0.5}}
 ```
+direction: 0-360 grados (0=adelante, 90=derecha, 180=atrás, 270=izquierda)
+acceleration: 0.0 (parado) … 1.0 (máxima velocidad)
 
-### Navegación Autónoma
+6.2 Autopilot
 ```json
-{"mode": 1, "throttle": 0.7, "turn": 0.0, "direction": 1}
+{"rc":{"throttle":0.5,"turn":-0.3}}
 ```
+throttle: -1.0 (atrás) … 0 … +1.0 (adelante)
+turn: -1.0 (izq) … 0 … +1.0 (der)
 
-### Pruebas de Control
+6.3 Manual
 ```json
-{"mode": 2, "leftSpeed": 0.5, "rightSpeed": 0.8, "maxSpeed": 0.6}
+{"rc":{"left":0.8,"right":-0.8}}
 ```
+Cada rueda: -1.0 … +1.0
 
-### Estacionamiento
+7. Funciones especiales (modo 2 - SERVO)
 ```json
-{"mode": 1, "throttle": 0.0, "brake": 1.0}  // Freno total
+{"servo":{"distance":30,"angle":45}}
+```
+Robot avanza 30 cm con giro de 45 grados y se detiene, esperando la siguiente instrucción
+Finaliza con: {"type": "status", "payload": {"status": "servo_completed"}}
+
+8. Persistencia en EEPROM
+{"eeprom":1} → guarda PID, velocidad-base y modo actual
+Se auto-cargan al reiniciar
+Respuesta: {"type": "status", "payload": {"status": "eeprom_saved"}}
+
+9. Referencias de hardware
+Puerto serie: 9600,8,N,1 (HW 0-TX / 1-RX)
+Bluetooth: emparejar y abrir puerto serie estándar
+Divisor batería: 100 kΩ / 10 kΩ → pin A6, relación 11:1
+Sensores IR: 6 canales analógicos A0-A5
+Encoders: 90 PPR, rueda 4,5 cm → 0,039 cm/tick
+
+10. Ejemplo rápido de sesión
+```
+>> {"mode":0}
+<< {"type": "cmd", "payload": {"buffer": "{\"mode\":0}"}}
+<< {"type": "status", "payload": {"status": "system_started"}}
+<< {"type": "telemetry", "payload": {"timestamp": 12345, "mode": 1, "velocity": 9.87, "acceleration": 0.5, "distance": 833.46, "left": {"vel": 9.87, "acc": 0.5, "rpm": 39.7, "encoder": 23, "distance": 833.46}, "right": {"vel": 0, "acc": 0.5, "rpm": 0, "encoder": 0, "distance": 0}, "battery": 12.1, "qtr": [1023,1023,1023,1023,1012,516], "pid": [0.01, 0.01, 0.01], "set_point": 2500, "base_speed": 0.8, "error": 0, "correction": 0}}
+
+>> {"servo":{"distance":25}}
+<< {"type": "cmd", "payload": {"buffer": "{\"servo\":{\"distance\":25}}"}}
+<< {"type": "status", "payload": {"status": "servo_completed"}}
+
+>> {"rc":{"direction":90,"acceleration":0.5}}
+<< {"type": "cmd", "payload": {"buffer": "{\"rc\":{\"direction\":90,\"acceleration\":0.5}}"}}
+>> {"rc":{"throttle":0.6,"turn":0.2}}
+<< {"type": "cmd", "payload": {"buffer": "{\"rc\":{\"throttle\":0.6,\"turn\":0.2}}"}}
+>> {"rc":{"left":0.5,"right":0.5}}
+<< {"type": "cmd", "payload": {"buffer": "{\"rc\":{\"left\":0.5,\"right\":0.5}}"}}
 ```
 
----
-
-## ✅ Características Destacadas
-
-- **Triciclo Real**: 2 ruedas traseras motorizadas + 1 rueda delantera libre
-- **Sin Sensores en Modos Avanzados**: Mejor rendimiento
-- **Control Diferencial**: Giro suave y preciso
-- **Bluetooth Robusto**: Comunicación estable 9600 bps
-- **Telemetría Completa**: Datos en tiempo real
-- **JSON Compatible**: Fácil integración con apps
-- **Código Optimizado**: Sin elementos legacy
-
-**¡Tu bot velocista está listo para competir y navegar de forma autónoma!**
+¡Listo! Con este documento tu equipo de front-end puede desarrollar la interfaz sin conocer el firmware interno.
