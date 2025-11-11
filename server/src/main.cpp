@@ -500,7 +500,7 @@ void loop() {
           sum += weight * (i * 1000);
         }
         float pos = (wt > 0) ? (float)sum / wt - 2500.0f : -1;
-        if (pos >= 0) {
+        if (wt > 0) {
           float corr = computePID(pos);
           lastPosition = pos;
           lastError = setpoint - pos;
