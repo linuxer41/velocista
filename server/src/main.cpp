@@ -87,20 +87,20 @@ float lastError = 0;
 float lastCorrection = 0;
 
 // ---------- CALIBRACIÓN QTR ----------
-uint16_t qtrMin[6] = {1023,1023,1023,1023,1023,1023};
-uint16_t qtrMax[6] = {0,0,0,0,0,0};
+uint16_t qtrMin[6] = {0,0,0,0,0,0};
+uint16_t qtrMax[6] = {1023,1023,1023,1023,1023,1023};
 bool qtrCalibrated = false;
 
 void calibrateQTR() {
     Serial.println(F("Calibrando QTR... mueve el robot sobre línea y fondo"));
     digitalWrite(CAL_LED, HIGH); // Encender LED de calibración
-    for (int i = 0; i < 1000; i++) {
+    for (int i = 0; i < 100; i++) {
         for (uint8_t j = 0; j < 6; j++) {
             uint16_t val = analogRead(QTR_PINS[j]);
             if (val < qtrMin[j]) qtrMin[j] = val;
             if (val > qtrMax[j]) qtrMax[j] = val;
         }
-        delay(10);
+        delay(100);
     }
     digitalWrite(CAL_LED, LOW); // Apagar LED de calibración
     Serial.println(F("Calibración lista"));
@@ -132,10 +132,16 @@ void motorWrite(int pwmL, int pwmR) {
 }
 
 void readQTR() {
-  if (!qtrCalibrated) return;
   digitalWrite(QTR_LED, HIGH);
   delayMicroseconds(200);
-  for (int i = 0; i < 6; i++) qtr[i] = analogRead(QTR_PINS[i]);
+  for (int i = 0; i < 6; i++) {
+    uint16_t raw = analogRead(QTR_PINS[i]);
+    if (qtrCalibrated) {
+      qtr[i] = map(raw, qtrMin[i], qtrMax[i], 0, 1000);
+    } else {
+      qtr[i] = raw;
+    }
+  }
   digitalWrite(QTR_LED, LOW);
 }
 
@@ -489,8 +495,9 @@ void loop() {
         uint32_t sum = 0, wt = 0;
         for (int i = 0; i < 6; i++) {
           uint32_t v = qtr[i];
-          wt += v;
-          sum += v * (i * 1000);
+          uint32_t weight = 1000 - v; // Higher weight on black surfaces (low v)
+          wt += weight;
+          sum += weight * (i * 1000);
         }
         float pos = (wt > 0) ? (float)sum / wt - 2500.0f : -1;
         if (pos >= 0) {
