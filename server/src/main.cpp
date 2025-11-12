@@ -148,12 +148,6 @@ void Motor::update(float dt) {
     float rpm = (delta * 60.0f) / (CPR * dt) * diamCorr;
     filtRPM = ALPHA * rpm + (1 - ALPHA) * filtRPM;
 
-    // Debug: print motor data every 100 updates
-    static int motorCount = 0;
-    if (++motorCount % 100 == 0) {
-        Serial.println("Motor " + String(isLeft ? "L" : "R") + ": delta=" + String(delta) + " rpm=" + String(filtRPM) + " target=" + String(targetRPM) + " pwm=" + String(pwm));
-    }
-
     /* ---------- 2. PID normal ---------- */
     float err = targetRPM - filtRPM;
     float dedt = (err - prevErr) / dt;
@@ -225,11 +219,6 @@ void readQTR()
     /* 4. Apagamos el LED para ahorrar energía y reducir
      *    interferencias con otros sensores cercanos */
     digitalWrite(QTR_LED, LOW);
-
-    // Debug: print QTR values
-    Serial.print("QTR: ");
-    for(int i=0; i<6; i++) Serial.print(String(qtr[i]) + " ");
-    Serial.println();
 }
 
 /* ----------------
@@ -273,9 +262,7 @@ float computeLinePos()
     float centro = (float)sum / wt;
 
     /* Restamos 2500 para que el centro del robot sea 0 */
-    float pos = centro - 2500.0f;
-    Serial.println("Line pos: " + String(pos) + " centro: " + String(centro) + " wt: " + String(wt));
-    return pos;
+    return centro - 2500.0f;
 }
 
 // ---------- KALMAN ----------
@@ -321,7 +308,6 @@ float kalmanLine()
     P = (1.0f - K) * P + Q;  // reduce incertidumbre pero añade Q
 
     /* 5. Devolvemos la estimación filtrada */
-    Serial.println("Kalman: x=" + String(x) + " z=" + String(z) + " y=" + String(y) + " K=" + String(K));
     return x;
 }
 
@@ -359,9 +345,7 @@ float linePID(float pos)
     prev = err;                             // guardamos para la próxima vuelta
 
     /* 4. Salida PID: corrección en RPM (se resta/suma a cada motor) */
-    float out = kpLine * err + kiLine * integ + kdLine * deriv;
-    Serial.println("PID: err=" + String(err) + " integ=" + String(integ) + " deriv=" + String(deriv) + " out=" + String(out));
-    return out;
+    return kpLine * err + kiLine * integ + kdLine * deriv;
 }
 
 float readBattery();
@@ -399,7 +383,6 @@ void sendTele() {
     // RPM
     float rpmL = (teleTicksL * 60.0f) / (CPR * dt);
     float rpmR = (teleTicksR * 60.0f) / (CPR * dt);
-    Serial.println("RPM calc: dt=" + String(dt) + " ticksL=" + String(teleTicksL) + " rpmL=" + String(rpmL) + " ticksR=" + String(teleTicksR) + " rpmR=" + String(rpmR));
 
     // Velocidad lineal (cm/s)
     float speedL = (left.ticks * CM_PER_TICK) / dt;
@@ -624,7 +607,6 @@ void setup() {
     if (isnan(right.diamCorr) || right.diamCorr <= 0) right.diamCorr = 1.0f;
     Serial.println("left.diamCorr = " + String(left.diamCorr));
     Serial.println("right.diamCorr = " + String(right.diamCorr));
-    Serial.println("qtrCalibrated: " + String(qtrCalibrated));
 
     // Validar valores leídos de EEPROM
     if (left.kp <= 0 || isnan(left.kp)) left.kp = 0.9f;
