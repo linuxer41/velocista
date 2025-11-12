@@ -40,7 +40,7 @@ enum Mode : uint8_t { LINE_FOLLOW, REMOTE, SERVO };
 
 // ---------- GLOBALS ----------
 Mode mode = LINE_FOLLOW;
-bool teleEnabled = false;
+bool teleEnabled = true;
 uint32_t lastTele = 0;
 float kpLine = 1.2f, kiLine = 0.0f, kdLine = 0.05f;
 float setpointLine = 0.0f;
@@ -52,6 +52,8 @@ float lineErr = 0.0f, lineCorr = 0.0f;  // for telemetry
 float batVoltage = 0;
 int batPercent = 0;
 uint32_t lastBatRead = 0;
+volatile int32_t teleTicksL = 0, teleTicksR = 0;
+volatile int isrCountL = 0, isrCountR = 0;
 
 // ---------- UTILS ----------
 inline void led(bool s) { digitalWrite(CAL_LED, s); }
@@ -77,20 +79,29 @@ struct Motor {
     int16_t pwm = 0;
     float diamCorr = 1.0f;
     float dist = 0.0f;  // accumulated distance in cm
+    bool isLeft;
     static constexpr float iwLimit = 500.0f; // anti-windup: max integral (ajusta)
     static constexpr float ALPHA = 0.2f;
-    Motor(const uint8_t i1, const uint8_t i2, const uint8_t ea, const uint8_t eb) : in1(i1), in2(i2), encA(ea), encB(eb) {}
-    void isr() { ticks += digitalRead(encB) ? 1 : -1; }
+    Motor(bool il, const uint8_t i1, const uint8_t i2, const uint8_t ea, const uint8_t eb) : isLeft(il), in1(i1), in2(i2), encA(ea), encB(eb) {}
+    void isr() {
+        int dir = digitalRead(encB) ? 1 : -1;
+        ticks += dir;
+        if (isLeft) {
+            teleTicksL += dir;
+            isrCountL++;
+        } else {
+            teleTicksR += dir;
+            isrCountR++;
+        }
+    }
     void update(float dt);
     void setRPM(float r) {
-         targetRPM = constrain(r, -300, 300); 
-         
-         Serial.println("targetRPM = " + String(targetRPM));
+         targetRPM = constrain(r, -300, 300);
     }
 };
 
-Motor left(MOT_L1, MOT_L2, ENC_LA, ENC_LB);
-Motor right(MOT_R1, MOT_R2, ENC_RA, ENC_RB);
+Motor left(true, MOT_L1, MOT_L2, ENC_LA, ENC_LB);
+Motor right(false, MOT_R1, MOT_R2, ENC_RA, ENC_RB);
 
 // ---------- SERVO ----------
 struct Servo {
@@ -137,6 +148,12 @@ void Motor::update(float dt) {
     float rpm = (delta * 60.0f) / (CPR * dt) * diamCorr;
     filtRPM = ALPHA * rpm + (1 - ALPHA) * filtRPM;
 
+    // Debug: print motor data every 100 updates
+    static int motorCount = 0;
+    if (++motorCount % 100 == 0) {
+        Serial.println("Motor " + String(isLeft ? "L" : "R") + ": delta=" + String(delta) + " rpm=" + String(filtRPM) + " target=" + String(targetRPM) + " pwm=" + String(pwm));
+    }
+
     /* ---------- 2. PID normal ---------- */
     float err = targetRPM - filtRPM;
     float dedt = (err - prevErr) / dt;
@@ -154,7 +171,7 @@ void Motor::update(float dt) {
     dist += filtRPM * dt * CM_PER_REV / 60.0f;  // cm
 
     /* ---------- 5. Aplicar PWM ---------- */
-    Serial.println("pwm motor = " + String(pwm) + " rpm = " + String(filtRPM) + " dist = " + String(dist) + " PINS = " + String(in1) + " " + String(in2));
+    // Serial.println("pwm motor = " + String(pwm) + " rpm = " + String(filtRPM) + " dist = " + String(dist) + " PINS = " + String(in1) + " " + String(in2));
     if (pwm >= 0) {
         digitalWrite(in2, LOW);
         analogWrite(in1, pwm);
@@ -162,6 +179,7 @@ void Motor::update(float dt) {
         digitalWrite(in1, LOW);
         analogWrite(in2, -pwm);
     }
+
 }
 // ---------- QTR ----------
 /* ----------
@@ -207,6 +225,11 @@ void readQTR()
     /* 4. Apagamos el LED para ahorrar energía y reducir
      *    interferencias con otros sensores cercanos */
     digitalWrite(QTR_LED, LOW);
+
+    // Debug: print QTR values
+    Serial.print("QTR: ");
+    for(int i=0; i<6; i++) Serial.print(String(qtr[i]) + " ");
+    Serial.println();
 }
 
 /* ----------------
@@ -250,7 +273,9 @@ float computeLinePos()
     float centro = (float)sum / wt;
 
     /* Restamos 2500 para que el centro del robot sea 0 */
-    return centro - 2500.0f;
+    float pos = centro - 2500.0f;
+    Serial.println("Line pos: " + String(pos) + " centro: " + String(centro) + " wt: " + String(wt));
+    return pos;
 }
 
 // ---------- KALMAN ----------
@@ -296,6 +321,7 @@ float kalmanLine()
     P = (1.0f - K) * P + Q;  // reduce incertidumbre pero añade Q
 
     /* 5. Devolvemos la estimación filtrada */
+    Serial.println("Kalman: x=" + String(x) + " z=" + String(z) + " y=" + String(y) + " K=" + String(K));
     return x;
 }
 
@@ -333,7 +359,9 @@ float linePID(float pos)
     prev = err;                             // guardamos para la próxima vuelta
 
     /* 4. Salida PID: corrección en RPM (se resta/suma a cada motor) */
-    return kpLine * err + kiLine * integ + kdLine * deriv;
+    float out = kpLine * err + kiLine * integ + kdLine * deriv;
+    Serial.println("PID: err=" + String(err) + " integ=" + String(integ) + " deriv=" + String(deriv) + " out=" + String(out));
+    return out;
 }
 
 float readBattery();
@@ -369,8 +397,9 @@ void sendTele() {
     updateBattery();
 
     // RPM
-    float rpmL = (left.ticks * 60.0f) / (CPR * dt);
-    float rpmR = (right.ticks * 60.0f) / (CPR * dt);
+    float rpmL = (teleTicksL * 60.0f) / (CPR * dt);
+    float rpmR = (teleTicksR * 60.0f) / (CPR * dt);
+    Serial.println("RPM calc: dt=" + String(dt) + " ticksL=" + String(teleTicksL) + " rpmL=" + String(rpmL) + " ticksR=" + String(teleTicksR) + " rpmR=" + String(rpmR));
 
     // Velocidad lineal (cm/s)
     float speedL = (left.ticks * CM_PER_TICK) / dt;
@@ -396,7 +425,8 @@ void sendTele() {
     leftObj["vel"] = speedL;
     leftObj["acc"] = 0.0f;
     leftObj["rpm"] = rpmL;
-    leftObj["encoder"] = left.ticks;
+    leftObj["encoder"] = teleTicksL;
+    leftObj["isrCount"] = isrCountL;
     leftObj["distance"] = leftDist;
     leftObj["pwm"] = left.pwm;
 
@@ -404,7 +434,8 @@ void sendTele() {
     rightObj["vel"] = speedR;
     rightObj["acc"] = 0.0f;
     rightObj["rpm"] = rpmR;
-    rightObj["encoder"] = right.ticks;
+    rightObj["encoder"] = teleTicksR;
+    rightObj["isrCount"] = isrCountR;
     rightObj["distance"] = rightDist;
     rightObj["pwm"] = right.pwm;
 
@@ -424,9 +455,11 @@ void sendTele() {
     serializeJson(doc, Serial);
     Serial.println();
 
-    // Reset ticks for next measurement
-    left.ticks = 0;
-    right.ticks = 0;
+    // Reset teleTicks for next measurement
+    teleTicksL = 0;
+    teleTicksR = 0;
+    isrCountL = 0;
+    isrCountR = 0;
 }
 
 
@@ -589,15 +622,21 @@ void setup() {
 
     // Validar diamCorr
     if (isnan(right.diamCorr) || right.diamCorr <= 0) right.diamCorr = 1.0f;
+    Serial.println("left.diamCorr = " + String(left.diamCorr));
+    Serial.println("right.diamCorr = " + String(right.diamCorr));
+    Serial.println("qtrCalibrated: " + String(qtrCalibrated));
 
     // Validar valores leídos de EEPROM
     if (left.kp <= 0 || isnan(left.kp)) left.kp = 0.9f;
     if (left.ki < 0 || isnan(left.ki)) left.ki = 2.2f;
     if (left.kd < 0 || isnan(left.kd)) left.kd = 0.0f;
     if (baseSpeed <= 0 || baseSpeed > 1 || isnan(baseSpeed)) baseSpeed = 0.8f;
-    if (kpLine < 0 || isnan(kpLine)) kpLine = 1.2f;
-    if (kiLine < 0 || isnan(kiLine)) kiLine = 0.0f;
-    if (kdLine < 0 || isnan(kdLine)) kdLine = 0.05f;
+    if (kpLine < 0 || isnan(kpLine) || kpLine > 5.0f) kpLine = 1.2f;
+    if (kiLine < 0 || isnan(kiLine) || kiLine > 5.0f) kiLine = 0.0f;
+    if (kdLine < 0 || isnan(kdLine) || kdLine > 1.0f) kdLine = 0.05f;
+    Serial.println("kpLine = " + String(kpLine));
+    Serial.println("kiLine = " + String(kiLine));
+    Serial.println("kdLine = " + String(kdLine));
     right.kp = left.kp;
     right.ki = left.ki;
     right.kd = left.kd;
@@ -610,23 +649,17 @@ void setup() {
 // ---------- LOOP ----------
 void loop() {
     static uint32_t t0 = 0;
-    if (micros() - t0 >= 1000000) { //1000
+    if (micros() - t0 >= 1000) { //1000
         t0 = micros();
         readQTR();
-        Serial.println("mode = " + String(mode));
         switch (mode) {
             case LINE_FOLLOW: {
                 //if (!qtrCalibrated) { motorWrite(0, 0); break; }
-                Serial.println("qtrCalibrated = " + String(qtrCalibrated));
                 float currentPos = kalmanLine();
-                Serial.println("currentPos = " + String(currentPos));
                 float steer = linePID(currentPos);
-                Serial.println("steer = " + String(steer));
                 lineErr = setpointLine - currentPos;
                 lineCorr = steer;
                 float base = baseSpeed * 60;
-                Serial.println("base + steer = " + String(base + steer) );
-                Serial.println("base - steer = " + String(base - steer) );
                 left.setRPM(base - steer);
                 right.setRPM(base + steer);
                 break;
