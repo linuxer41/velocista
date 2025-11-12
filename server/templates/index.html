@@ -23,8 +23,12 @@
   <!-- CONEXIÓN -->
   <h3>Conexión</h3>
   <div id="connection" style="display:flex;flex-wrap:wrap;gap:10px;margin:10px 0">
-    <select id="portSelect"></select>
-    <button onclick="refreshPorts()">Actualizar Puertos</button>
+    <select id="modeSelect">
+      <option value="serial">Serial</option>
+      <option value="bluetooth">Bluetooth</option>
+    </select>
+    <select id="deviceSelect"></select>
+    <button onclick="refreshDevices()">Actualizar Dispositivos</button>
     <button onclick="connect()">Conectar</button>
     <button onclick="disconnect()">Desconectar</button>
   </div>
@@ -238,25 +242,35 @@ function sendServo(){
   send({servo: {distance: distance, angle: angle}});
 }
 
-function refreshPorts(){
-  fetch('/ports')
+function refreshDevices(){
+  const mode = document.getElementById('modeSelect').value;
+  fetch('/devices')
     .then(r => r.json())
-    .then(ports => {
-      const select = document.getElementById('portSelect');
+    .then(devices => {
+      const select = document.getElementById('deviceSelect');
       select.innerHTML = '';
-      ports.forEach(p => {
+      devices.forEach(d => {
         const opt = document.createElement('option');
-        opt.value = p.port;
-        opt.textContent = `${p.port} - ${p.desc}`;
+        opt.value = d.port;
+        opt.textContent = `${d.port} - ${d.desc}`;
         select.appendChild(opt);
       });
     });
 }
 
+function setMode(){
+  const mode = document.getElementById('modeSelect').value;
+  fetch('/set_mode', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({mode: mode})
+  }).then(() => refreshDevices());
+}
+
 function connect(){
-  const port = document.getElementById('portSelect').value;
-  if (port) {
-    socket.emit('connect_serial', {port: port});
+  const device = document.getElementById('deviceSelect').value;
+  if (device) {
+    socket.emit('connect_device', {device: device});
   }
 }
 
@@ -264,8 +278,11 @@ function disconnect(){
   socket.emit('disconnect_serial');
 }
 
-// Load ports on page load
-window.onload = refreshPorts;
+// Load devices on page load
+window.onload = function(){
+  document.getElementById('modeSelect').addEventListener('change', setMode);
+  refreshDevices();
+};
 </script>
 </body>
 </html>

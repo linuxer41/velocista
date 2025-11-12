@@ -7,13 +7,14 @@
 #include <EEPROM.h>
 #include <ArduinoJson.h>
 #include <TimerOne.h>
+#include <PinChangeInterrupt.h>
 
 // ---------- PINS ORIGINALES ----------
 const uint8_t MOT_L1 = 6, MOT_L2 = 5;
 const uint8_t MOT_R1 = 10, MOT_R2 = 9;
 const uint8_t QTR_PINS[6] = {A0, A1, A2, A3, A4, A5};
 const uint8_t QTR_LED = 12, CAL_LED = 13;
-const uint8_t ENC_LA = 2, ENC_LB = 7, ENC_RA = 3, ENC_RB = 8;
+const uint8_t ENC_LA = 2, ENC_LB = 3, ENC_RA = 7, ENC_RB = 8;
 const uint8_t BAT_PIN = A6;
 const uint8_t BUZZER = 4;
 
@@ -39,7 +40,7 @@ enum Mode : uint8_t { LINE_FOLLOW, REMOTE, SERVO };
 
 // ---------- GLOBALS ----------
 Mode mode = LINE_FOLLOW;
-bool teleEnabled = true;
+bool teleEnabled = false;
 uint32_t lastTele = 0;
 float kpLine = 1.2f, kiLine = 0.0f, kdLine = 0.05f;
 float setpointLine = 0.0f;
@@ -81,7 +82,11 @@ struct Motor {
     Motor(const uint8_t i1, const uint8_t i2, const uint8_t ea, const uint8_t eb) : in1(i1), in2(i2), encA(ea), encB(eb) {}
     void isr() { ticks += digitalRead(encB) ? 1 : -1; }
     void update(float dt);
-    void setRPM(float r) { targetRPM = constrain(r, -300, 300); }
+    void setRPM(float r) {
+         targetRPM = constrain(r, -300, 300); 
+         
+         Serial.println("targetRPM = " + String(targetRPM));
+    }
 };
 
 Motor left(MOT_L1, MOT_L2, ENC_LA, ENC_LB);
@@ -149,6 +154,7 @@ void Motor::update(float dt) {
     dist += filtRPM * dt * CM_PER_REV / 60.0f;  // cm
 
     /* ---------- 5. Aplicar PWM ---------- */
+    Serial.println("pwm motor = " + String(pwm) + " rpm = " + String(filtRPM) + " dist = " + String(dist) + " PINS = " + String(in1) + " " + String(in2));
     if (pwm >= 0) {
         digitalWrite(in2, LOW);
         analogWrite(in1, pwm);
@@ -553,12 +559,20 @@ void serialEvent() {
 void setup() {
     Serial.begin(9600);
     analogReference(INTERNAL);
+    pinMode(MOT_L1, OUTPUT);
+    pinMode(MOT_L2, OUTPUT);
+    pinMode(MOT_R1, OUTPUT);
+    pinMode(MOT_R2, OUTPUT);
     pinMode(QTR_LED, OUTPUT);
     pinMode(CAL_LED, OUTPUT);
     pinMode(BUZZER, OUTPUT);
     for (uint8_t i = 0; i < 6; i++) pinMode(QTR_PINS[i], INPUT);
+    pinMode(ENC_LA, INPUT);
+    pinMode(ENC_LB, INPUT);
+    pinMode(ENC_RA, INPUT);
+    pinMode(ENC_RB, INPUT);
     attachInterrupt(digitalPinToInterrupt(ENC_LA), []{left.isr();}, RISING);
-    attachInterrupt(digitalPinToInterrupt(ENC_RA), []{right.isr();}, RISING);
+    attachPinChangeInterrupt(ENC_RA, []{right.isr();}, RISING);
 
     // Cargar valores desde EEPROM
     eepRead(EEPROM_ADDR_BASE, left.kp);
@@ -572,6 +586,9 @@ void setup() {
     eepRead(EEPROM_ADDR_BASE + 24, kiLine);
     eepRead(EEPROM_ADDR_BASE + 28, kdLine);
     eepRead(EEPROM_ADDR_DIAM, right.diamCorr);
+
+    // Validar diamCorr
+    if (isnan(right.diamCorr) || right.diamCorr <= 0) right.diamCorr = 1.0f;
 
     // Validar valores leídos de EEPROM
     if (left.kp <= 0 || isnan(left.kp)) left.kp = 0.9f;
@@ -593,17 +610,23 @@ void setup() {
 // ---------- LOOP ----------
 void loop() {
     static uint32_t t0 = 0;
-    if (micros() - t0 >= 10000) {
+    if (micros() - t0 >= 1000000) { //1000
         t0 = micros();
         readQTR();
+        Serial.println("mode = " + String(mode));
         switch (mode) {
             case LINE_FOLLOW: {
-                if (!qtrCalibrated) { motorWrite(0, 0); break; }
+                //if (!qtrCalibrated) { motorWrite(0, 0); break; }
+                Serial.println("qtrCalibrated = " + String(qtrCalibrated));
                 float currentPos = kalmanLine();
+                Serial.println("currentPos = " + String(currentPos));
                 float steer = linePID(currentPos);
+                Serial.println("steer = " + String(steer));
                 lineErr = setpointLine - currentPos;
                 lineCorr = steer;
                 float base = baseSpeed * 60;
+                Serial.println("base + steer = " + String(base + steer) );
+                Serial.println("base - steer = " + String(base - steer) );
                 left.setRPM(base - steer);
                 right.setRPM(base + steer);
                 break;

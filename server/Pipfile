@@ -8,6 +8,7 @@ matplotlib = "*"
 pyserial = "*"
 flask = "*"
 flask-socketio = "*"
+PyBluez = "*"
 
 [dev-packages]
 
