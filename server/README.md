@@ -22,22 +22,14 @@ Claves en inglés descriptivo (camelCase) para facilitar parseo automático
 |-------|------|-------------|---------|
 | mode | int | Cambia modo operación (0-2) | {"mode":0} |
 | pid | array[float] | Ajusta [Kp, Ki, Kd] | {"pid":[1.2,0.05,0.02]} |
-| speed.base | float | Velocidad base 0-1 | {"speed":{"base":0.7}} |
-| rc | object | Control remoto: dirección (0-360°) + aceleración (0-1), autopilot (throttle/turn) o manual (left/right) | {"rc":{"direction":90,"acceleration":0.5}} o {"rc":{"throttle":0.5,"turn":-0.3}} o {"rc":{"left":0.8,"right":-0.8}} |
+| base_speed | float | Velocidad base 0-1 | {"base_speed":0.7} |
+| rc | object | Control remoto: autopilot (throttle/turn) | {"rc":{"throttle":0.5,"turn":-0.3}} |
 | servo | object | Modo servo: distancia en cm y ángulo opcional en grados | {"servo":{"distance":30,"angle":45}} |
 | eeprom | int 1 | Guarda config actual en EEPROM | {"eeprom":1} |
-| telemetry | int 1 | Solicita telemetría completa una vez | {"telemetry":1} |
-| telemetry_enable | bool | Habilita/deshabilita telemetría automática | {"telemetry_enable":false} |
-| calibrate_qtr | int 1 | Calibra sensores QTR (mueve robot sobre línea y fondo) | {"calibrate_qtr":1} |
+| tele | int | Control telemetría: 0=off, 1=on, 2=get once | {"tele":1} |
+| qtr | int 1 | Calibra sensores QTR (mueve robot sobre línea y fondo) | {"qtr":1} |
 
-Respuestas rápidas del robot (solo status):
-```json
-{"type": "status", "payload": {"status": "eeprom_saved"}}
-{"type": "status", "payload": {"status": "servo_completed"}}
-{"type": "status", "payload": {"status": "system_started"}}
-```
-
-Mensajes de comando (comando recibido - solo si telemetría está habilitada):
+Mensajes de comando (comando recibido):
 ```json
 {"type": "cmd", "payload": {"buffer": "{\"mode\":1}"}}
 ```
@@ -59,14 +51,16 @@ Ejemplo completo:
       "acc": 0.5,
       "rpm": 39.7,
       "encoder": 23,
-      "distance": 833.46
+      "distance": 833.46,
+      "pwm": 150
     },
     "right": {
       "vel": 0,
       "acc": 0.5,
       "rpm": 0,
       "encoder": 0,
-      "distance": 0
+      "distance": 0,
+      "pwm": -50
     },
     "battery": 12.1,
     "qtr": [1023,1023,1023,1023,1012,516],
@@ -95,12 +89,14 @@ Descripción de campos:
 | payload.left.rpm | float | rpm | RPM motor izquierdo |
 | payload.left.encoder | int32_t | ticks | Conteo encoder izquierdo |
 | payload.left.distance | float | cm | Distancia recorrida motor izquierdo |
+| payload.left.pwm | int16_t | -255..255 | PWM motor izquierdo |
 | payload.right | object | - | Datos motor derecho |
 | payload.right.vel | float | cm/s | Velocidad motor derecho |
 | payload.right.acc | float | cm/s² | Aceleración motor derecho |
 | payload.right.rpm | float | rpm | RPM motor derecho |
 | payload.right.encoder | int32_t | ticks | Conteo encoder derecho |
 | payload.right.distance | float | cm | Distancia recorrida motor derecho |
+| payload.right.pwm | int16_t | -255..255 | PWM motor derecho |
 | payload.battery | float | V | Voltaje de batería |
 | payload.qtr[] | array[int] | 0-1023 | Valores crudos de los 6 sensores QTR |
 | payload.pid[] | array[float] | - | Ganancias PID [Kp, Ki, Kd] |
@@ -123,25 +119,13 @@ Descripción de campos:
 Cambio instantáneo: {"mode":2}
 
 6. Control en tiempo real (modo 1 - REMOTE_CONTROL)
-6.1 Dirección + Aceleración
-```json
-{"rc":{"direction":90,"acceleration":0.5}}
-```
-direction: 0-360 grados (0=adelante, 90=derecha, 180=atrás, 270=izquierda)
-acceleration: 0.0 (parado) … 1.0 (máxima velocidad)
-
-6.2 Autopilot
+6.1 Autopilot
 ```json
 {"rc":{"throttle":0.5,"turn":-0.3}}
 ```
 throttle: -1.0 (atrás) … 0 … +1.0 (adelante)
 turn: -1.0 (izq) … 0 … +1.0 (der)
 
-6.3 Manual
-```json
-{"rc":{"left":0.8,"right":-0.8}}
-```
-Cada rueda: -1.0 … +1.0
 
 7. Funciones especiales (modo 2 - SERVO)
 ```json
@@ -153,7 +137,6 @@ Finaliza con: {"type": "status", "payload": {"status": "servo_completed"}}
 8. Persistencia en EEPROM
 {"eeprom":1} → guarda PID, velocidad-base y modo actual
 Se auto-cargan al reiniciar
-Respuesta: {"type": "status", "payload": {"status": "eeprom_saved"}}
 
 9. Referencias de hardware
 Puerto serie: 9600,8,N,1 (HW 0-TX / 1-RX)
@@ -166,19 +149,13 @@ Encoders: 90 PPR, rueda 4,5 cm → 0,039 cm/tick
 ```
 >> {"mode":0}
 << {"type": "cmd", "payload": {"buffer": "{\"mode\":0}"}}
-<< {"type": "status", "payload": {"status": "system_started"}}
-<< {"type": "telemetry", "payload": {"timestamp": 12345, "mode": 1, "velocity": 9.87, "acceleration": 0.5, "distance": 833.46, "left": {"vel": 9.87, "acc": 0.5, "rpm": 39.7, "encoder": 23, "distance": 833.46}, "right": {"vel": 0, "acc": 0.5, "rpm": 0, "encoder": 0, "distance": 0}, "battery": 12.1, "qtr": [1023,1023,1023,1023,1012,516], "pid": [0.01, 0.01, 0.01], "set_point": 2500, "base_speed": 0.8, "error": 0, "correction": 0}}
+<< {"type": "telemetry", "payload": {"timestamp": 12345, "mode": 0, "velocity": 9.87, "acceleration": 0.5, "distance": 833.46, "left": {"vel": 9.87, "acc": 0.5, "rpm": 39.7, "encoder": 23, "distance": 833.46, "pwm": 150}, "right": {"vel": 0, "acc": 0.5, "rpm": 0, "encoder": 0, "distance": 0, "pwm": -50}, "battery": 12.1, "qtr": [1023,1023,1023,1023,1012,516], "pid": [0.01, 0.01, 0.01], "set_point": 2500, "base_speed": 0.8, "error": 0, "correction": 0}}
 
->> {"servo":{"distance":25}}
-<< {"type": "cmd", "payload": {"buffer": "{\"servo\":{\"distance\":25}}"}}
-<< {"type": "status", "payload": {"status": "servo_completed"}}
+>> {"servo":{"distance":25,"angle":45}}
+<< {"type": "cmd", "payload": {"buffer": "{\"servo\":{\"distance\":25,\"angle\":45}}"}}
 
->> {"rc":{"direction":90,"acceleration":0.5}}
-<< {"type": "cmd", "payload": {"buffer": "{\"rc\":{\"direction\":90,\"acceleration\":0.5}}"}}
 >> {"rc":{"throttle":0.6,"turn":0.2}}
 << {"type": "cmd", "payload": {"buffer": "{\"rc\":{\"throttle\":0.6,\"turn\":0.2}}"}}
->> {"rc":{"left":0.5,"right":0.5}}
-<< {"type": "cmd", "payload": {"buffer": "{\"rc\":{\"left\":0.5,\"right\":0.5}}"}}
 ```
 
 ¡Listo! Con este documento tu equipo de front-end puede desarrollar la interfaz sin conocer el firmware interno.

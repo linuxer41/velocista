@@ -1,523 +1,649 @@
+/*
+  Robot seguidor de línea profesional
+  Autor: tu nombre
+  Hardware: exactamente el esquema original
+*/
 #include <Arduino.h>
-#include <ArduinoJson.h>
 #include <EEPROM.h>
+#include <ArduinoJson.h>
+#include <TimerOne.h>
 
-// ---------- CONFIGURACIÓN DE PINES ----------
-const uint8_t MOT_L1 = 6;  // Motor izq IN1
-const uint8_t MOT_L2 = 5;  // Motor izq IN2
-const uint8_t MOT_R1 = 10;  // Motor der IN1
-const uint8_t MOT_R2 = 9; // Motor der IN2
+// ---------- PINS ORIGINALES ----------
+const uint8_t MOT_L1 = 6, MOT_L2 = 5;
+const uint8_t MOT_R1 = 10, MOT_R2 = 9;
+const uint8_t QTR_PINS[6] = {A0, A1, A2, A3, A4, A5};
+const uint8_t QTR_LED = 12, CAL_LED = 13;
+const uint8_t ENC_LA = 2, ENC_LB = 7, ENC_RA = 3, ENC_RB = 8;
+const uint8_t BAT_PIN = A6;
+const uint8_t BUZZER = 4;
 
-const uint8_t QTR_PINS[6] = {A0, A1, A2, A3, A4, A5}; // Sensores QTR
-const uint8_t QTR_LED = 12; // Control LED IR
-const uint8_t CAL_LED = 13; // LED de calibración
-
-const uint8_t ENC_LA = 2; // Encoder izq A
-const uint8_t ENC_LB = 3; // Encoder izq B
-const uint8_t ENC_RA = 7; // Encoder der A
-const uint8_t ENC_RB = 8; // Encoder der B
-
+// ---------- CONSTANTS ----------
+constexpr int32_t  CPR        = 358;
+constexpr float    CM_PER_REV = PI * 4.5f;
+constexpr float    CM_PER_TICK = CM_PER_REV / CPR;
+constexpr float    LOOP_HZ    = 100.0f;
+constexpr float    DT         = 1.0f / LOOP_HZ;
+constexpr uint16_t EEPROM_ADDR_BASE  = 0;
+constexpr uint16_t EEPROM_ADDR_DIAM  = 32;
+constexpr uint16_t LOG_ENTRIES       = 1200;   // 1200 * 8 B = 9.6 kB EEPROM
 // ---------- BATERÍA ----------
-const uint8_t BAT_PIN = A6;          // Conectar divisor a A6
-const float   BAT_R1 = 100000.0;     // 100 kΩ
-const float   BAT_R2 = 10000.0;      // 10 kΩ
-const float   BAT_RATIO = (BAT_R1 + BAT_R2) / BAT_R2;
-const float   BAT_VREF = 1.1;        // Referencia interna
-const float   BAT_MIN_V = 6.0;       // Voltaje mínimo (ajustar)
-const float   BAT_MAX_V = 8.4;       // Voltaje máximo (ajustar)
+const float BAT_R1 = 100000.0f;     // 100 kΩ
+const float BAT_R2 = 10000.0f;      // 10 kΩ
+const float BAT_RATIO = (BAT_R1 + BAT_R2) / BAT_R2;
+const float BAT_VREF = 1.1f;        // Referencia interna
+const float BAT_MIN_V = 6.0f;       // Voltaje mínimo
+const float BAT_MAX_V = 8.4f;       // Voltaje máximo
 
+// ---------- ENUMS ----------
+enum Mode : uint8_t { LINE_FOLLOW, REMOTE, SERVO };
+
+// ---------- GLOBALS ----------
+Mode mode = LINE_FOLLOW;
+bool teleEnabled = true;
+uint32_t lastTele = 0;
+float kpLine = 1.2f, kiLine = 0.0f, kdLine = 0.05f;
+float setpointLine = 0.0f;
+uint16_t qtr[6], qtrMin[6], qtrMax[6];
+bool qtrCalibrated = false;
+float baseSpeed = 0.8f;
+float leftDist = 0, rightDist = 0;
+float lineErr = 0.0f, lineCorr = 0.0f;  // for telemetry
 float batVoltage = 0;
 int batPercent = 0;
 uint32_t lastBatRead = 0;
 
-// ---------- VARIABLES DE CONTROL ----------
-volatile int32_t encL = 0, encR = 0;
-float baseSpeed = 0.8f; // Velocidad base (0-1)
-float kp = 1.2f, ki = 0.0f, kd = 0.05f;
-float setpoint = 2500.0f; // Centro de línea
+// ---------- UTILS ----------
+inline void led(bool s) { digitalWrite(CAL_LED, s); }
+inline void beep(uint8_t n) {
+    for (uint8_t i = 0; i < n; i++) {
+        tone(BUZZER, 2200, 40);
+        delay(60);
+    }
+}
 
-// ---------- MODO DE OPERACIÓN ----------
-enum Mode : uint8_t {
-    LINE_FOLLOW = 0,
-    REMOTE_CONTROL = 1,
-    SERVO = 2
-};
-Mode mode = REMOTE_CONTROL;
-
-// ---------- SERVO DISTANCIA ----------
-struct ServoDist {
-    bool active = false;
-    float targetDistance = 0;
-    float targetAngle = 0; // grados
-    int32_t startEnc = 0;
-};
-ServoDist servo;
-
-// ---------- CONTROL REMOTO ----------
+// ---------- REMOTE CONTROL STRUCT ----------
 struct RemoteControl {
-   float throttle = 0;    // -1 a 1 (adelante/atrás)
-   float turn = 0;        // -1 a 1 (izquierda/derecha)
-   float left = 0;        // -1 a 1 (manual izquierdo)
-   float right = 0;       // -1 a 1 (manual derecho)
-   float direction = 0;   // grados (0-360)
-   float acceleration = 0; // 0-1 (velocidad)
+    float throttle = 0;
+    float turn = 0;
+} remote;
+
+// ---------- MOTOR STRUCT ----------
+struct Motor {
+    const uint8_t in1, in2, encA, encB;
+    volatile int32_t ticks = 0;
+    float targetRPM = 0, filtRPM = 0;
+    float kp = 0.9f, ki = 2.2f, kd = 0.0f, errI = 0, prevErr = 0;
+    int16_t pwm = 0;
+    float diamCorr = 1.0f;
+    float dist = 0.0f;  // accumulated distance in cm
+    static constexpr float iwLimit = 500.0f; // anti-windup: max integral (ajusta)
+    static constexpr float ALPHA = 0.2f;
+    Motor(const uint8_t i1, const uint8_t i2, const uint8_t ea, const uint8_t eb) : in1(i1), in2(i2), encA(ea), encB(eb) {}
+    void isr() { ticks += digitalRead(encB) ? 1 : -1; }
+    void update(float dt);
+    void setRPM(float r) { targetRPM = constrain(r, -300, 300); }
 };
-RemoteControl remote;
+
+Motor left(MOT_L1, MOT_L2, ENC_LA, ENC_LB);
+Motor right(MOT_R1, MOT_R2, ENC_RA, ENC_RB);
 
 // ---------- SERVO ----------
-
-// ---------- CONSTANTES ----------
-const float WHEEL_DIAM = 4.5f;     // cm (ajústalo)
-const float CM_PER_REV = PI * WHEEL_DIAM;
-const int ENCODER_CPR = 358;        // pulsos por vuelta
-const float CM_PER_TICK = CM_PER_REV / ENCODER_CPR;
-const float CM_PER_DEG = CM_PER_REV / 360.0f; // cm por grado
-
-// ---------- VARIABLES PARA TELEMETRÍA ----------
-float rpmL = 0, rpmR = 0;
-float speedL = 0, speedR = 0;
-float accelL = 0, accelR = 0;
-float totalDist = 0;
-float leftDist = 0, rightDist = 0;
-float lastSpeedL = 0, lastSpeedR = 0;
-uint32_t lastTeleTime = 0;
-bool telemetryEnabled = true;
-float lastPosition = 0;
-float lastError = 0;
-float lastCorrection = 0;
-
-// ---------- CALIBRACIÓN QTR ----------
-uint16_t qtrMin[6] = {0,0,0,0,0,0};
-uint16_t qtrMax[6] = {1023,1023,1023,1023,1023,1023};
-bool qtrCalibrated = false;
-
-void calibrateQTR() {
-    Serial.println(F("Calibrando QTR... mueve el robot sobre línea y fondo"));
-    digitalWrite(CAL_LED, HIGH); // Encender LED de calibración
-    for (int i = 0; i < 100; i++) {
-        for (uint8_t j = 0; j < 6; j++) {
-            uint16_t val = analogRead(QTR_PINS[j]);
-            if (val < qtrMin[j]) qtrMin[j] = val;
-            if (val > qtrMax[j]) qtrMax[j] = val;
+struct Servo {
+    bool active = 0;
+    float tgtDist = 0, tgtVel = 0, startDist = 0;
+    void start(float d, float v) {
+        tgtDist = d;
+        tgtVel = v;
+        active = 1;
+        startDist = (leftDist + rightDist) / 2;
+    }
+    void update() {
+        if (!active) return;
+        float done = (leftDist + rightDist) / 2 - startDist;
+        float err = tgtDist - done;
+        if (err <= 0) {
+            active = 0;
+            left.setRPM(0);
+            right.setRPM(0);
+            beep(1);
+            return;
         }
-        delay(100);
+        float vel = constrain(err * 2, 0, tgtVel);
+        left.setRPM(vel);
+        right.setRPM(vel);
     }
-    digitalWrite(CAL_LED, LOW); // Apagar LED de calibración
-    Serial.println(F("Calibración lista"));
-    qtrCalibrated = true;
-}
+} servo;
+// ---------- BUFFER SERIE ----------
+#define SER_BUF 128
+char serBuf[SER_BUF];
+uint8_t serHead = 0;
 
-uint16_t qtr[6];
 
-// ---------- FUNCIONES ----------
-void motorWrite(int pwmL, int pwmR) {
-  pwmL = constrain(pwmL, -255, 255);
-  pwmR = constrain(pwmR, -255, 255);
 
-  if (pwmL >= 0) {
-    analogWrite(MOT_L1, pwmL);
-    analogWrite(MOT_L2, 0);
-  } else {
-    analogWrite(MOT_L1, 0);
-    analogWrite(MOT_L2, -pwmL);
-  }
+// ---------- EEPROM ----------
+template<typename T> void eepWrite(int addr, T &obj) { EEPROM.put(addr, obj); }
+template<typename T> void eepRead (int addr, T &obj) { EEPROM.get(addr, obj); }
 
-  if (pwmR >= 0) {
-    analogWrite(MOT_R1, pwmR);
-    analogWrite(MOT_R2, 0);
-  } else {
-    analogWrite(MOT_R1, 0);
-    analogWrite(MOT_R2, -pwmR);
-  }
-}
+// ---------- MOTOR UPDATE ----------
+void Motor::update(float dt) {
+    /* ---------- 1. Lectura y filtro de velocidad ---------- */
+    int32_t delta = ticks;
+    ticks = 0;
+    float rpm = (delta * 60.0f) / (CPR * dt) * diamCorr;
+    filtRPM = ALPHA * rpm + (1 - ALPHA) * filtRPM;
 
-void readQTR() {
-  digitalWrite(QTR_LED, HIGH);
-  delayMicroseconds(200);
-  for (int i = 0; i < 6; i++) {
-    uint16_t raw = analogRead(QTR_PINS[i]);
-    if (qtrCalibrated) {
-      qtr[i] = map(raw, qtrMin[i], qtrMax[i], 0, 1000);
+    /* ---------- 2. PID normal ---------- */
+    float err = targetRPM - filtRPM;
+    float dedt = (err - prevErr) / dt;
+    prevErr = err;
+
+    float out = kp * err + ki * errI + kd * dedt;
+    pwm = (int16_t)constrain(out, -255, 255);
+
+    /* ---------- 3. Anti-windup (des-satura integrador) ---------- */
+    float excess = out - pwm;               // cuanto se recortó
+    errI -= excess * ki * dt * 0.5f;        // retroalimenta la integral
+    errI = constrain(errI, -iwLimit, iwLimit); // limita integrador
+
+    /* ---------- 4. Acumular distancia ---------- */
+    dist += filtRPM * dt * CM_PER_REV / 60.0f;  // cm
+
+    /* ---------- 5. Aplicar PWM ---------- */
+    if (pwm >= 0) {
+        digitalWrite(in2, LOW);
+        analogWrite(in1, pwm);
     } else {
-      qtr[i] = raw;
+        digitalWrite(in1, LOW);
+        analogWrite(in2, -pwm);
     }
-  }
-  digitalWrite(QTR_LED, LOW);
+}
+// ---------- QTR ----------
+/* ----------
+ *  Lee los 6 sensores reflectivos QTR-1A (o compatibles).
+ *  Secuencia:
+ *    1. Enciende el LED infrarrojo de iluminación.
+ *    2. Espera 200 µs para que la luz y el ADC se estabilicen.
+ *    3. Lee cada canal analógico (0-1023) y lo convierte a
+ *       rango 0-1000 si ya se ha calibrado.
+ *    4. Apaga el LED para ahorrar energía y reducir ruido.
+ *
+ *  Salida: array global qtr[6]
+ *    0   = superficie muy reflectiva (blanco)
+ *    1000= superficie poco reflectiva (negro)
+ */
+void readQTR()
+{
+    /* 1. Encendemos el LED que ilumina el suelo con IR */
+    digitalWrite(QTR_LED, HIGH);
+
+    /* 2. Pausa corta para que la luz se estabilice y los
+     *    fototransistores respondan (≈ 200 µs es suficiente) */
+    delayMicroseconds(200);
+
+    /* 3. Leemos los 6 canales analógicos ---------------------- */
+    for (uint8_t i = 0; i < 6; i++)
+    {
+        /* Lectura cruda del ADC (0-1023) */
+        uint16_t v = analogRead(QTR_PINS[i]);
+
+        /* Si ya calibramos, escalamos el valor al rango 0-1000
+         * qtrMin[i] = mínimo visto (más negro)
+         * qtrMax[i] = máximo visto (más blanco)
+         * constrain evita valores fuera de rango por si acaso */
+        if (qtrCalibrated)
+            v = map(constrain(v, qtrMin[i], qtrMax[i]),
+                    qtrMin[i], qtrMax[i], 0, 1000);
+
+        /* Guardamos el resultado en el array global */
+        qtr[i] = v;
+    }
+
+    /* 4. Apagamos el LED para ahorrar energía y reducir
+     *    interferencias con otros sensores cercanos */
+    digitalWrite(QTR_LED, LOW);
 }
 
-float computePID(float pos) {
-  static float prev = 0, integ = 0;
-  float err = setpoint - pos;
-  integ += err;
-  float deriv = err - prev;
-  prev = err;
-  return kp * err + ki * integ + kd * deriv;
+/* ----------------
+ *  Convierte los 6 valores de los sensores QTR (0-1000) en una ÚNICA coordenada
+ *  que indica dónde está el CENTRO de la línea negra respecto al centro físico
+ *  del robot.
+ *
+ *  Valor devuelto:
+ *    -2500  -> línea muy a la IZQUIERDA (sensor 0)
+ *       0   -> línea en el CENTRO (entre sensores 2 y 3)
+ *    +2500  -> línea muy a la DERECHA  (sensor 5)
+ *
+ *  Método: centro de masa ponderada (más negro = más peso).
+ */
+float computeLinePos()
+{
+    uint32_t sum = 0;   // Acumula (peso × posición) de cada sensor
+    uint32_t wt  = 0;   // Acumula el peso total (para normalizar después)
+
+    /* Recorremos los 6 sensores ------------------------------------------- */
+    for (uint8_t i = 0; i < 6; i++)
+    {
+        /* Cuanto más NEGRO vea el sensor, mayor será su peso.
+         * qtr[i] = 0   (blanco)  -> w = 1000
+         * qtr[i] = 1000(negro)   -> w = 0
+         * Invertimos así:  w = 1000 - qtr[i]  */
+        uint16_t w = 1000 - qtr[i];
+
+        wt += w;                 // Suma de pesos (denominador)
+
+        /* i es el índice del sensor (0-5).
+         * Lo escalamos a milésimas:  i*1000 -> 0, 1000, 2000, ..., 5000
+         * Con esto el centro físico estaría en 2500. */
+        sum += w * i * 1000;     // Suma ponderada de posiciones
+    }
+
+    /* Evitamos división por cero (todos los sensores en blanco) */
+    if (wt == 0) return 0.0f;
+
+    /* Centro de masa en milésimas (0-5000) */
+    float centro = (float)sum / wt;
+
+    /* Restamos 2500 para que el centro del robot sea 0 */
+    return centro - 2500.0f;
 }
 
-// ---------- LECTURA DE BATERÍA ----------
-float readBatteryVoltage() {
-  uint16_t raw = analogRead(BAT_PIN);
-  float vDiv = raw * (BAT_VREF / 1023.0);
-  return vDiv * BAT_RATIO;
+// ---------- KALMAN ----------
+/* kalmanLine()
+ * ------------
+ *  Filtro de Kalman de 1ª orden: suaviza la señal de
+ *  computeLinePos() sin reducir el ancho de banda de forma
+ *  drástica. Ideal para quitar ruido de baja amplitud
+ *  producido por imperfecciones del suelo o reflejos.
+ *
+ *  Variables:
+ *    x  : estimación actual (la devuelve)
+ *    P  : incertidumbre de la estimación (covarianza)
+ *    z  : medida (computeLinePos)
+ *    R  : ruido del sensor (30)  – ajustable
+ *    Q  : ruido del modelo (2)   – ajustable
+ *
+ *  Paso a paso:
+ *    1. Predicción: x se mantiene, P crece Q
+ *    2. Actualización: se corrige con la medida z
+ *  Retorno: posición filtrada (misma escala que z)
+ */
+float kalmanLine()
+{
+    /* Estado y covarianza: conservados entre llamadas */
+    static float x = 0.0f;   // posición estimada (filtrada)
+    static float P = 1.0f;   // incertidumbre
+
+    /* 1. Lectura de la medida (ruidoso) */
+    float z = computeLinePos();
+
+    /* 2. Ganancia de Kalman K = P / (P + R) */
+    float R = 30.0f;         // varianza del sensor (confianza en z)
+    float Q = 2.0f;          // varianza del modelo (confianza en x)
+    float y = z - x;         // innovación (error de medida)
+    float S = P + R;         // covarianza del error
+    float K = P / S;         // ganancia (0-1)
+
+    /* 3. Actualización del estado */
+    x = x + K * y;           // corrección proporcional a la innovación
+
+    /* 4. Actualización de la covarianza */
+    P = (1.0f - K) * P + Q;  // reduce incertidumbre pero añade Q
+
+    /* 5. Devolvemos la estimación filtrada */
+    return x;
 }
 
+// ---------- LINE PID ----------
+/* linePID(float pos)
+ * ------------------
+ *  PID discreto para el seguimiento de línea.
+ *  Entrada: posición de la línea (devuelta por kalmanLine() u otro filtro).
+ *  Salida: corrección en RPM que se sumará/restará a los motores.
+ *
+ *  setpointLine = 0  (línea centrada); se puede cambiar para curvas
+ *  LOOP_HZ = 100  =>  dt = 0.01 s
+ *
+ *  Constantes (ajustables por EEPROM o serial):
+ *    kpLine  -> fuerza proporcional (1.2)
+ *    kiLine  -> fuerza integral     (0.0)
+ *    kdLine  -> fuerza derivativa   (0.05)
+ *
+ *  Variables internas (conservadas):
+ *    prev  -> error anterior (para derivada)
+ *    integ -> suma acumulada de errores (integral)
+ */
+float linePID(float pos)
+{
+    static float prev = 0, integ = 0;
+    /* 1. Error actual: diferencia entre punto deseado y medido */
+    float err = setpointLine - pos;          // setpointLine suele ser 0
+
+    /* 2. Parte integral: acumula el error (se saturará externamente si hace falta) */
+    integ += err;                            // dt está implícito en kiLine
+
+    /* 3. Parte derivada: velocidad de cambio del error
+     *    Como dt = 1/LOOP_HZ, multiplicamos directamente por LOOP_HZ */
+    float deriv = (err - prev) * LOOP_HZ;   // (error_now - error_prev) / dt
+    prev = err;                             // guardamos para la próxima vuelta
+
+    /* 4. Salida PID: corrección en RPM (se resta/suma a cada motor) */
+    return kpLine * err + kiLine * integ + kdLine * deriv;
+}
+
+float readBattery();
+
+// ---------- BATERÍA ----------
 void updateBattery() {
-  if (millis() - lastBatRead < 1000) return; // Cada 1 segundo
-  lastBatRead = millis();
-  
-  batVoltage = readBatteryVoltage();
-  batPercent = constrain(map(batVoltage * 100, BAT_MIN_V * 100, BAT_MAX_V * 100, 0, 100), 0, 100);
+    if (millis() - lastBatRead < 1000) return; // Cada 1 segundo
+    lastBatRead = millis();
+    batVoltage = readBattery();
+    batPercent = constrain(map(batVoltage * 100, BAT_MIN_V * 100, BAT_MAX_V * 100, 0, 100), 0, 100);
 }
 
-// ---------- MODO SERVO DISTANCIA ----------
-void startServoDist(float distance, float angle = 0) {
-    servo.targetDistance = distance;
-    servo.targetAngle = angle;
-    servo.startEnc = encL;
-    servo.active = true;
-    mode = SERVO;
-}
+// ---------- TELEMETRY ----------
+#pragma pack(push,1)
+struct Tele {
+    uint32_t time;
+    int16_t  rpmL, rpmR;   // ×10
+    uint16_t pos;          // ×100 (cm con 2 decimales, offset +25)
+    uint16_t bat;          // ×1000 (mV)
+    uint8_t  mode;
+    uint8_t  crc;
+};
+#pragma pack(pop)
 
-void handleServoDist() {
-    if (!servo.active) return;
-    float done = (encL - servo.startEnc) * CM_PER_TICK;
-
-    // Aplicar corrección angular si hay ángulo objetivo
-    float angularCorrection = servo.targetAngle * CM_PER_DEG / 100.0f; // Corrección por cm
-    int leftSpeed = (baseSpeed - angularCorrection) * 255;
-    int rightSpeed = (baseSpeed + angularCorrection) * 255;
-    motorWrite(leftSpeed, rightSpeed);
-
-    if (done >= servo.targetDistance) {
-      servo.active = false;
-      motorWrite(0, 0);
-      JsonDocument statusDoc;
-      statusDoc["type"] = "status";
-      statusDoc["payload"]["status"] = "servo_completed";
-      serializeJson(statusDoc, Serial);
-      Serial.println();
-      // Queda en modo SERVO esperando siguiente instrucción
-    }
-}
-
-
-// ---------- MODO CONTROL REMOTO ----------
-void handleRemoteControl() {
-   // Si hay comandos de dirección y aceleración
-   if (remote.acceleration != 0 && remote.direction >= 0) {
-     // Convertir dirección (grados) a componentes izquierda/derecha
-     float rad = remote.direction * PI / 180.0f;
-     float baseSpeed = remote.acceleration * 255;
-     int l = baseSpeed * (1.0f - sin(rad) * 0.5f);
-     int r = baseSpeed * (1.0f + sin(rad) * 0.5f);
-     motorWrite(l, r);
-   }
-   // Si hay comandos de autopilot (throttle/turn)
-   else if (remote.throttle != 0 || remote.turn != 0) {
-     int l = (remote.throttle - remote.turn) * 255;
-     int r = (remote.throttle + remote.turn) * 255;
-     motorWrite(l, r);
-   }
-   // Si hay comandos manuales directos (left/right)
-   else if (remote.left != 0 || remote.right != 0) {
-     motorWrite(remote.left * 255, remote.right * 255);
-   }
-   else {
-     motorWrite(0, 0);
-   }
-}
-
-// ---------- TELEMETRÍA COMPLETA ----------
 void sendTele() {
-   static uint32_t lastTime = 0;
-   uint32_t now = millis();
-   float dt = (now - lastTime) / 1000.0f;
-   if (dt == 0) return;
-   lastTime = now;
+    static uint32_t lastTime = 0;
+    uint32_t now = millis();
+    float dt = (now - lastTime) / 1000.0f;
+    if (dt == 0) return;
+    lastTime = now;
 
-   // Actualizar batería
-   updateBattery();
+    // Actualizar batería
+    updateBattery();
 
-   // RPM
-   rpmL = (encL * 60.0f) / (ENCODER_CPR * dt);
-   rpmR = (encR * 60.0f) / (ENCODER_CPR * dt);
+    // RPM
+    float rpmL = (left.ticks * 60.0f) / (CPR * dt);
+    float rpmR = (right.ticks * 60.0f) / (CPR * dt);
 
-   // Velocidad lineal (cm/s)
-   speedL = (encL * CM_PER_TICK) / dt;
-   speedR = (encR * CM_PER_TICK) / dt;
+    // Velocidad lineal (cm/s)
+    float speedL = (left.ticks * CM_PER_TICK) / dt;
+    float speedR = (right.ticks * CM_PER_TICK) / dt;
 
-   // Aceleración
-   accelL = (speedL - lastSpeedL) / dt;
-   accelR = (speedR - lastSpeedR) / dt;
-   lastSpeedL = speedL;
-   lastSpeedR = speedR;
+    // Distancia total e individual
+    leftDist += speedL * dt;
+    rightDist += speedR * dt;
+    float totalDist = (leftDist + rightDist) / 2.0f;
 
-   // Distancia total e individual
-   leftDist += speedL * dt;
-   rightDist += speedR * dt;
-   totalDist = (leftDist + rightDist) / 2.0f;
+    // Enviar JSON
+    JsonDocument doc;
+    doc["type"] = "telemetry";
+    JsonObject payload = doc["payload"].to<JsonObject>();
+    payload["timestamp"] = millis();
+    payload["mode"] = mode;
+    payload["velocity"] = (speedL + speedR) / 2.0f;
+    payload["acceleration"] = 0.0f; // Placeholder
+    payload["distance"] = totalDist;
+    payload["battery"] = batVoltage;
 
-   // Enviar JSON
-   JsonDocument doc;
-   doc["type"] = "telemetry";
-   JsonObject payload = doc["payload"].to<JsonObject>();
-   payload["timestamp"] = millis();
-   payload["mode"] = mode;
-   payload["velocity"] = (speedL + speedR) / 2.0f;
-   payload["acceleration"] = (accelL + accelR) / 2.0f;
-   payload["distance"] = totalDist;
-   payload["battery"] = batVoltage;
+    JsonObject leftObj = payload["left"].to<JsonObject>();
+    leftObj["vel"] = speedL;
+    leftObj["acc"] = 0.0f;
+    leftObj["rpm"] = rpmL;
+    leftObj["encoder"] = left.ticks;
+    leftObj["distance"] = leftDist;
+    leftObj["pwm"] = left.pwm;
 
-   JsonObject leftObj = payload["left"].to<JsonObject>();
-   leftObj["vel"] = speedL;
-   leftObj["acc"] = accelL;
-   leftObj["rpm"] = rpmL;
-   leftObj["encoder"] = encL;
-   leftObj["distance"] = leftDist;
+    JsonObject rightObj = payload["right"].to<JsonObject>();
+    rightObj["vel"] = speedR;
+    rightObj["acc"] = 0.0f;
+    rightObj["rpm"] = rpmR;
+    rightObj["encoder"] = right.ticks;
+    rightObj["distance"] = rightDist;
+    rightObj["pwm"] = right.pwm;
 
-   JsonObject rightObj = payload["right"].to<JsonObject>();
-   rightObj["vel"] = speedR;
-   rightObj["acc"] = accelR;
-   rightObj["rpm"] = rpmR;
-   rightObj["encoder"] = encR;
-   rightObj["distance"] = rightDist;
+    JsonArray qtrArray = payload["qtr"].to<JsonArray>();
+    for (int i = 0; i < 6; i++) qtrArray.add(qtr[i]);
 
-   JsonArray qtrArray = payload["qtr"].to<JsonArray>();
-   for (int i = 0; i < 6; i++) qtrArray.add(qtr[i]);
+    JsonArray pidArray = payload["pid"].to<JsonArray>();
+    pidArray.add(kpLine);
+    pidArray.add(kiLine);
+    pidArray.add(kdLine);
 
-   JsonArray pidArray = payload["pid"].to<JsonArray>();
-   pidArray.add(kp);
-   pidArray.add(ki);
-   pidArray.add(kd);
+    payload["set_point"] = setpointLine;
+    payload["base_speed"] = baseSpeed;
+    payload["error"] = lineErr;
+    payload["correction"] = lineCorr;
 
-   payload["set_point"] = setpoint;
-   payload["base_speed"] = baseSpeed;
-   payload["error"] = lastError;
-   payload["correction"] = lastCorrection;
+    serializeJson(doc, Serial);
+    Serial.println();
 
-   serializeJson(doc, Serial);
-   Serial.println();
+    // Reset ticks for next measurement
+    left.ticks = 0;
+    right.ticks = 0;
 }
 
-// ---------- JSON HANDLER ----------
-void handleCommand (String &cmd) {
-  // Process the command
 
+float readBattery() {
+    uint16_t raw = analogRead(BAT_PIN);
+    float vDiv = raw * (BAT_VREF / 1023.0f);
+    return vDiv * BAT_RATIO;
+}
 
-  JsonDocument cmdDoc;
-  cmdDoc["type"] = "cmd";
-  cmdDoc["payload"]["buffer"] = cmd;
-  serializeJson(cmdDoc, Serial);
-  Serial.println();
-  JsonDocument doc;
-  if (deserializeJson(doc, cmd)) return;
+// ---------- FUNCTIONS DECLARATIONS ----------
+void calibrateQTR();
+void motorWrite(int, int);
+void handleRemote();
 
-  if (doc["mode"].is<int>()) {
-    mode = (Mode)doc["mode"].as<int>();
-    if (mode == LINE_FOLLOW) calibrateQTR();
-  }
-
-  if (doc["pid"].is<JsonArray>()) {
-    JsonArray arr = doc["pid"];
-    kp = arr[0];
-    ki = arr[1];
-    kd = arr[2];
-  }
-
-  if (doc["speed"]["base"].is<float>()) baseSpeed = doc["speed"]["base"];
-
-  if (doc["eeprom"].is<int>()) {
-    EEPROM.put(0, kp);
-    EEPROM.put(10, ki);
-    EEPROM.put(20, kd);
-    EEPROM.put(30, baseSpeed);
-    JsonDocument statusDoc;
-    statusDoc["type"] = "status";
-    statusDoc["payload"]["status"] = "eeprom_saved";
-    serializeJson(statusDoc, Serial);
-    Serial.println();
-  }
-
-  if (doc["telemetry"].is<int>()) {
-    if (telemetryEnabled) sendTele();
-  }
-
-  if (doc["telemetry_enable"].is<bool>()) {
-    telemetryEnabled = doc["telemetry_enable"];
-    JsonDocument statusDoc;
-    statusDoc["type"] = "status";
-    statusDoc["payload"]["status"] = telemetryEnabled ? "telemetry_enabled" : "telemetry_disabled";
-    serializeJson(statusDoc, Serial);
-    Serial.println();
-  }
-
-  if (doc["servo"].is<JsonObject>()) {
-    JsonObject servoObj = doc["servo"];
-    if (servoObj["distance"].is<float>()) {
-      float distance = servoObj["distance"];
-      float angle = servoObj["angle"].is<float>() ? servoObj["angle"] : 0;
-      startServoDist(distance, angle);
+// ---------- AUTO-TUNE ----------
+void tuneLine() {
+    beep(2);
+    kpLine = 0; kiLine = 0; kdLine = 0;
+    float Ku = 0, Pu = 0.8f;
+    float steer = 0;
+    for (Ku = 0.1f; Ku < 5; Ku += 0.1f) {
+        kpLine = Ku;
+        for (uint16_t t = 0; t < 100; t++) {
+            readQTR();
+            steer = linePID(kalmanLine());
+            left.setRPM(60 - steer);
+            right.setRPM(60 + steer);
+            left.update(DT);
+            right.update(DT);
+            delay(10);
+        }
+        if (abs(steer) > 50) break;
     }
-  }
+    kpLine = 0.6f * Ku;
+    kiLine = 2 * kpLine / Pu;
+    kdLine = kpLine * Pu / 8;
+    eepWrite(EEPROM_ADDR_BASE + 20, kpLine);
+    eepWrite(EEPROM_ADDR_BASE + 24, kiLine);
+    eepWrite(EEPROM_ADDR_BASE + 28, kdLine);
+    beep(3);
+}
 
-  // Handle remote control commands (both nested and top-level)
-  bool remoteUpdated = false;
-  if (doc["rc"].is<JsonObject>()) {
-    JsonObject rc = doc["rc"];
-    // Reset all remote control values first
-    remote.throttle = 0;
-    remote.turn = 0;
-    remote.left = 0;
-    remote.right = 0;
-    remote.direction = -1; // -1 indica no establecido
-    remote.acceleration = 0;
-
-    // Set direction and acceleration if provided (prioridad alta)
-    if (rc["direction"].is<float>()) remote.direction = rc["direction"];
-    if (rc["acceleration"].is<float>()) remote.acceleration = rc["acceleration"];
-
-    // Set autopilot values if provided
-    if (rc["throttle"].is<float>()) remote.throttle = rc["throttle"];
-    if (rc["turn"].is<float>()) remote.turn = rc["turn"];
-
-    // Set manual values if provided (these override autopilot)
-    if (rc["left"].is<float>()) remote.left = rc["left"];
-    if (rc["right"].is<float>()) remote.right = rc["right"];
-
-    remoteUpdated = true;
-  } else if (doc["throttle"].is<float>() || doc["turn"].is<float>() || doc["direction"].is<float>() || doc["acceleration"].is<float>() || doc["left"].is<float>() || doc["right"].is<float>()) {
-    // Handle top-level remote control keys
-    remote.throttle = 0;
-    remote.turn = 0;
-    remote.left = 0;
-    remote.right = 0;
-    remote.direction = -1;
-    remote.acceleration = 0;
-
-    if (doc["direction"].is<float>()) remote.direction = doc["direction"];
-    if (doc["acceleration"].is<float>()) remote.acceleration = doc["acceleration"];
-    if (doc["throttle"].is<float>()) remote.throttle = doc["throttle"];
-    if (doc["turn"].is<float>()) remote.turn = doc["turn"];
-    if (doc["left"].is<float>()) remote.left = doc["left"];
-    if (doc["right"].is<float>()) remote.right = doc["right"];
-
-    remoteUpdated = true;
-  }
-
-  if (remoteUpdated) {
-    mode = REMOTE_CONTROL;
-  }
-
-  if (doc["calibrate_qtr"].is<int>()) {
-    calibrateQTR();
-    JsonDocument statusDoc;
-    statusDoc["type"] = "status";
-    statusDoc["payload"]["status"] = "qtr_calibrated";
-    serializeJson(statusDoc, Serial);
+// ---------- JSON PARSER ----------
+void execCmd(const char *json) {
+    // Send received command as telemetry
+    JsonDocument cmdDoc;
+    cmdDoc["type"] = "cmd";
+    cmdDoc["payload"]["buffer"] = json;
+    serializeJson(cmdDoc, Serial);
     Serial.println();
-  }
+
+    JsonDocument doc;
+    if (deserializeJson(doc, json)) return;
+
+    if (doc["mode"].is<int>()) {
+        mode = (Mode)doc["mode"].as<int>();
+        if (mode == LINE_FOLLOW) calibrateQTR();
+    }
+
+    if (doc["pid"].is<JsonArray>()) {
+        JsonArray arr = doc["pid"];
+        kpLine = arr[0];
+        kiLine = arr[1];
+        kdLine = arr[2];
+    }
+
+    if (doc["base_speed"].is<float>()) baseSpeed = doc["base_speed"];
+  
+    if (doc["eeprom"].is<int>()) {
+      EEPROM.put(EEPROM_ADDR_BASE + 20, kpLine);
+      EEPROM.put(EEPROM_ADDR_BASE + 24, kiLine);
+      EEPROM.put(EEPROM_ADDR_BASE + 28, kdLine);
+      EEPROM.put(EEPROM_ADDR_BASE + 12, baseSpeed);
+    }
+
+    if (doc["tele"].is<int>()) {
+      int teleCmd = doc["tele"];
+      if (teleCmd == 2) {  // get once
+        sendTele();
+      } else if (teleCmd == 1) {  // on
+        teleEnabled = true;
+      } else if (teleCmd == 0) {  // off
+        teleEnabled = false;
+      }
+    }
+
+    if (doc["qtr"].is<int>()) {
+      calibrateQTR();
+    }
+
+    if (doc["servo"].is<JsonObject>()) {
+      JsonObject servoObj = doc["servo"];
+      if (servoObj["distance"].is<float>()) {
+        float distance = servoObj["distance"];
+        float angle = servoObj["angle"].is<float>() ? servoObj["angle"] : 0;
+        servo.start(distance, angle);
+        mode = SERVO;
+      }
+    }
+
+    if (doc["rc"].is<JsonObject>()) {
+      JsonObject rc = doc["rc"];
+      // Reset only throttle and turn
+      remote.throttle = 0;
+      remote.turn = 0;
+
+      if (rc["throttle"].is<float>()) remote.throttle = rc["throttle"];
+      if (rc["turn"].is<float>()) remote.turn = rc["turn"];
+      mode = REMOTE;
+    }
 }
 
-// ---------- INTERRUPCIONES ----------
-void isrL() {
-  encL += (digitalRead(ENC_LB) ? 1 : -1);
+// ---------- SERIE ----------
+void serialEvent() {
+    while (Serial.available()) {
+        char c = (char)Serial.read();
+        if (c == '\n') {
+            serBuf[serHead] = 0;
+            execCmd(serBuf);
+            serHead = 0;
+        } else {
+            serBuf[serHead++] = c;
+            if (serHead >= SER_BUF - 1) serHead = 0;
+        }
+    }
 }
-void isrR() {
-  encR += (digitalRead(ENC_RB) ? 1 : -1);
-}
+
 
 // ---------- SETUP ----------
 void setup() {
-   Serial.begin(9600); // Hardware serial para Bluetooth (pines 0 y 1)
-   pinMode(QTR_LED, OUTPUT);
-   pinMode(CAL_LED, OUTPUT);
-   analogReference(INTERNAL); // Referencia 1,1 V para batería
+    Serial.begin(9600);
+    analogReference(INTERNAL);
+    pinMode(QTR_LED, OUTPUT);
+    pinMode(CAL_LED, OUTPUT);
+    pinMode(BUZZER, OUTPUT);
+    for (uint8_t i = 0; i < 6; i++) pinMode(QTR_PINS[i], INPUT);
+    attachInterrupt(digitalPinToInterrupt(ENC_LA), []{left.isr();}, RISING);
+    attachInterrupt(digitalPinToInterrupt(ENC_RA), []{right.isr();}, RISING);
 
-  for (int i = 0; i < 6; i++) pinMode(QTR_PINS[i], INPUT);
-  pinMode(BAT_PIN, INPUT);
+    // Cargar valores desde EEPROM
+    eepRead(EEPROM_ADDR_BASE, left.kp);
+    eepRead(EEPROM_ADDR_BASE + 4, left.ki);
+    eepRead(EEPROM_ADDR_BASE + 8, left.kd);
+    eepRead(EEPROM_ADDR_BASE + 12, baseSpeed);
+    right.kp = left.kp;
+    right.ki = left.ki;
+    right.kd = left.kd;
+    eepRead(EEPROM_ADDR_BASE + 20, kpLine);
+    eepRead(EEPROM_ADDR_BASE + 24, kiLine);
+    eepRead(EEPROM_ADDR_BASE + 28, kdLine);
+    eepRead(EEPROM_ADDR_DIAM, right.diamCorr);
 
-  attachInterrupt(digitalPinToInterrupt(ENC_LA), isrL, RISING);
-  attachInterrupt(digitalPinToInterrupt(ENC_RA), isrR, RISING);
+    // Validar valores leídos de EEPROM
+    if (left.kp <= 0 || isnan(left.kp)) left.kp = 0.9f;
+    if (left.ki < 0 || isnan(left.ki)) left.ki = 2.2f;
+    if (left.kd < 0 || isnan(left.kd)) left.kd = 0.0f;
+    if (baseSpeed <= 0 || baseSpeed > 1 || isnan(baseSpeed)) baseSpeed = 0.8f;
+    if (kpLine < 0 || isnan(kpLine)) kpLine = 1.2f;
+    if (kiLine < 0 || isnan(kiLine)) kiLine = 0.0f;
+    if (kdLine < 0 || isnan(kdLine)) kdLine = 0.05f;
+    right.kp = left.kp;
+    right.ki = left.ki;
+    right.kd = left.kd;
 
-  // Cargar configuración desde EEPROM
-
-    float test;
-    EEPROM.get(0, test);
-    if (isnan(test) || test > 100 || test < -100) { // basura
-        kp = 1.2f; ki = 0.0f; kd = 0.05f; baseSpeed = 0.8f;
-        EEPROM.put(0, kp); EEPROM.put(10, ki);
-        EEPROM.put(20, kd); EEPROM.put(30, baseSpeed);
-    } else {
-        EEPROM.get(0, kp); EEPROM.get(10, ki);
-        EEPROM.get(20, kd); EEPROM.get(30, baseSpeed);
-    }
-    if (mode == LINE_FOLLOW) calibrateQTR();
-
-
-  JsonDocument statusDoc;
-  statusDoc["type"] = "status";
-  statusDoc["payload"]["status"] = "system_started";
-  serializeJson(statusDoc, Serial);
-  Serial.println();
+    Timer1.initialize(10000);
+    Timer1.attachInterrupt([]{ left.update(DT); right.update(DT); });
+    beep(1);
 }
 
 // ---------- LOOP ----------
 void loop() {
-  readQTR();
-  if (Serial.available()) {
-    static String cmdBuffer = "";
-    while (Serial.available()) {
-      char c = Serial.read();
-      if (c == '\n') {
-        // Remove \r if present
-        if (cmdBuffer.endsWith("\r")) {
-          cmdBuffer = cmdBuffer.substring(0, cmdBuffer.length() - 1);
+    static uint32_t t0 = 0;
+    if (micros() - t0 >= 10000) {
+        t0 = micros();
+        readQTR();
+        switch (mode) {
+            case LINE_FOLLOW: {
+                if (!qtrCalibrated) { motorWrite(0, 0); break; }
+                float currentPos = kalmanLine();
+                float steer = linePID(currentPos);
+                lineErr = setpointLine - currentPos;
+                lineCorr = steer;
+                float base = baseSpeed * 60;
+                left.setRPM(base - steer);
+                right.setRPM(base + steer);
+                break;
+            }
+            case REMOTE: handleRemote(); break;
+            case SERVO: servo.update(); break;
         }
-        if (cmdBuffer.length() == 0) continue;
-        handleCommand(cmdBuffer);
-        cmdBuffer = "";
-      } else {
-        cmdBuffer += c;
-      }
+        if (teleEnabled && millis() - lastTele >= 10) { lastTele = millis(); sendTele(); }
     }
-  }
-  if(telemetryEnabled && millis() - lastTeleTime >= 1000) {
-    lastTeleTime = millis();
-    sendTele();
-  }
+}
 
-  switch (mode) {
-    case LINE_FOLLOW: {
-        if (!qtrCalibrated) {
-          motorWrite(0, 0);
-          break;
+// ---------- AUX ----------
+void motorWrite(int l, int r) {
+    left.setRPM(l / 2);
+    right.setRPM(r / 2);
+}
+
+void handleRemote() {
+    if (remote.throttle != 0 || remote.turn != 0) {
+        float base = remote.throttle * baseSpeed * 60.0f;
+        float steer = remote.turn * baseSpeed * 60.0f;
+        left.setRPM(base - steer);
+        right.setRPM(base + steer);
+    } else {
+        // Detener motores si no hay comandos
+        left.setRPM(0);
+        right.setRPM(0);
+    }
+}
+
+void calibrateQTR() {
+    led(HIGH);
+    for (uint16_t i = 0; i < 400; i++) {
+        readQTR();
+        for (uint8_t j = 0; j < 6; j++) {
+            if (qtr[j] < qtrMin[j]) qtrMin[j] = qtr[j];
+            if (qtr[j] > qtrMax[j]) qtrMax[j] = qtr[j];
         }
-        uint32_t sum = 0, wt = 0;
-        for (int i = 0; i < 6; i++) {
-          uint32_t v = qtr[i];
-          uint32_t weight = 1000 - v; // Higher weight on black surfaces (low v)
-          wt += weight;
-          sum += weight * (i * 1000);
-        }
-        float pos = (wt > 0) ? (float)sum / wt - 2500.0f : -1;
-        if (wt > 0) {
-          float corr = computePID(pos);
-          lastPosition = pos;
-          lastError = setpoint - pos;
-          lastCorrection = corr;
-          int l = (baseSpeed - corr) * 255;
-          int r = (baseSpeed + corr) * 255;
-          motorWrite(l, r);
-        } else {
-          motorWrite(0, 0);
-        }
-        break;
-      }
-    case REMOTE_CONTROL:
-      handleRemoteControl();
-      break;
-    case SERVO:
-      handleServoDist();
-      break;
-  }
+        delay(5);
+    }
+    qtrCalibrated = true;
+    led(LOW);
 }
