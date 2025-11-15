@@ -10,8 +10,8 @@
 #include <PinChangeInterrupt.h>
 
 // ---------- PINS ORIGINALES ----------
-const uint8_t MOT_L1 = 6, MOT_L2 = 5;
-const uint8_t MOT_R1 = 10, MOT_R2 = 9;
+const uint8_t MOT_L1 = 5, MOT_L2 = 6;
+const uint8_t MOT_R1 = 9, MOT_R2 = 10;
 const uint8_t QTR_PINS[6] = {A0, A1, A2, A3, A4, A5};
 const uint8_t QTR_LED = 12, CAL_LED = 13;
 const uint8_t ENC_LA = 2, ENC_LB = 3, ENC_RA = 7, ENC_RB = 8;
@@ -19,13 +19,20 @@ const uint8_t BAT_PIN = A6;
 const uint8_t BUZZER = 4;
 
 // ---------- CONSTANTS ----------
-constexpr int32_t  CPR        = 358;
+const int32_t MOTOR_PPR  = 358;
+const float   REDUCTION  = 10.0;
+const int32_t WHEEL_PPR = MOTOR_PPR * REDUCTION;
+const float   PERIMETER  = PI * 4.5f;            // 14.14 cm
+const float    PULSES_PER_CM = WHEEL_PPR / PERIMETER;  // 253.2
+constexpr int32_t  CPR        = WHEEL_PPR;
 constexpr float    CM_PER_REV = PI * 4.5f;
 constexpr float    CM_PER_TICK = CM_PER_REV / CPR;
-constexpr float    LOOP_HZ    = 100.0f;
-constexpr float    DT         = 1.0f / LOOP_HZ;
+constexpr float LOOP_HZ    = 100.0f;
+constexpr float DT         = 1.0f / LOOP_HZ;
 constexpr uint16_t EEPROM_ADDR_BASE  = 0;
 constexpr uint16_t EEPROM_ADDR_DIAM  = 32;
+constexpr uint16_t EEPROM_ADDR_QTR_MIN = 36;
+constexpr uint16_t EEPROM_ADDR_QTR_MAX = 48;
 constexpr uint16_t LOG_ENTRIES       = 1200;   // 1200 * 8 B = 9.6 kB EEPROM
 // ---------- BATERÍA ----------
 const float BAT_R1 = 100000.0f;     // 100 kΩ
@@ -37,12 +44,14 @@ const float BAT_MAX_V = 8.4f;       // Voltaje máximo
 
 // ---------- ENUMS ----------
 enum Mode : uint8_t { LINE_FOLLOW, REMOTE, SERVO };
+enum MotorSide : uint8_t { LEFT, RIGHT };
 
 // ---------- GLOBALS ----------
 Mode mode = LINE_FOLLOW;
 bool teleEnabled = true;
+bool useRPMControl = true;
 uint32_t lastTele = 0;
-float kpLine = 1.2f, kiLine = 0.0f, kdLine = 0.05f;
+float kpLine = 1.2f, kiLine = 0.001f, kdLine = 0.05f;
 float setpointLine = 0.0f;
 uint16_t qtr[6], qtrMin[6], qtrMax[6];
 bool qtrCalibrated = false;
@@ -52,8 +61,6 @@ float lineErr = 0.0f, lineCorr = 0.0f;  // for telemetry
 float batVoltage = 0;
 int batPercent = 0;
 uint32_t lastBatRead = 0;
-volatile int32_t teleTicksL = 0, teleTicksR = 0;
-volatile int isrCountL = 0, isrCountR = 0;
 
 // ---------- UTILS ----------
 inline void led(bool s) { digitalWrite(CAL_LED, s); }
@@ -79,20 +86,13 @@ struct Motor {
     int16_t pwm = 0;
     float diamCorr = 1.0f;
     float dist = 0.0f;  // accumulated distance in cm
-    bool isLeft;
+    MotorSide side;
     static constexpr float iwLimit = 500.0f; // anti-windup: max integral (ajusta)
     static constexpr float ALPHA = 0.2f;
-    Motor(bool il, const uint8_t i1, const uint8_t i2, const uint8_t ea, const uint8_t eb) : isLeft(il), in1(i1), in2(i2), encA(ea), encB(eb) {}
+    Motor(MotorSide s, const uint8_t i1, const uint8_t i2, const uint8_t ea, const uint8_t eb) : side(s), in1(i1), in2(i2), encA(ea), encB(eb) {}
     void isr() {
-        int dir = digitalRead(encB) ? 1 : -1;
+        int dir = (digitalRead(encB) == digitalRead(encA)) ? 1 : -1;
         ticks += dir;
-        if (isLeft) {
-            teleTicksL += dir;
-            isrCountL++;
-        } else {
-            teleTicksR += dir;
-            isrCountR++;
-        }
     }
     void update(float dt);
     void setRPM(float r) {
@@ -100,22 +100,26 @@ struct Motor {
     }
 };
 
-Motor left(true, MOT_L1, MOT_L2, ENC_LA, ENC_LB);
-Motor right(false, MOT_R1, MOT_R2, ENC_RA, ENC_RB);
+Motor left(LEFT, MOT_L1, MOT_L2, ENC_LA, ENC_LB);
+Motor right(RIGHT, MOT_R1, MOT_R2, ENC_RA, ENC_RB);
 
 // ---------- SERVO ----------
 struct Servo {
     bool active = 0;
-    float tgtDist = 0, tgtVel = 0, startDist = 0;
+    float tgtDist = 0, tgtVel = 0;
+    int32_t startTicksL = 0, startTicksR = 0;
     void start(float d, float v) {
         tgtDist = d;
         tgtVel = v;
         active = 1;
-        startDist = (leftDist + rightDist) / 2;
+        startTicksL = left.ticks;
+        startTicksR = right.ticks;
     }
     void update() {
         if (!active) return;
-        float done = (leftDist + rightDist) / 2 - startDist;
+        float doneL = (left.ticks - startTicksL) * CM_PER_TICK;
+        float doneR = (right.ticks - startTicksR) * CM_PER_TICK;
+        float done = (doneL + doneR) / 2;
         float err = tgtDist - done;
         if (err <= 0) {
             active = 0;
@@ -148,18 +152,20 @@ void Motor::update(float dt) {
     float rpm = (delta * 60.0f) / (CPR * dt) * diamCorr;
     filtRPM = ALPHA * rpm + (1 - ALPHA) * filtRPM;
 
-    /* ---------- 2. PID normal ---------- */
-    float err = targetRPM - filtRPM;
-    float dedt = (err - prevErr) / dt;
-    prevErr = err;
+    if (mode != LINE_FOLLOW || useRPMControl) {
+        /* ---------- 2. PID normal ---------- */
+        float err = targetRPM - filtRPM;
+        float dedt = (err - prevErr) / dt;
+        prevErr = err;
 
-    float out = kp * err + ki * errI + kd * dedt;
-    pwm = (int16_t)constrain(out, -255, 255);
+        float out = kp * err + ki * errI + kd * dedt;
+        pwm = (int16_t)constrain(out, -255, 255);
 
-    /* ---------- 3. Anti-windup (des-satura integrador) ---------- */
-    float excess = out - pwm;               // cuanto se recortó
-    errI -= excess * ki * dt * 0.5f;        // retroalimenta la integral
-    errI = constrain(errI, -iwLimit, iwLimit); // limita integrador
+        /* ---------- 3. Anti-windup (des-satura integrador) ---------- */
+        float excess = out - pwm;               // cuanto se recortó
+        errI -= excess * ki * dt * 0.5f;        // retroalimenta la integral
+        errI = constrain(errI, -iwLimit, iwLimit); // limita integrador
+    }
 
     /* ---------- 4. Acumular distancia ---------- */
     dist += filtRPM * dt * CM_PER_REV / 60.0f;  // cm
@@ -316,15 +322,15 @@ float kalmanLine()
  * ------------------
  *  PID discreto para el seguimiento de línea.
  *  Entrada: posición de la línea (devuelta por kalmanLine() u otro filtro).
- *  Salida: corrección en RPM que se sumará/restará a los motores.
+ *  Salida: corrección en PWM que se sumará/restará a los motores.
  *
  *  setpointLine = 0  (línea centrada); se puede cambiar para curvas
  *  LOOP_HZ = 100  =>  dt = 0.01 s
  *
  *  Constantes (ajustables por EEPROM o serial):
- *    kpLine  -> fuerza proporcional (1.2)
+ *    kpLine  -> fuerza proporcional (0.08)
  *    kiLine  -> fuerza integral     (0.0)
- *    kdLine  -> fuerza derivativa   (0.05)
+ *    kdLine  -> fuerza derivativa   (0.008)
  *
  *  Variables internas (conservadas):
  *    prev  -> error anterior (para derivada)
@@ -344,7 +350,7 @@ float linePID(float pos)
     float deriv = (err - prev) * LOOP_HZ;   // (error_now - error_prev) / dt
     prev = err;                             // guardamos para la próxima vuelta
 
-    /* 4. Salida PID: corrección en RPM (se resta/suma a cada motor) */
+    /* 4. Salida PID: corrección en PWM (se resta/suma a cada motor) */
     return kpLine * err + kiLine * integ + kdLine * deriv;
 }
 
@@ -381,8 +387,8 @@ void sendTele() {
     updateBattery();
 
     // RPM
-    float rpmL = (teleTicksL * 60.0f) / (CPR * dt);
-    float rpmR = (teleTicksR * 60.0f) / (CPR * dt);
+    float rpmL = left.filtRPM;
+    float rpmR = right.filtRPM;
 
     // Velocidad lineal (cm/s)
     float speedL = (left.ticks * CM_PER_TICK) / dt;
@@ -408,8 +414,6 @@ void sendTele() {
     leftObj["vel"] = speedL;
     leftObj["acc"] = 0.0f;
     leftObj["rpm"] = rpmL;
-    leftObj["encoder"] = teleTicksL;
-    leftObj["isrCount"] = isrCountL;
     leftObj["distance"] = leftDist;
     leftObj["pwm"] = left.pwm;
 
@@ -417,8 +421,6 @@ void sendTele() {
     rightObj["vel"] = speedR;
     rightObj["acc"] = 0.0f;
     rightObj["rpm"] = rpmR;
-    rightObj["encoder"] = teleTicksR;
-    rightObj["isrCount"] = isrCountR;
     rightObj["distance"] = rightDist;
     rightObj["pwm"] = right.pwm;
 
@@ -437,12 +439,6 @@ void sendTele() {
 
     serializeJson(doc, Serial);
     Serial.println();
-
-    // Reset teleTicks for next measurement
-    teleTicksL = 0;
-    teleTicksR = 0;
-    isrCountL = 0;
-    isrCountR = 0;
 }
 
 
@@ -467,9 +463,10 @@ void tuneLine() {
         kpLine = Ku;
         for (uint16_t t = 0; t < 100; t++) {
             readQTR();
-            steer = linePID(kalmanLine());
-            left.setRPM(60 - steer);
-            right.setRPM(60 + steer);
+            steer = linePID(kalmanLine()); // steer in PWM
+            float steerRPM = steer;
+            left.setRPM(60 - steerRPM);
+            right.setRPM(60 + steerRPM);
             left.update(DT);
             right.update(DT);
             delay(10);
@@ -510,7 +507,9 @@ void execCmd(const char *json) {
     }
 
     if (doc["base_speed"].is<float>()) baseSpeed = doc["base_speed"];
-  
+
+    if (doc["setpoint"].is<float>()) setpointLine = doc["setpoint"];
+
     if (doc["eeprom"].is<int>()) {
       EEPROM.put(EEPROM_ADDR_BASE + 20, kpLine);
       EEPROM.put(EEPROM_ADDR_BASE + 24, kiLine);
@@ -583,10 +582,10 @@ void setup() {
     pinMode(CAL_LED, OUTPUT);
     pinMode(BUZZER, OUTPUT);
     for (uint8_t i = 0; i < 6; i++) pinMode(QTR_PINS[i], INPUT);
-    pinMode(ENC_LA, INPUT);
-    pinMode(ENC_LB, INPUT);
-    pinMode(ENC_RA, INPUT);
-    pinMode(ENC_RB, INPUT);
+    pinMode(ENC_LA, INPUT_PULLUP);
+    pinMode(ENC_LB, INPUT_PULLUP);
+    pinMode(ENC_RA, INPUT_PULLUP);
+    pinMode(ENC_RB, INPUT_PULLUP);
     attachInterrupt(digitalPinToInterrupt(ENC_LA), []{left.isr();}, RISING);
     attachPinChangeInterrupt(ENC_RA, []{right.isr();}, RISING);
 
@@ -603,6 +602,19 @@ void setup() {
     eepRead(EEPROM_ADDR_BASE + 28, kdLine);
     eepRead(EEPROM_ADDR_DIAM, right.diamCorr);
 
+    // Cargar calibración QTR
+    eepRead(EEPROM_ADDR_QTR_MIN, qtrMin);
+    eepRead(EEPROM_ADDR_QTR_MAX, qtrMax);
+    bool qtrValid = true;
+    for (uint8_t i = 0; i < 6; i++) {
+        if (qtrMin[i] >= qtrMax[i] || qtrMin[i] > 1023 || qtrMax[i] > 1023 || (qtrMin[i] == 0 && qtrMax[i] == 0)) qtrValid = false;
+    }
+    if (qtrValid) {
+        qtrCalibrated = true;
+    } else {
+        if (mode == LINE_FOLLOW) calibrateQTR();
+    }
+
     // Validar diamCorr
     if (isnan(right.diamCorr) || right.diamCorr <= 0) right.diamCorr = 1.0f;
     Serial.println("left.diamCorr = " + String(left.diamCorr));
@@ -613,9 +625,9 @@ void setup() {
     if (left.ki < 0 || isnan(left.ki)) left.ki = 2.2f;
     if (left.kd < 0 || isnan(left.kd)) left.kd = 0.0f;
     if (baseSpeed <= 0 || baseSpeed > 1 || isnan(baseSpeed)) baseSpeed = 0.8f;
-    if (kpLine < 0 || isnan(kpLine) || kpLine > 5.0f) kpLine = 1.2f;
+    if (kpLine < 0 || isnan(kpLine) || kpLine > 5.0f) kpLine = 0.08f;
     if (kiLine < 0 || isnan(kiLine) || kiLine > 5.0f) kiLine = 0.0f;
-    if (kdLine < 0 || isnan(kdLine) || kdLine > 1.0f) kdLine = 0.05f;
+    if (kdLine < 0 || isnan(kdLine) || kdLine > 1.0f) kdLine = 0.008f;
     Serial.println("kpLine = " + String(kpLine));
     Serial.println("kiLine = " + String(kiLine));
     Serial.println("kdLine = " + String(kdLine));
@@ -641,15 +653,16 @@ void loop() {
                 float steer = linePID(currentPos);
                 lineErr = setpointLine - currentPos;
                 lineCorr = steer;
-                float base = baseSpeed * 60;
-                left.setRPM(base - steer);
-                right.setRPM(base + steer);
+                float baseRPM = baseSpeed * 60.0f;
+                float steerRPM = steer * 1.0f;
+                left.setRPM(baseRPM - steerRPM);
+                right.setRPM(baseRPM + steerRPM);
                 break;
             }
             case REMOTE: handleRemote(); break;
             case SERVO: servo.update(); break;
         }
-        if (teleEnabled && millis() - lastTele >= 10) { lastTele = millis(); sendTele(); }
+        if (teleEnabled && millis() - lastTele >= /*10*/ 1500) { lastTele = millis(); sendTele(); }
     }
 }
 
@@ -674,6 +687,10 @@ void handleRemote() {
 
 void calibrateQTR() {
     led(HIGH);
+    for (uint8_t j = 0; j < 6; j++) {
+        qtrMin[j] = 1023;
+        qtrMax[j] = 0;
+    }
     for (uint16_t i = 0; i < 400; i++) {
         readQTR();
         for (uint8_t j = 0; j < 6; j++) {
@@ -683,5 +700,7 @@ void calibrateQTR() {
         delay(5);
     }
     qtrCalibrated = true;
+    eepWrite(EEPROM_ADDR_QTR_MIN, qtrMin);
+    eepWrite(EEPROM_ADDR_QTR_MAX, qtrMax);
     led(LOW);
 }
