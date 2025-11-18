@@ -9,6 +9,7 @@
 
 #include <Arduino.h>
 #include "config.h"
+#include "models.h"
 
 class MotorController {
 private:
@@ -31,7 +32,7 @@ public:
         pinMode(MOTOR_RIGHT_PIN1, OUTPUT);
         pinMode(MOTOR_RIGHT_PIN2, OUTPUT);
         stopAll();
-        Serial.println("{\"type\":\"motor\",\"message\":\"Controlador de motores inicializado\"}");
+        CommunicationSerializer::sendSystemMessage("Controlador de motores inicializado");
     }
     
     /**
@@ -118,20 +119,6 @@ public:
     void setSafety(bool enabled) { safetyEnabled = enabled; }
     bool isSafetyEnabled() const { return safetyEnabled; }
     
-    /**
-     * Generar JSON con estado de motores
-     */
-    String getStatusJSON() {
-        StaticJsonDocument<200> doc;
-        doc["type"] = "motor_status";
-        doc["base_speed"] = baseSpeed;
-        doc["max_speed"] = maxSpeed;
-        doc["safety_enabled"] = safetyEnabled;
-        
-        String jsonString;
-        serializeJson(doc, jsonString);
-        return jsonString;
-    }
 };
 
 #endif

@@ -8,7 +8,6 @@
 #define REMOTE_CONTROL_H
 
 #include <Arduino.h>
-#include <ArduinoJson.h>
 #include "config.h"
 
 class RemoteControl {
@@ -55,45 +54,6 @@ public:
         currentControl.rightSpeed = 0;
     }
     
-    /**
-     * Procesar comando JSON de control remoto
-     * @param jsonStr String JSON con datos de control
-     * @return true si el comando fue procesado exitosamente
-     */
-    bool processCommand(const String& jsonStr) {
-        StaticJsonDocument<256> doc;
-        DeserializationError error = deserializeJson(doc, jsonStr);
-        
-        if (error) {
-            return false;
-        }
-        
-        const char* type = doc["type"];
-        if (!type || strcmp(type, "remote_control") != 0) {
-            return false;
-        }
-        
-        // Extraer datos del JSON
-        currentControl.throttle = doc["throttle"] | 0;
-        currentControl.steering = doc["steering"] | 0;
-        currentControl.turbo = doc["turbo"] | false;
-        currentControl.brake = doc["brake"] | false;
-        
-        // Validar rangos
-        currentControl.throttle = constrain(currentControl.throttle, -255, 255);
-        currentControl.steering = constrain(currentControl.steering, -255, 255);
-        
-        // Aplicar deadzone
-        applyDeadzone();
-        
-        // Calcular velocidades de motores
-        calculateMotorSpeeds();
-        
-        lastCommandTime = millis();
-        connected = true;
-        
-        return true;
-    }
     
     /**
      * Aplicar zona muerta a los valores de control
@@ -168,29 +128,6 @@ public:
         maxSteering = newMaxSteering;
     }
     
-    /**
-     * Generar JSON con estado del control remoto
-     * @return String JSON con estado
-     */
-    String getStatusJSON() {
-        StaticJsonDocument<512> doc;
-        doc["type"] = "remote_status";
-        doc["connected"] = connected;
-        doc["throttle"] = currentControl.throttle;
-        doc["steering"] = currentControl.steering;
-        doc["left_speed"] = currentControl.leftSpeed;
-        doc["right_speed"] = currentControl.rightSpeed;
-        doc["turbo"] = currentControl.turbo;
-        doc["brake"] = currentControl.brake;
-        doc["deadzone"] = deadzone;
-        doc["max_throttle"] = maxThrottle;
-        doc["max_steering"] = maxSteering;
-        doc["time_since_last_command"] = millis() - lastCommandTime;
-        
-        String jsonString;
-        serializeJson(doc, jsonString);
-        return jsonString;
-    }
 };
 
 #endif

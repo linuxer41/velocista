@@ -9,6 +9,7 @@
 
 #include <Arduino.h>
 #include "config.h"
+#include "models.h"
 
 // Declaraciones forward para interrupciones
 void encoderLeftISR();
@@ -43,7 +44,7 @@ public:
         attachInterrupt(digitalPinToInterrupt(ENCODER_RIGHT_A), encoderRightISR, RISING);
         
         previousTime = millis();
-        Serial.println("{\"type\":\"encoder\",\"message\":\"Controlador de encoders inicializado\"}");
+        CommunicationSerializer::sendSystemMessage("Controlador de encoders inicializado");
     }
     
     /**
@@ -96,22 +97,6 @@ public:
     long getLeftCount() const { return leftCount; }
     long getRightCount() const { return rightCount; }
     
-    /**
-     * Generar JSON con datos de encoders
-     */
-    String getStatusJSON() {
-        StaticJsonDocument<300> doc;
-        doc["type"] = "encoder_status";
-        doc["left_rpm"] = leftRPM;
-        doc["right_rpm"] = rightRPM;
-        doc["left_count"] = leftCount;
-        doc["right_count"] = rightCount;
-        doc["pulses_per_revolution"] = PULSES_PER_REVOLUTION;
-        
-        String jsonString;
-        serializeJson(doc, jsonString);
-        return jsonString;
-    }
 };
 
 // Instancia global para acceso desde ISRs

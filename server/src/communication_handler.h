@@ -7,7 +7,6 @@
 #ifndef COMMUNICATION_HANDLER_H
 #define COMMUNICATION_HANDLER_H
 
-#include <ArduinoJson.h>
 #include "motor_controller.h"
 #include "advanced_pid.h"
 #include "competition_manager.h"

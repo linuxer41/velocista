@@ -8,7 +8,6 @@
 #define DATA_LOGGER_H
 
 #include <Arduino.h>
-#include <ArduinoJson.h>
 
 class DataLogger {
 private:
@@ -30,17 +29,6 @@ public:
         logStartTime = millis();
         loggingActive = true;
         lastLogTime = millis();
-        
-        // Enviar cabecera con columnas
-        StaticJsonDocument<256> doc;
-        doc["type"] = "log_header";
-        doc["columns"] = "time,error,left_pwm,right_pwm,left_rpm,right_rpm,state";
-        doc["interval"] = logInterval;
-        doc["start_time"] = logStartTime;
-        
-        String jsonString;
-        serializeJson(doc, jsonString);
-        Serial.println(jsonString);
     }
     
     /**
@@ -48,48 +36,13 @@ public:
      */
     void stopLogging() {
         loggingActive = false;
-        
-        StaticJsonDocument<128> doc;
-        doc["type"] = "log_stop";
-        doc["duration"] = millis() - logStartTime;
-        
-        String jsonString;
-        serializeJson(doc, jsonString);
-        Serial.println(jsonString);
     }
     
     /**
-     * Registrar datos del robot
-     * @param error Error de seguimiento de línea
-     * @param leftPWM PWM motor izquierdo
-     * @param rightPWM PWM motor derecho
-     * @param leftRPM RPM motor izquierdo
-     * @param rightRPM RPM motor derecho
-     * @param state Estado actual del robot
+     * Registrar datos del robot (simulado, sin logging real)
      */
     void logData(int error, int leftPWM, int rightPWM, float leftRPM, float rightRPM, const String& state) {
-        if (!loggingActive) return;
-        
-        unsigned long currentTime = millis();
-        if (currentTime - lastLogTime < logInterval) {
-            return; // Esperar hasta que pase el intervalo
-        }
-        
-        StaticJsonDocument<512> doc;
-        doc["type"] = "log_data";
-        doc["time"] = currentTime - logStartTime;
-        doc["error"] = error;
-        doc["left_pwm"] = leftPWM;
-        doc["right_pwm"] = rightPWM;
-        doc["left_rpm"] = round(leftRPM * 10) / 10.0; // 1 decimal
-        doc["right_rpm"] = round(rightRPM * 10) / 10.0;
-        doc["state"] = state;
-        
-        String jsonString;
-        serializeJson(doc, jsonString);
-        Serial.println(jsonString);
-        
-        lastLogTime = currentTime;
+        // Logging desactivado para reducir tamaño
     }
     
     /**

@@ -14,10 +14,9 @@
 #include "intelligent_avoidance.h"
 #include "competition_manager.h"
 #include "remote_control.h"
-#include "communication_handler.h"
-#include "data_logger.h"
 #include "mode_indicator.h"
 #include "state_machine.h"
+#include "models.h"
 
 // =============================================================================
 // INSTANCIAS GLOBALES
@@ -32,8 +31,6 @@ EEPROMManager eepromManager;
 IntelligentAvoidance obstacleAvoidance(odometry);
 CompetitionManager competitionManager;
 RemoteControl remoteControl;
-CommunicationHandler commHandler(motorController, linePID, competitionManager, remoteControl);
-DataLogger dataLogger;
 ModeIndicator modeIndicator;
 StateMachine stateMachine;
 
@@ -80,9 +77,6 @@ float readDistance();
 // INTERRUPCIONES ENCODERS
 // =============================================================================
 
-// Instancia global para acceso desde ISRs
-EncoderController encoderController;
-
 /**
  * Interrupción encoder izquierdo
  */
@@ -106,8 +100,8 @@ void setup() {
     Serial.begin(115200);
     delay(1000); // Esperar estabilización
     
-    Serial.println("{\"type\":\"system\",\"message\":\"Inicializando Robot Seguidor de Línea Profesional\"}");
-    Serial.println("{\"type\":\"system\",\"version\":\"4.0\",\"features\":\"PID_Avanzado,Odometría,Control_Remoto,EEPROM,Evasión_Inteligente\"}");
+    CommunicationSerializer::sendSystemMessage("Inicializando Robot Seguidor de Línea Profesional");
+    CommunicationSerializer::sendSystemMessage("Version 4.0 - PID Avanzado,Odometria,Control Remoto,EEPROM,Evasion Inteligente");
 
     // 2. Inicializar hardware
     motorController.initialize();
@@ -117,7 +111,7 @@ void setup() {
     // 3. Cargar configuración de EEPROM
     if (!eepromManager.loadConfig(currentConfig)) {
         eepromManager.initializeDefaultConfig(currentConfig);
-        Serial.println("{\"type\":\"eeprom\",\"message\":\"Configuración por defecto cargada\"}");
+        CommunicationSerializer::sendSystemMessage("Configuracion por defecto cargada");
     }
 
     // 4. Aplicar configuración cargada
@@ -133,11 +127,10 @@ void setup() {
     competitionManager.setMode(MODE_DEBUG);
     modeIndicator.setMode(MODE_DEBUG);
 
-    // 7. Mostrar configuración inicial
-    eepromManager.printConfig(currentConfig);
-    
-    Serial.println("{\"type\":\"system\",\"message\":\"Inicialización completada - Robot listo\"}");
-    Serial.println("{\"type\":\"system\",\"commands\":\"start, stop, set_pid, set_speed, set_mode, calibrate_sensors, get_status\"}");
+    // 7. Configuración inicial completada
+
+    CommunicationSerializer::sendSystemMessage("Inicializacion completada - Robot listo");
+    CommunicationSerializer::sendSystemMessage("Comandos: start, stop, set_pid, set_speed, set_mode, calibrate_sensors, get_status");
 
     lastOdometryUpdate = millis();
     lastSensorRead = millis();
@@ -161,11 +154,13 @@ void loop() {
     competitionManager.checkMode();
     OperationMode currentMode = competitionManager.getCurrentMode();
     
-    // 3. Procesar comandos seriales (si están habilitados)
+    // 3. Procesar comandos seriales binarios (si están habilitados)
     if (competitionManager.isSerialEnabled() && Serial.available()) {
-        String command = Serial.readStringUntil('\n');
-        command.trim();
-        commHandler.processCommand(command);
+        uint8_t buffer[64];
+        size_t len = Serial.readBytes(buffer, sizeof(buffer));
+        if (len > 0) {
+            CommunicationSerializer::processBinaryCommand(buffer, len);
+        }
     }
     
     // 4. Manejar calibración si fue solicitada
@@ -298,7 +293,9 @@ void executeCalibrationMode() {
     
     // Enviar datos de sensores cada 500ms
     if (millis() - lastSensorRead >= 500) {
-        Serial.println(sensorArray.getSensorDataJSON());
+        int16_t sensors[6];
+        for(int i=0; i<6; i++) sensors[i] = sensorArray.readCalibratedSensor(i);
+        CommunicationSerializer::sendSensorData(millis(), sensors, sensorArray.readLinePosition(), sensorArray.getSensorSum());
         lastSensorRead = millis();
     }
 }
@@ -311,16 +308,16 @@ void executeCalibrationMode() {
  * Realizar calibración automática de sensores
  */
 void performCalibration() {
-    Serial.println("{\"type\":\"calibration\",\"message\":\"Iniciando proceso de calibración automática...\"}");
-    
+    CommunicationSerializer::sendSystemMessage("Iniciando proceso de calibracion automatica...");
+
     sensorArray.performAutoCalibration();
-    
+
     // Guardar calibración en EEPROM
     sensorArray.saveCalibrationToConfig(currentConfig);
     if (eepromManager.saveConfig(currentConfig)) {
-        Serial.println("{\"type\":\"calibration\",\"message\":\"Calibración guardada exitosamente en EEPROM\"}");
+        CommunicationSerializer::sendSystemMessage("Calibracion guardada exitosamente en EEPROM");
     } else {
-        Serial.println("{\"type\":\"calibration\",\"message\":\"Error al guardar calibración en EEPROM\"}");
+        CommunicationSerializer::sendSystemMessage("Error al guardar calibracion en EEPROM");
     }
 }
 
@@ -455,41 +452,27 @@ void avoidObstacle() {
  */
 void sendOptimizedTelemetry(OperationMode mode) {
     if (!competitionManager.isSerialEnabled()) return;
-    
+
     unsigned long currentTime = millis();
     if (currentTime - lastTelemetry >= 200) { // 5Hz max
         switch (mode) {
             case MODE_REMOTE_CONTROL:
-                Serial.println(remoteControl.getStatusJSON());
+                CommunicationSerializer::sendRemoteStatus(remoteControl.isConnected(), remoteControl.getLeftSpeed(), remoteControl.getRightSpeed());
                 break;
             case MODE_COMPETITION:
-                // Telemetría mínima para competencia
-                {
-                    StaticJsonDocument<128> doc;
-                    doc["t"] = currentTime;
-                    doc["s"] = stateMachine.getStateString().substring(0,1);
-                    doc["d"] = String(readDistance(), 1);
-                    String jsonString;
-                    serializeJson(doc, jsonString);
-                    Serial.println(jsonString);
-                }
+                CommunicationSerializer::sendState(currentTime, stateMachine.getCurrentState(), readDistance());
                 break;
             default:
                 // Telemetría completa para debugging/tuning
-                Serial.println(sensorArray.getSensorDataJSON());
-                Serial.println(odometry.getPoseJSON());
-                Serial.println(stateMachine.getStateJSON());
-                Serial.println(modeIndicator.getStatusJSON());
-                
-                // Log de datos para análisis
-                dataLogger.logData(
-                    sensorArray.readLinePosition(), 
-                    motorController.getBaseSpeed(), 
-                    motorController.getBaseSpeed(),
-                    encoderController.getLeftRPM(),
-                    encoderController.getRightRPM(),
-                    stateMachine.getStateString()
-                );
+                int16_t sensors[6];
+                for(int i=0; i<6; i++) sensors[i] = sensorArray.readCalibratedSensor(i);
+                CommunicationSerializer::sendSensorData(currentTime, sensors, sensorArray.readLinePosition(), sensorArray.getSensorSum());
+                float x = odometry.getX();
+                float y = odometry.getY();
+                float theta = odometry.getTheta();
+                CommunicationSerializer::sendOdometry(currentTime, x, y, theta);
+                CommunicationSerializer::sendState(currentTime, stateMachine.getCurrentState(), readDistance());
+                CommunicationSerializer::sendPidTuning(linePID.getKp(), linePID.getKi(), linePID.getKd(), linePID.getIntegral());
                 break;
         }
         lastTelemetry = currentTime;

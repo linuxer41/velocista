@@ -8,7 +8,6 @@
 #define ODOMETRY_H
 
 #include <Arduino.h>
-#include <ArduinoJson.h>
 #include "config.h"
 
 class Odometry {
@@ -86,25 +85,6 @@ public:
     long getLeftTotalPulses() const { return leftTotalPulses; }
     long getRightTotalPulses() const { return rightTotalPulses; }
     
-    /**
-     * Generar JSON con datos de posición
-     * @return String JSON con pose del robot
-     */
-    String getPoseJSON() {
-        StaticJsonDocument<256> doc;
-        doc["type"] = "pose";
-        doc["x"] = round(x * 100) / 100.0;  // 2 decimales
-        doc["y"] = round(y * 100) / 100.0;
-        doc["theta"] = round(theta * 1000) / 1000.0; // 3 decimales
-        doc["theta_deg"] = round(theta * 180.0 / PI * 10) / 10.0; // Grados
-        doc["distance"] = round(totalDistance * 100) / 100.0;
-        doc["left_pulses"] = leftTotalPulses;
-        doc["right_pulses"] = rightTotalPulses;
-        
-        String jsonString;
-        serializeJson(doc, jsonString);
-        return jsonString;
-    }
     
     /**
      * Calcular distancia a punto objetivo

@@ -8,8 +8,8 @@
 #define STATE_MACHINE_H
 
 #include <Arduino.h>
-#include <ArduinoJson.h>
 #include "config.h"
+#include "models.h"
 
 // Estados del robot
 enum RobotState {
@@ -141,9 +141,7 @@ public:
             
             // Log de cambio de estado (si el serial está habilitado)
             if (currentOperationMode != MODE_COMPETITION) {
-                Serial.println("{\"type\":\"state_change\",\"new_state\":\"" + 
-                              getStateString() + "\",\"duration\":" + 
-                              String(millis() - stateStartTime) + "}");
+                CommunicationSerializer::sendSystemMessage("Cambio de estado");
             }
         }
     }
@@ -172,21 +170,6 @@ public:
         }
     }
     
-    /**
-     * Generar JSON con información del estado
-     * @return String JSON con datos del estado
-     */
-    String getStateJSON() const {
-        StaticJsonDocument<256> doc;
-        doc["type"] = "state";
-        doc["state"] = getStateString();
-        doc["time_in_state"] = millis() - stateStartTime;
-        doc["op_mode"] = operationModeToString(currentOperationMode);
-        
-        String jsonString;
-        serializeJson(doc, jsonString);
-        return jsonString;
-    }
     
     /**
      * Obtener dirección de búsqueda actual

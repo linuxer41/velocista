@@ -8,7 +8,6 @@
 #define INTELLIGENT_AVOIDANCE_H
 
 #include <Arduino.h>
-#include <ArduinoJson.h>
 #include "config.h"
 #include "odometry.h"
 
@@ -89,26 +88,6 @@ public:
         return NO_OBSTACLE;
     }
     
-    /**
-     * Generar JSON con información de evasión
-     * @param distance Distancia medida
-     * @param action Acción tomada
-     * @return String JSON con datos de evasión
-     */
-    String getAvoidanceJSON(float distance, AvoidanceAction action) {
-        StaticJsonDocument<256> doc;
-        doc["type"] = "avoidance";
-        doc["distance"] = distance;
-        doc["action"] = actionToString(action);
-        doc["strategy"] = avoidanceStrategy;
-        doc["safe_distance"] = safeDistance;
-        doc["critical_distance"] = criticalDistance;
-        doc["time_since_obstacle"] = millis() - lastObstacleTime;
-        
-        String jsonString;
-        serializeJson(doc, jsonString);
-        return jsonString;
-    }
     
     // Getters y setters
     float getSafeDistance() const { return safeDistance; }

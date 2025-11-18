@@ -8,8 +8,8 @@
 #define MODE_INDICATOR_H
 
 #include <Arduino.h>
-#include <ArduinoJson.h>
 #include "config.h"
+#include "models.h"
 
 class ModeIndicator {
 private:
@@ -27,8 +27,8 @@ public:
                                            lastBlinkTime(0), ledState(false) {
         pinMode(ledPin, OUTPUT);
         digitalWrite(ledPin, LOW);
-        
-        Serial.println("{\"type\":\"indicator\",\"message\":\"Indicador de modo inicializado en pin " + String(pin) + "\"}");
+
+        CommunicationSerializer::sendSystemMessage("Indicador de modo inicializado");
     }
     
     /**
@@ -66,9 +66,8 @@ public:
             lastBlinkTime = millis();
             ledState = false;
             digitalWrite(ledPin, LOW); // Iniciar apagado
-            
-            Serial.println("{\"type\":\"indicator\",\"mode\":\"" + getModeString() + 
-                          "\",\"pattern\":\"" + getPatternDescription() + "\"}");
+
+            CommunicationSerializer::sendSystemMessage("Modo cambiado");
         }
     }
     
@@ -108,23 +107,6 @@ public:
         }
     }
     
-    /**
-     * Generar JSON con estado del indicador
-     * @return String JSON con información del modo
-     */
-    String getStatusJSON() {
-        StaticJsonDocument<256> doc;
-        doc["type"] = "mode_indicator";
-        doc["mode"] = getModeString();
-        doc["led_pin"] = ledPin;
-        doc["pattern"] = getPatternDescription();
-        doc["interval"] = getBlinkInterval();
-        doc["led_state"] = ledState;
-        
-        String jsonString;
-        serializeJson(doc, jsonString);
-        return jsonString;
-    }
     
     /**
      * Obtener modo actual

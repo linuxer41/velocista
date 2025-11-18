@@ -7,8 +7,8 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+#include <Arduino.h>
 #include <EEPROM.h>
-#include <ArduinoJson.h>
 
 // =============================================================================
 // CONFIGURACIÓN DE PINES
@@ -43,52 +43,52 @@ const int SENSOR_PINS[NUM_SENSORS] = {A0, A1, A2, A3, A4, A5};
 // =============================================================================
 
 // Configuración encoders - Motor N20 300RPM con reductor 10:1
-const int PULSES_PER_REVOLUTION = 36;
-const float WHEEL_DIAMETER_MM = 32.0;   // Diámetro de ruedas en mm
-const float WHEEL_DISTANCE_MM = 85.0;   // Distancia entre ruedas en mm
-const int MAX_SPEED = 200;              // Velocidad máxima PWM
-const int EEPROM_CONFIG_ADDR = 0;       // Dirección EEPROM para configuración
+const int16_t PULSES_PER_REVOLUTION = 36;
+const float WHEEL_DIAMETER_MM = 32.0f;  // Diámetro de ruedas en mm
+const float WHEEL_DISTANCE_MM = 85.0f;  // Distancia entre ruedas en mm
+const int16_t MAX_SPEED = 200;          // Velocidad máxima PWM
+const int16_t EEPROM_CONFIG_ADDR = 0;   // Dirección EEPROM para configuración
 
 // =============================================================================
 // CONFIGURACIÓN CONTROL REMOTO
 // =============================================================================
 
-const int RC_DEADZONE = 10;             // Zona muerta para joystick
-const int RC_MAX_THROTTLE = 255;        // Throttle máximo
-const int RC_MAX_STEERING = 150;        // Steering máximo
+const int16_t RC_DEADZONE = 10;         // Zona muerta para joystick
+const int16_t RC_MAX_THROTTLE = 255;    // Throttle máximo
+const int16_t RC_MAX_STEERING = 150;    // Steering máximo
 
 // =============================================================================
 // CONFIGURACIÓN SENSORES
 // =============================================================================
 
-const unsigned long SENSOR_READ_DELAY = 2;  // ms entre lectura de sensores
+const uint16_t SENSOR_READ_DELAY = 2;  // ms entre lectura de sensores
 
 // =============================================================================
 // PARÁMETROS PID POR DEFECTO
 // =============================================================================
 
-const double DEFAULT_KP = 2.0;          // Ganancia proporcional
-const double DEFAULT_KI = 0.05;         // Ganancia integral  
-const double DEFAULT_KD = 0.8;          // Ganancia derivativa
-const int DEFAULT_BASE_SPEED = 150;     // Velocidad base
+const float DEFAULT_KP = 2.0f;          // Ganancia proporcional
+const float DEFAULT_KI = 0.05f;         // Ganancia integral
+const float DEFAULT_KD = 0.8f;          // Ganancia derivativa
+const int16_t DEFAULT_BASE_SPEED = 150; // Velocidad base
 
 // =============================================================================
 // ESTRUCTURA CONFIGURACIÓN EEPROM
 // =============================================================================
 
 struct RobotConfig {
-  double kp;                            // Ganancia proporcional PID
-  double ki;                            // Ganancia integral PID
-  double kd;                            // Ganancia derivativa PID
-  int baseSpeed;                        // Velocidad base
-  float wheelDiameter;                  // Diámetro de rueda en mm
-  float wheelDistance;                  // Distancia entre ruedas en mm
-  int sensorMin[NUM_SENSORS];           // Valores mínimos de sensores
-  int sensorMax[NUM_SENSORS];           // Valores máximos de sensores
-  int rcDeadzone;                       // Zona muerta control remoto
-  int rcMaxThrottle;                    // Throttle máximo control remoto
-  int rcMaxSteering;                    // Steering máximo control remoto
-  uint32_t checksum;                    // Checksum para verificación
+   float kp;                             // Ganancia proporcional PID
+   float ki;                             // Ganancia integral PID
+   float kd;                             // Ganancia derivativa PID
+   int16_t baseSpeed;                    // Velocidad base
+   float wheelDiameter;                  // Diámetro de rueda en mm
+   float wheelDistance;                  // Distancia entre ruedas en mm
+   int16_t sensorMin[NUM_SENSORS];       // Valores mínimos de sensores
+   int16_t sensorMax[NUM_SENSORS];       // Valores máximos de sensores
+   int16_t rcDeadzone;                   // Zona muerta control remoto
+   int16_t rcMaxThrottle;                // Throttle máximo control remoto
+   int16_t rcMaxSteering;                // Steering máximo control remoto
+   uint32_t checksum;                    // Checksum para verificación
 };
 
 // =============================================================================

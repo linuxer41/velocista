@@ -8,8 +8,8 @@
 #define SENSOR_ARRAY_H
 
 #include <Arduino.h>
-#include <ArduinoJson.h>
 #include "config.h"
+#include "models.h"
 
 class SensorArray {
 private:
@@ -41,8 +41,8 @@ public:
         // Configurar pin de alimentación
         pinMode(SENSOR_POWER_PIN, OUTPUT);
         setPower(false); // Iniciar con sensores apagados
-        
-        Serial.println("{\"type\":\"sensor\",\"message\":\"Array de sensores inicializado\"}");
+
+        CommunicationSerializer::sendSystemMessage("Array de sensores inicializado");
     }
     
     /**
@@ -53,12 +53,12 @@ public:
         if (powerState != on) {
             powerState = on;
             digitalWrite(SENSOR_POWER_PIN, on ? HIGH : LOW);
-            
+
             if (on) {
                 delay(10); // Pequeño delay para estabilización de LEDs
             }
-            
-            Serial.println("{\"type\":\"sensor_power\",\"state\":" + String(on ? "true" : "false") + "}");
+
+            CommunicationSerializer::sendSystemMessage(on ? "Sensor power on" : "Sensor power off");
         }
     }
     
@@ -152,9 +152,9 @@ public:
     void performAutoCalibration() {
         setPower(true);
         calibrated = false;
-        
-        Serial.println("{\"type\":\"calibration\",\"message\":\"Iniciando calibración automática...\"}");
-        Serial.println("{\"type\":\"calibration\",\"instruction\":\"Mueva el robot sobre línea negra y áreas blancas\"}");
+
+        CommunicationSerializer::sendSystemMessage("Iniciando calibracion automatica...");
+        CommunicationSerializer::sendSystemMessage("Mueva el robot sobre linea negra y areas blancas");
         
         // Girar sobre sí mismo para calibrar todos los sensores
         for (int i = 0; i < 200; i++) {
@@ -167,15 +167,11 @@ public:
         }
         
         calibrated = true;
-        Serial.println("{\"type\":\"calibration\",\"message\":\"Calibración completada exitosamente\"}");
-        
+        CommunicationSerializer::sendSystemMessage("Calibracion completada exitosamente");
+
         // Mostrar valores de calibración
-        Serial.println("{\"type\":\"calibration\",\"message\":\"Valores de calibración:\"}");
-        for (int i = 0; i < NUM_SENSORS; i++) {
-            Serial.println("{\"type\":\"calibration\",\"sensor\":" + String(i) + 
-                          ",\"min\":" + String(minValues[i]) + 
-                          ",\"max\":" + String(maxValues[i]) + "}");
-        }
+        CommunicationSerializer::sendSystemMessage("Valores de calibracion:");
+        // For simplicity, skip detailed values to save space
     }
     
     /**
@@ -188,7 +184,7 @@ public:
             maxValues[i] = config.sensorMax[i];
         }
         calibrated = true;
-        Serial.println("{\"type\":\"sensor\",\"message\":\"Calibración cargada desde EEPROM\"}");
+        CommunicationSerializer::sendSystemMessage("Calibracion cargada desde EEPROM");
     }
     
     /**
@@ -208,35 +204,6 @@ public:
      */
     bool isCalibrated() const { return calibrated; }
     
-    /**
-     * Generar JSON con datos completos de sensores
-     * @return String JSON con datos de sensores
-     */
-    String getSensorDataJSON() {
-        StaticJsonDocument<512> doc;
-        doc["type"] = "sensor_data";
-        doc["power"] = powerState;
-        doc["calibrated"] = calibrated;
-        
-        JsonArray values = doc.createNestedArray("values");
-        JsonArray raw_values = doc.createNestedArray("raw_values");
-        JsonArray min_array = doc.createNestedArray("min_values");
-        JsonArray max_array = doc.createNestedArray("max_values");
-        
-        for (int i = 0; i < NUM_SENSORS; i++) {
-            values.add(readCalibratedSensor(i));
-            raw_values.add((int)filteredValues[i]);
-            min_array.add(minValues[i]);
-            max_array.add(maxValues[i]);
-        }
-        
-        doc["position"] = readLinePosition();
-        doc["sum"] = getSensorSum();
-        
-        String jsonString;
-        serializeJson(doc, jsonString);
-        return jsonString;
-    }
     
     /**
      * Obtener valores mínimos de calibración

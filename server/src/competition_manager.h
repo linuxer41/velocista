@@ -8,8 +8,8 @@
 #define COMPETITION_MANAGER_H
 
 #include <Arduino.h>
-#include <ArduinoJson.h>
 #include "config.h"
+#include "models.h"
 
 class CompetitionManager {
 private:
@@ -18,23 +18,19 @@ private:
     unsigned long competitionStartTime; // Tiempo inicio competencia
     float lapTimes[10];          // Array de tiempos de vuelta
     int currentLap;              // Vuelta actual
-    int modeSwitchPin;           // Pin para cambio de modo
     
 public:
     /**
      * Constructor
      */
-    CompetitionManager() : currentMode(MODE_DEBUG), serialEnabled(true), 
-                          currentLap(0), modeSwitchPin(COMPETITION_MODE_PIN) {
+    CompetitionManager() : currentMode(MODE_DEBUG), serialEnabled(true),
+                          currentLap(0) {
         // Inicializar array de tiempos
         for (int i = 0; i < 10; i++) {
             lapTimes[i] = 0.0;
         }
-        
-        // Configurar pin de modo (si se usa)
-        pinMode(modeSwitchPin, INPUT_PULLUP);
-        
-        Serial.println("{\"type\":\"competition\",\"message\":\"Gestor de competencia inicializado\"}");
+
+        CommunicationSerializer::sendSystemMessage("Gestor de competencia inicializado");
     }
     
     /**
@@ -77,15 +73,7 @@ public:
         
         // Notificar cambio de modo
         if (serialEnabled) {
-            StaticJsonDocument<200> doc;
-            doc["type"] = "mode_change";
-            doc["old_mode"] = modeToString(oldMode);
-            doc["new_mode"] = modeToString(currentMode);
-            doc["serial_enabled"] = serialEnabled;
-            
-            String jsonString;
-            serializeJson(doc, jsonString);
-            Serial.println(jsonString);
+            // Notificación binaria se maneja desde main.cpp
         }
     }
     
@@ -111,32 +99,11 @@ public:
             competitionStartTime = millis();
             
             if (serialEnabled) {
-                Serial.println("{\"type\":\"lap_time\",\"lap\":" + String(currentLap) + 
-                              ",\"time\":" + String(lapTimes[currentLap-1], 2) + "}");
+                // Skip lap time logging to save space
             }
         }
     }
     
-    /**
-     * Generar JSON con información de competencia
-     * @return String JSON con datos de competencia
-     */
-    String getCompetitionJSON() {
-        StaticJsonDocument<512> doc;
-        doc["type"] = "competition";
-        doc["mode"] = modeToString(currentMode);
-        doc["current_lap"] = currentLap;
-        doc["competition_time"] = (millis() - competitionStartTime) / 1000.0;
-        
-        JsonArray lap_times = doc.createNestedArray("lap_times");
-        for (int i = 0; i < currentLap; i++) {
-            lap_times.add(lapTimes[i]);
-        }
-        
-        String jsonString;
-        serializeJson(doc, jsonString);
-        return jsonString;
-    }
     
     /**
      * Obtener string del modo actual

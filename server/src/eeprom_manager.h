@@ -8,8 +8,8 @@
 #define EEPROM_MANAGER_H
 
 #include <EEPROM.h>
-#include <ArduinoJson.h>
 #include "config.h"
+#include "models.h"
 
 class EEPROMManager {
 private:
@@ -50,7 +50,7 @@ public:
         bool valid = (calculateChecksum(config) == config.checksum);
         
         if (!valid) {
-            Serial.println("{\"type\":\"eeprom\",\"message\":\"Configuración EEPROM inválida, usando valores por defecto\"}");
+            CommunicationSerializer::sendSystemMessage("Configuracion EEPROM invalida, usando valores por defecto");
         }
         
         return valid;
@@ -76,39 +76,10 @@ public:
             config.sensorMin[i] = 1023;
             config.sensorMax[i] = 0;
         }
-        
-        Serial.println("{\"type\":\"eeprom\",\"message\":\"Configuración por defecto inicializada\"}");
+
+        CommunicationSerializer::sendSystemMessage("Configuracion por defecto inicializada");
     }
     
-    /**
-     * Imprimir configuración actual por serial
-     * @param config Configuración a imprimir
-     */
-    void printConfig(const RobotConfig& config) {
-        StaticJsonDocument<512> doc;
-        doc["type"] = "config";
-        doc["kp"] = config.kp;
-        doc["ki"] = config.ki;
-        doc["kd"] = config.kd;
-        doc["base_speed"] = config.baseSpeed;
-        doc["wheel_diameter"] = config.wheelDiameter;
-        doc["wheel_distance"] = config.wheelDistance;
-        doc["rc_deadzone"] = config.rcDeadzone;
-        doc["rc_max_throttle"] = config.rcMaxThrottle;
-        doc["rc_max_steering"] = config.rcMaxSteering;
-        
-        JsonArray min_vals = doc.createNestedArray("sensor_min");
-        JsonArray max_vals = doc.createNestedArray("sensor_max");
-        
-        for (int i = 0; i < NUM_SENSORS; i++) {
-            min_vals.add(config.sensorMin[i]);
-            max_vals.add(config.sensorMax[i]);
-        }
-        
-        String jsonString;
-        serializeJson(doc, jsonString);
-        Serial.println(jsonString);
-    }
     
     /**
      * Borrar configuración EEPROM
@@ -117,7 +88,7 @@ public:
         for (int i = EEPROM_CONFIG_ADDR; i < EEPROM_CONFIG_ADDR + sizeof(RobotConfig); i++) {
             EEPROM.write(i, 0);
         }
-        Serial.println("{\"type\":\"eeprom\",\"message\":\"EEPROM borrada\"}");
+        CommunicationSerializer::sendSystemMessage("EEPROM borrada");
     }
 };
 
