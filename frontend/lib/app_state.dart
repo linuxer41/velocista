@@ -183,8 +183,8 @@ class AppState extends ChangeNotifier {
         modeName: data.operationMode.displayName,
         leftEncoderSpeed: data.left.vel,
         rightEncoderSpeed: data.right.vel,
-        leftEncoderCount: data.left.encoder,
-        rightEncoderCount: data.right.encoder,
+        leftEncoderCount: 0, // Not available in new telemetry
+        rightEncoderCount: 0, // Not available in new telemetry
         totalDistance: data.distance,
         sensors: data.qtr,
         battery: data.battery,

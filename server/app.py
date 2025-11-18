@@ -17,7 +17,6 @@ BAUD = 9600
 connection_mode = 'serial'  # 'serial' or 'bluetooth'
 ser = None
 running = False
-reader_thread = None
 
 # ---------- LOG ----------
 def log(msg):
@@ -41,8 +40,7 @@ def connect_device(device):
             log('Unknown connection mode')
             return False
         running = True
-        reader_thread = threading.Thread(target=reader, daemon=True)
-        reader_thread.start()
+        socketio.start_background_task(reader)
         log(f'Connected to {device} via {connection_mode}')
         return True
     except Exception as e:
@@ -50,13 +48,11 @@ def connect_device(device):
         return False
 
 def disconnect_serial():
-    global ser, running, reader_thread
+    global ser, running
     running = False
     if ser:
         ser.close()
         ser = None
-    if reader_thread:
-        reader_thread.join(timeout=1)
     log('Disconnected')
 
 def get_ports():
@@ -83,8 +79,13 @@ def reader():
             if data.get('type') == 'telemetry':
                 log(f'JSON: {line}')
                 socketio.emit('telemetry', data['payload'])
+            elif 'left' in data:  # Assume direct telemetry data
+                log(f'Telemetry: {line}')
+                socketio.emit('telemetry', data)
             elif data.get('type') == 'cmd':
                 log(f'RX CMD: {data["payload"]["buffer"]}')
+            else:
+                log(f'Unknown JSON: {line}')
         except json.JSONDecodeError:
             log(f'RX RAW: {line}')
         except Exception as e:
@@ -137,6 +138,26 @@ def handle_disconnect():
 @socketio.on('cmd')
 def handle_cmd(data):
     send_json(data)
+
+@socketio.on('test_telemetry')
+def handle_test():
+    test_data = {
+        'left': {'distance': 5.0, 'rpm': 150},
+        'right': {'distance': 5.0, 'rpm': 150},
+        'velocity': 1.0,
+        'mode': 1,
+        'error': 0.1,
+        'correction': 0.05,
+        'pid': [1.2, 0.001, 0.05],
+        'base_speed': 0.6,
+        'set_point': 10,
+        'battery': 7.4,
+        'distance': 20.0,
+        'qtr': [100, 200, 300, 400, 500, 600],
+        'timestamp': 1234567890
+    }
+    socketio.emit('telemetry', test_data)
+    log('Test telemetry sent')
 
 # ---------- MAIN ----------
 if __name__ == '__main__':

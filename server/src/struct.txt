@@ -1,0 +1,16 @@
+robot_seguidor/
+├── robot_seguidor.ino      # Archivo principal
+├── config.h                # Configuraciones y pines
+├── motor_controller.h      # Control de motores DRV8833
+├── encoder_controller.h    # Lectura de encoders
+├── sensor_array.h          # Array de 6 sensores con control de alimentación
+├── advanced_pid.h          # Control PID avanzado
+├── odometry.h              # Sistema de odometría
+├── eeprom_manager.h        # Gestión de EEPROM
+├── intelligent_avoidance.h # Evasión inteligente de obstáculos
+├── competition_manager.h   # Gestor de modos de operación
+├── remote_control.h        # Control remoto vía JSON
+├── communication_handler.h # Manejo de comunicación serial
+├── data_logger.h          # Sistema de logging de datos
+├── mode_indicator.h       # Indicador LED de modos
+└── state_machine.h        # Máquina de estados del robot

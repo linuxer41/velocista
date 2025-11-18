@@ -1,706 +1,529 @@
-/*
-  Robot seguidor de línea profesional
-  Autor: tu nombre
-  Hardware: exactamente el esquema original
-*/
-#include <Arduino.h>
-#include <EEPROM.h>
-#include <ArduinoJson.h>
-#include <TimerOne.h>
-#include <PinChangeInterrupt.h>
-
-// ---------- PINS ORIGINALES ----------
-const uint8_t MOT_L1 = 5, MOT_L2 = 6;
-const uint8_t MOT_R1 = 9, MOT_R2 = 10;
-const uint8_t QTR_PINS[6] = {A0, A1, A2, A3, A4, A5};
-const uint8_t QTR_LED = 12, CAL_LED = 13;
-const uint8_t ENC_LA = 2, ENC_LB = 3, ENC_RA = 7, ENC_RB = 8;
-const uint8_t BAT_PIN = A6;
-const uint8_t BUZZER = 4;
-
-// ---------- CONSTANTS ----------
-const int32_t MOTOR_PPR  = 358;
-const float   REDUCTION  = 10.0;
-const int32_t WHEEL_PPR = MOTOR_PPR * REDUCTION;
-const float   PERIMETER  = PI * 4.5f;            // 14.14 cm
-const float    PULSES_PER_CM = WHEEL_PPR / PERIMETER;  // 253.2
-constexpr int32_t  CPR        = WHEEL_PPR;
-constexpr float    CM_PER_REV = PI * 4.5f;
-constexpr float    CM_PER_TICK = CM_PER_REV / CPR;
-constexpr float LOOP_HZ    = 100.0f;
-constexpr float DT         = 1.0f / LOOP_HZ;
-constexpr uint16_t EEPROM_ADDR_BASE  = 0;
-constexpr uint16_t EEPROM_ADDR_DIAM  = 32;
-constexpr uint16_t EEPROM_ADDR_QTR_MIN = 36;
-constexpr uint16_t EEPROM_ADDR_QTR_MAX = 48;
-constexpr uint16_t LOG_ENTRIES       = 1200;   // 1200 * 8 B = 9.6 kB EEPROM
-// ---------- BATERÍA ----------
-const float BAT_R1 = 100000.0f;     // 100 kΩ
-const float BAT_R2 = 10000.0f;      // 10 kΩ
-const float BAT_RATIO = (BAT_R1 + BAT_R2) / BAT_R2;
-const float BAT_VREF = 1.1f;        // Referencia interna
-const float BAT_MIN_V = 6.0f;       // Voltaje mínimo
-const float BAT_MAX_V = 8.4f;       // Voltaje máximo
-
-// ---------- ENUMS ----------
-enum Mode : uint8_t { LINE_FOLLOW, REMOTE, SERVO };
-enum MotorSide : uint8_t { LEFT, RIGHT };
-
-// ---------- GLOBALS ----------
-Mode mode = LINE_FOLLOW;
-bool teleEnabled = true;
-bool useRPMControl = true;
-uint32_t lastTele = 0;
-float kpLine = 1.2f, kiLine = 0.001f, kdLine = 0.05f;
-float setpointLine = 0.0f;
-uint16_t qtr[6], qtrMin[6], qtrMax[6];
-bool qtrCalibrated = false;
-float baseSpeed = 0.8f;
-float leftDist = 0, rightDist = 0;
-float lineErr = 0.0f, lineCorr = 0.0f;  // for telemetry
-float batVoltage = 0;
-int batPercent = 0;
-uint32_t lastBatRead = 0;
-
-// ---------- UTILS ----------
-inline void led(bool s) { digitalWrite(CAL_LED, s); }
-inline void beep(uint8_t n) {
-    for (uint8_t i = 0; i < n; i++) {
-        tone(BUZZER, 2200, 40);
-        delay(60);
-    }
-}
-
-// ---------- REMOTE CONTROL STRUCT ----------
-struct RemoteControl {
-    float throttle = 0;
-    float turn = 0;
-} remote;
-
-// ---------- MOTOR STRUCT ----------
-struct Motor {
-    const uint8_t in1, in2, encA, encB;
-    volatile int32_t ticks = 0;
-    float targetRPM = 0, filtRPM = 0;
-    float kp = 0.9f, ki = 2.2f, kd = 0.0f, errI = 0, prevErr = 0;
-    int16_t pwm = 0;
-    float diamCorr = 1.0f;
-    float dist = 0.0f;  // accumulated distance in cm
-    MotorSide side;
-    static constexpr float iwLimit = 500.0f; // anti-windup: max integral (ajusta)
-    static constexpr float ALPHA = 0.2f;
-    Motor(MotorSide s, const uint8_t i1, const uint8_t i2, const uint8_t ea, const uint8_t eb) : side(s), in1(i1), in2(i2), encA(ea), encB(eb) {}
-    void isr() {
-        int dir = (digitalRead(encB) == digitalRead(encA)) ? 1 : -1;
-        ticks += dir;
-    }
-    void update(float dt);
-    void setRPM(float r) {
-         targetRPM = constrain(r, -300, 300);
-    }
-};
-
-Motor left(LEFT, MOT_L1, MOT_L2, ENC_LA, ENC_LB);
-Motor right(RIGHT, MOT_R1, MOT_R2, ENC_RA, ENC_RB);
-
-// ---------- SERVO ----------
-struct Servo {
-    bool active = 0;
-    float tgtDist = 0, tgtVel = 0;
-    int32_t startTicksL = 0, startTicksR = 0;
-    void start(float d, float v) {
-        tgtDist = d;
-        tgtVel = v;
-        active = 1;
-        startTicksL = left.ticks;
-        startTicksR = right.ticks;
-    }
-    void update() {
-        if (!active) return;
-        float doneL = (left.ticks - startTicksL) * CM_PER_TICK;
-        float doneR = (right.ticks - startTicksR) * CM_PER_TICK;
-        float done = (doneL + doneR) / 2;
-        float err = tgtDist - done;
-        if (err <= 0) {
-            active = 0;
-            left.setRPM(0);
-            right.setRPM(0);
-            beep(1);
-            return;
-        }
-        float vel = constrain(err * 2, 0, tgtVel);
-        left.setRPM(vel);
-        right.setRPM(vel);
-    }
-} servo;
-// ---------- BUFFER SERIE ----------
-#define SER_BUF 128
-char serBuf[SER_BUF];
-uint8_t serHead = 0;
-
-
-
-// ---------- EEPROM ----------
-template<typename T> void eepWrite(int addr, T &obj) { EEPROM.put(addr, obj); }
-template<typename T> void eepRead (int addr, T &obj) { EEPROM.get(addr, obj); }
-
-// ---------- MOTOR UPDATE ----------
-void Motor::update(float dt) {
-    /* ---------- 1. Lectura y filtro de velocidad ---------- */
-    int32_t delta = ticks;
-    ticks = 0;
-    float rpm = (delta * 60.0f) / (CPR * dt) * diamCorr;
-    filtRPM = ALPHA * rpm + (1 - ALPHA) * filtRPM;
-
-    if (mode != LINE_FOLLOW || useRPMControl) {
-        /* ---------- 2. PID normal ---------- */
-        float err = targetRPM - filtRPM;
-        float dedt = (err - prevErr) / dt;
-        prevErr = err;
-
-        float out = kp * err + ki * errI + kd * dedt;
-        pwm = (int16_t)constrain(out, -255, 255);
-
-        /* ---------- 3. Anti-windup (des-satura integrador) ---------- */
-        float excess = out - pwm;               // cuanto se recortó
-        errI -= excess * ki * dt * 0.5f;        // retroalimenta la integral
-        errI = constrain(errI, -iwLimit, iwLimit); // limita integrador
-    }
-
-    /* ---------- 4. Acumular distancia ---------- */
-    dist += filtRPM * dt * CM_PER_REV / 60.0f;  // cm
-
-    /* ---------- 5. Aplicar PWM ---------- */
-    // Serial.println("pwm motor = " + String(pwm) + " rpm = " + String(filtRPM) + " dist = " + String(dist) + " PINS = " + String(in1) + " " + String(in2));
-    if (pwm >= 0) {
-        digitalWrite(in2, LOW);
-        analogWrite(in1, pwm);
-    } else {
-        digitalWrite(in1, LOW);
-        analogWrite(in2, -pwm);
-    }
-
-}
-// ---------- QTR ----------
-/* ----------
- *  Lee los 6 sensores reflectivos QTR-1A (o compatibles).
- *  Secuencia:
- *    1. Enciende el LED infrarrojo de iluminación.
- *    2. Espera 200 µs para que la luz y el ADC se estabilicen.
- *    3. Lee cada canal analógico (0-1023) y lo convierte a
- *       rango 0-1000 si ya se ha calibrado.
- *    4. Apaga el LED para ahorrar energía y reducir ruido.
- *
- *  Salida: array global qtr[6]
- *    0   = superficie muy reflectiva (blanco)
- *    1000= superficie poco reflectiva (negro)
+/**
+ * ARCHIVO: robot_seguidor.ino
+ * DESCRIPCIÓN: Archivo principal del robot seguidor de línea
+ * FUNCIONALIDAD: Inicialización, loop principal, coordinación de módulos
  */
-void readQTR()
-{
-    /* 1. Encendemos el LED que ilumina el suelo con IR */
-    digitalWrite(QTR_LED, HIGH);
 
-    /* 2. Pausa corta para que la luz se estabilice y los
-     *    fototransistores respondan (≈ 200 µs es suficiente) */
-    delayMicroseconds(200);
+#include "config.h"
+#include "motor_controller.h"
+#include "encoder_controller.h"
+#include "sensor_array.h"
+#include "advanced_pid.h"
+#include "odometry.h"
+#include "eeprom_manager.h"
+#include "intelligent_avoidance.h"
+#include "competition_manager.h"
+#include "remote_control.h"
+#include "communication_handler.h"
+#include "data_logger.h"
+#include "mode_indicator.h"
+#include "state_machine.h"
 
-    /* 3. Leemos los 6 canales analógicos ---------------------- */
-    for (uint8_t i = 0; i < 6; i++)
-    {
-        /* Lectura cruda del ADC (0-1023) */
-        uint16_t v = analogRead(QTR_PINS[i]);
+// =============================================================================
+// INSTANCIAS GLOBALES
+// =============================================================================
 
-        /* Si ya calibramos, escalamos el valor al rango 0-1000
-         * qtrMin[i] = mínimo visto (más negro)
-         * qtrMax[i] = máximo visto (más blanco)
-         * constrain evita valores fuera de rango por si acaso */
-        if (qtrCalibrated)
-            v = map(constrain(v, qtrMin[i], qtrMax[i]),
-                    qtrMin[i], qtrMax[i], 0, 1000);
+MotorController motorController;
+EncoderController encoderController;
+SensorArray sensorArray;
+AdvancedPID linePID(DEFAULT_KP, DEFAULT_KI, DEFAULT_KD);
+Odometry odometry;
+EEPROMManager eepromManager;
+IntelligentAvoidance obstacleAvoidance(odometry);
+CompetitionManager competitionManager;
+RemoteControl remoteControl;
+CommunicationHandler commHandler(motorController, linePID, competitionManager, remoteControl);
+DataLogger dataLogger;
+ModeIndicator modeIndicator;
+StateMachine stateMachine;
 
-        /* Guardamos el resultado en el array global */
-        qtr[i] = v;
-    }
+// Configuración global
+RobotConfig currentConfig;
 
-    /* 4. Apagamos el LED para ahorrar energía y reducir
-     *    interferencias con otros sensores cercanos */
-    digitalWrite(QTR_LED, LOW);
-}
+// Variables de timing
+unsigned long lastOdometryUpdate = 0;
+unsigned long lastTelemetry = 0;
+unsigned long lastRemoteCheck = 0;
+unsigned long lastModeUpdate = 0;
+unsigned long lastSensorRead = 0;
 
-/* ----------------
- *  Convierte los 6 valores de los sensores QTR (0-1000) en una ÚNICA coordenada
- *  que indica dónde está el CENTRO de la línea negra respecto al centro físico
- *  del robot.
- *
- *  Valor devuelto:
- *    -2500  -> línea muy a la IZQUIERDA (sensor 0)
- *       0   -> línea en el CENTRO (entre sensores 2 y 3)
- *    +2500  -> línea muy a la DERECHA  (sensor 5)
- *
- *  Método: centro de masa ponderada (más negro = más peso).
+// Flags de control
+bool calibrationRequested = false;
+bool sensorsEnabled = false;
+
+// =============================================================================
+// DECLARACIONES FORWARD
+// =============================================================================
+
+// Funciones de modos de operación
+void executeRemoteControlMode();
+void executeCompetitionMode();
+void executeDebugMode();
+void executeCalibrationMode();
+
+// Funciones auxiliares
+void updateCommonSystems();
+void updateOdometry();
+void executeIntelligentActions(int error, IntelligentAvoidance::AvoidanceAction action);
+void executeStateActions(int error);
+void followLineWithSpeed(int error, int speed);
+void searchForLine();
+void avoidObstacle();
+void sendOptimizedTelemetry(OperationMode mode);
+void performCalibration();
+
+// Funciones de hardware
+void setupUltrasonic();
+float readDistance();
+
+// =============================================================================
+// INTERRUPCIONES ENCODERS
+// =============================================================================
+
+// Instancia global para acceso desde ISRs
+EncoderController encoderController;
+
+/**
+ * Interrupción encoder izquierdo
  */
-float computeLinePos()
-{
-    uint32_t sum = 0;   // Acumula (peso × posición) de cada sensor
-    uint32_t wt  = 0;   // Acumula el peso total (para normalizar después)
-
-    /* Recorremos los 6 sensores ------------------------------------------- */
-    for (uint8_t i = 0; i < 6; i++)
-    {
-        /* Cuanto más NEGRO vea el sensor, mayor será su peso.
-         * qtr[i] = 0   (blanco)  -> w = 1000
-         * qtr[i] = 1000(negro)   -> w = 0
-         * Invertimos así:  w = 1000 - qtr[i]  */
-        uint16_t w = 1000 - qtr[i];
-
-        wt += w;                 // Suma de pesos (denominador)
-
-        /* i es el índice del sensor (0-5).
-         * Lo escalamos a milésimas:  i*1000 -> 0, 1000, 2000, ..., 5000
-         * Con esto el centro físico estaría en 2500. */
-        sum += w * i * 1000;     // Suma ponderada de posiciones
-    }
-
-    /* Evitamos división por cero (todos los sensores en blanco) */
-    if (wt == 0) return 0.0f;
-
-    /* Centro de masa en milésimas (0-5000) */
-    float centro = (float)sum / wt;
-
-    /* Restamos 2500 para que el centro del robot sea 0 */
-    return centro - 2500.0f;
+void encoderLeftISR() {
+    encoderController.incrementLeft();
 }
 
-// ---------- KALMAN ----------
-/* kalmanLine()
- * ------------
- *  Filtro de Kalman de 1ª orden: suaviza la señal de
- *  computeLinePos() sin reducir el ancho de banda de forma
- *  drástica. Ideal para quitar ruido de baja amplitud
- *  producido por imperfecciones del suelo o reflejos.
- *
- *  Variables:
- *    x  : estimación actual (la devuelve)
- *    P  : incertidumbre de la estimación (covarianza)
- *    z  : medida (computeLinePos)
- *    R  : ruido del sensor (30)  – ajustable
- *    Q  : ruido del modelo (2)   – ajustable
- *
- *  Paso a paso:
- *    1. Predicción: x se mantiene, P crece Q
- *    2. Actualización: se corrige con la medida z
- *  Retorno: posición filtrada (misma escala que z)
+/**
+ * Interrupción encoder derecho  
  */
-float kalmanLine()
-{
-    /* Estado y covarianza: conservados entre llamadas */
-    static float x = 0.0f;   // posición estimada (filtrada)
-    static float P = 1.0f;   // incertidumbre
-
-    /* 1. Lectura de la medida (ruidoso) */
-    float z = computeLinePos();
-
-    /* 2. Ganancia de Kalman K = P / (P + R) */
-    float R = 30.0f;         // varianza del sensor (confianza en z)
-    float Q = 2.0f;          // varianza del modelo (confianza en x)
-    float y = z - x;         // innovación (error de medida)
-    float S = P + R;         // covarianza del error
-    float K = P / S;         // ganancia (0-1)
-
-    /* 3. Actualización del estado */
-    x = x + K * y;           // corrección proporcional a la innovación
-
-    /* 4. Actualización de la covarianza */
-    P = (1.0f - K) * P + Q;  // reduce incertidumbre pero añade Q
-
-    /* 5. Devolvemos la estimación filtrada */
-    return x;
+void encoderRightISR() {
+    encoderController.incrementRight();
 }
 
-// ---------- LINE PID ----------
-/* linePID(float pos)
- * ------------------
- *  PID discreto para el seguimiento de línea.
- *  Entrada: posición de la línea (devuelta por kalmanLine() u otro filtro).
- *  Salida: corrección en PWM que se sumará/restará a los motores.
- *
- *  setpointLine = 0  (línea centrada); se puede cambiar para curvas
- *  LOOP_HZ = 100  =>  dt = 0.01 s
- *
- *  Constantes (ajustables por EEPROM o serial):
- *    kpLine  -> fuerza proporcional (0.08)
- *    kiLine  -> fuerza integral     (0.0)
- *    kdLine  -> fuerza derivativa   (0.008)
- *
- *  Variables internas (conservadas):
- *    prev  -> error anterior (para derivada)
- *    integ -> suma acumulada de errores (integral)
- */
-float linePID(float pos)
-{
-    static float prev = 0, integ = 0;
-    /* 1. Error actual: diferencia entre punto deseado y medido */
-    float err = setpointLine - pos;          // setpointLine suele ser 0
+// =============================================================================
+// SETUP - INICIALIZACIÓN
+// =============================================================================
 
-    /* 2. Parte integral: acumula el error (se saturará externamente si hace falta) */
-    integ += err;                            // dt está implícito en kiLine
-
-    /* 3. Parte derivada: velocidad de cambio del error
-     *    Como dt = 1/LOOP_HZ, multiplicamos directamente por LOOP_HZ */
-    float deriv = (err - prev) * LOOP_HZ;   // (error_now - error_prev) / dt
-    prev = err;                             // guardamos para la próxima vuelta
-
-    /* 4. Salida PID: corrección en PWM (se resta/suma a cada motor) */
-    return kpLine * err + kiLine * integ + kdLine * deriv;
-}
-
-float readBattery();
-
-// ---------- BATERÍA ----------
-void updateBattery() {
-    if (millis() - lastBatRead < 1000) return; // Cada 1 segundo
-    lastBatRead = millis();
-    batVoltage = readBattery();
-    batPercent = constrain(map(batVoltage * 100, BAT_MIN_V * 100, BAT_MAX_V * 100, 0, 100), 0, 100);
-}
-
-// ---------- TELEMETRY ----------
-#pragma pack(push,1)
-struct Tele {
-    uint32_t time;
-    int16_t  rpmL, rpmR;   // ×10
-    uint16_t pos;          // ×100 (cm con 2 decimales, offset +25)
-    uint16_t bat;          // ×1000 (mV)
-    uint8_t  mode;
-    uint8_t  crc;
-};
-#pragma pack(pop)
-
-void sendTele() {
-    static uint32_t lastTime = 0;
-    uint32_t now = millis();
-    float dt = (now - lastTime) / 1000.0f;
-    if (dt == 0) return;
-    lastTime = now;
-
-    // Actualizar batería
-    updateBattery();
-
-    // RPM
-    float rpmL = left.filtRPM;
-    float rpmR = right.filtRPM;
-
-    // Velocidad lineal (cm/s)
-    float speedL = (left.ticks * CM_PER_TICK) / dt;
-    float speedR = (right.ticks * CM_PER_TICK) / dt;
-
-    // Distancia total e individual
-    leftDist += speedL * dt;
-    rightDist += speedR * dt;
-    float totalDist = (leftDist + rightDist) / 2.0f;
-
-    // Enviar JSON
-    JsonDocument doc;
-    doc["type"] = "telemetry";
-    JsonObject payload = doc["payload"].to<JsonObject>();
-    payload["timestamp"] = millis();
-    payload["mode"] = mode;
-    payload["velocity"] = (speedL + speedR) / 2.0f;
-    payload["acceleration"] = 0.0f; // Placeholder
-    payload["distance"] = totalDist;
-    payload["battery"] = batVoltage;
-
-    JsonObject leftObj = payload["left"].to<JsonObject>();
-    leftObj["vel"] = speedL;
-    leftObj["acc"] = 0.0f;
-    leftObj["rpm"] = rpmL;
-    leftObj["distance"] = leftDist;
-    leftObj["pwm"] = left.pwm;
-
-    JsonObject rightObj = payload["right"].to<JsonObject>();
-    rightObj["vel"] = speedR;
-    rightObj["acc"] = 0.0f;
-    rightObj["rpm"] = rpmR;
-    rightObj["distance"] = rightDist;
-    rightObj["pwm"] = right.pwm;
-
-    JsonArray qtrArray = payload["qtr"].to<JsonArray>();
-    for (int i = 0; i < 6; i++) qtrArray.add(qtr[i]);
-
-    JsonArray pidArray = payload["pid"].to<JsonArray>();
-    pidArray.add(kpLine);
-    pidArray.add(kiLine);
-    pidArray.add(kdLine);
-
-    payload["set_point"] = setpointLine;
-    payload["base_speed"] = baseSpeed;
-    payload["error"] = lineErr;
-    payload["correction"] = lineCorr;
-
-    serializeJson(doc, Serial);
-    Serial.println();
-}
-
-
-float readBattery() {
-    uint16_t raw = analogRead(BAT_PIN);
-    float vDiv = raw * (BAT_VREF / 1023.0f);
-    return vDiv * BAT_RATIO;
-}
-
-// ---------- FUNCTIONS DECLARATIONS ----------
-void calibrateQTR();
-void motorWrite(int, int);
-void handleRemote();
-
-// ---------- AUTO-TUNE ----------
-void tuneLine() {
-    beep(2);
-    kpLine = 0; kiLine = 0; kdLine = 0;
-    float Ku = 0, Pu = 0.8f;
-    float steer = 0;
-    for (Ku = 0.1f; Ku < 5; Ku += 0.1f) {
-        kpLine = Ku;
-        for (uint16_t t = 0; t < 100; t++) {
-            readQTR();
-            steer = linePID(kalmanLine()); // steer in PWM
-            float steerRPM = steer;
-            left.setRPM(60 - steerRPM);
-            right.setRPM(60 + steerRPM);
-            left.update(DT);
-            right.update(DT);
-            delay(10);
-        }
-        if (abs(steer) > 50) break;
-    }
-    kpLine = 0.6f * Ku;
-    kiLine = 2 * kpLine / Pu;
-    kdLine = kpLine * Pu / 8;
-    eepWrite(EEPROM_ADDR_BASE + 20, kpLine);
-    eepWrite(EEPROM_ADDR_BASE + 24, kiLine);
-    eepWrite(EEPROM_ADDR_BASE + 28, kdLine);
-    beep(3);
-}
-
-// ---------- JSON PARSER ----------
-void execCmd(const char *json) {
-    // Send received command as telemetry
-    JsonDocument cmdDoc;
-    cmdDoc["type"] = "cmd";
-    cmdDoc["payload"]["buffer"] = json;
-    serializeJson(cmdDoc, Serial);
-    Serial.println();
-
-    JsonDocument doc;
-    if (deserializeJson(doc, json)) return;
-
-    if (doc["mode"].is<int>()) {
-        mode = (Mode)doc["mode"].as<int>();
-        if (mode == LINE_FOLLOW) calibrateQTR();
-    }
-
-    if (doc["pid"].is<JsonArray>()) {
-        JsonArray arr = doc["pid"];
-        kpLine = arr[0];
-        kiLine = arr[1];
-        kdLine = arr[2];
-    }
-
-    if (doc["base_speed"].is<float>()) baseSpeed = doc["base_speed"];
-
-    if (doc["setpoint"].is<float>()) setpointLine = doc["setpoint"];
-
-    if (doc["eeprom"].is<int>()) {
-      EEPROM.put(EEPROM_ADDR_BASE + 20, kpLine);
-      EEPROM.put(EEPROM_ADDR_BASE + 24, kiLine);
-      EEPROM.put(EEPROM_ADDR_BASE + 28, kdLine);
-      EEPROM.put(EEPROM_ADDR_BASE + 12, baseSpeed);
-    }
-
-    if (doc["tele"].is<int>()) {
-      int teleCmd = doc["tele"];
-      if (teleCmd == 2) {  // get once
-        sendTele();
-      } else if (teleCmd == 1) {  // on
-        teleEnabled = true;
-      } else if (teleCmd == 0) {  // off
-        teleEnabled = false;
-      }
-    }
-
-    if (doc["qtr"].is<int>()) {
-      calibrateQTR();
-    }
-
-    if (doc["servo"].is<JsonObject>()) {
-      JsonObject servoObj = doc["servo"];
-      if (servoObj["distance"].is<float>()) {
-        float distance = servoObj["distance"];
-        float angle = servoObj["angle"].is<float>() ? servoObj["angle"] : 0;
-        servo.start(distance, angle);
-        mode = SERVO;
-      }
-    }
-
-    if (doc["rc"].is<JsonObject>()) {
-      JsonObject rc = doc["rc"];
-      // Reset only throttle and turn
-      remote.throttle = 0;
-      remote.turn = 0;
-
-      if (rc["throttle"].is<float>()) remote.throttle = rc["throttle"];
-      if (rc["turn"].is<float>()) remote.turn = rc["turn"];
-      mode = REMOTE;
-    }
-}
-
-// ---------- SERIE ----------
-void serialEvent() {
-    while (Serial.available()) {
-        char c = (char)Serial.read();
-        if (c == '\n') {
-            serBuf[serHead] = 0;
-            execCmd(serBuf);
-            serHead = 0;
-        } else {
-            serBuf[serHead++] = c;
-            if (serHead >= SER_BUF - 1) serHead = 0;
-        }
-    }
-}
-
-
-// ---------- SETUP ----------
 void setup() {
-    Serial.begin(9600);
-    analogReference(INTERNAL);
-    pinMode(MOT_L1, OUTPUT);
-    pinMode(MOT_L2, OUTPUT);
-    pinMode(MOT_R1, OUTPUT);
-    pinMode(MOT_R2, OUTPUT);
-    pinMode(QTR_LED, OUTPUT);
-    pinMode(CAL_LED, OUTPUT);
-    pinMode(BUZZER, OUTPUT);
-    for (uint8_t i = 0; i < 6; i++) pinMode(QTR_PINS[i], INPUT);
-    pinMode(ENC_LA, INPUT_PULLUP);
-    pinMode(ENC_LB, INPUT_PULLUP);
-    pinMode(ENC_RA, INPUT_PULLUP);
-    pinMode(ENC_RB, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(ENC_LA), []{left.isr();}, RISING);
-    attachPinChangeInterrupt(ENC_RA, []{right.isr();}, RISING);
+    // 1. Inicializar comunicación serial
+    Serial.begin(115200);
+    delay(1000); // Esperar estabilización
+    
+    Serial.println("{\"type\":\"system\",\"message\":\"Inicializando Robot Seguidor de Línea Profesional\"}");
+    Serial.println("{\"type\":\"system\",\"version\":\"4.0\",\"features\":\"PID_Avanzado,Odometría,Control_Remoto,EEPROM,Evasión_Inteligente\"}");
 
-    // Cargar valores desde EEPROM
-    eepRead(EEPROM_ADDR_BASE, left.kp);
-    eepRead(EEPROM_ADDR_BASE + 4, left.ki);
-    eepRead(EEPROM_ADDR_BASE + 8, left.kd);
-    eepRead(EEPROM_ADDR_BASE + 12, baseSpeed);
-    right.kp = left.kp;
-    right.ki = left.ki;
-    right.kd = left.kd;
-    eepRead(EEPROM_ADDR_BASE + 20, kpLine);
-    eepRead(EEPROM_ADDR_BASE + 24, kiLine);
-    eepRead(EEPROM_ADDR_BASE + 28, kdLine);
-    eepRead(EEPROM_ADDR_DIAM, right.diamCorr);
+    // 2. Inicializar hardware
+    motorController.initialize();
+    encoderController.initialize();
+    setupUltrasonic();
 
-    // Cargar calibración QTR
-    eepRead(EEPROM_ADDR_QTR_MIN, qtrMin);
-    eepRead(EEPROM_ADDR_QTR_MAX, qtrMax);
-    bool qtrValid = true;
-    for (uint8_t i = 0; i < 6; i++) {
-        if (qtrMin[i] >= qtrMax[i] || qtrMin[i] > 1023 || qtrMax[i] > 1023 || (qtrMin[i] == 0 && qtrMax[i] == 0)) qtrValid = false;
-    }
-    if (qtrValid) {
-        qtrCalibrated = true;
-    } else {
-        if (mode == LINE_FOLLOW) calibrateQTR();
+    // 3. Cargar configuración de EEPROM
+    if (!eepromManager.loadConfig(currentConfig)) {
+        eepromManager.initializeDefaultConfig(currentConfig);
+        Serial.println("{\"type\":\"eeprom\",\"message\":\"Configuración por defecto cargada\"}");
     }
 
-    // Validar diamCorr
-    if (isnan(right.diamCorr) || right.diamCorr <= 0) right.diamCorr = 1.0f;
-    Serial.println("left.diamCorr = " + String(left.diamCorr));
-    Serial.println("right.diamCorr = " + String(right.diamCorr));
+    // 4. Aplicar configuración cargada
+    motorController.setBaseSpeed(currentConfig.baseSpeed);
+    linePID.setGains(currentConfig.kp, currentConfig.ki, currentConfig.kd);
+    sensorArray.calibrateFromConfig(currentConfig);
+    remoteControl.setLimits(currentConfig.rcDeadzone, currentConfig.rcMaxThrottle, currentConfig.rcMaxSteering);
 
-    // Validar valores leídos de EEPROM
-    if (left.kp <= 0 || isnan(left.kp)) left.kp = 0.9f;
-    if (left.ki < 0 || isnan(left.ki)) left.ki = 2.2f;
-    if (left.kd < 0 || isnan(left.kd)) left.kd = 0.0f;
-    if (baseSpeed <= 0 || baseSpeed > 1 || isnan(baseSpeed)) baseSpeed = 0.8f;
-    if (kpLine < 0 || isnan(kpLine) || kpLine > 5.0f) kpLine = 0.08f;
-    if (kiLine < 0 || isnan(kiLine) || kiLine > 5.0f) kiLine = 0.0f;
-    if (kdLine < 0 || isnan(kdLine) || kdLine > 1.0f) kdLine = 0.008f;
-    Serial.println("kpLine = " + String(kpLine));
-    Serial.println("kiLine = " + String(kiLine));
-    Serial.println("kdLine = " + String(kdLine));
-    right.kp = left.kp;
-    right.ki = left.ki;
-    right.kd = left.kd;
+    // 5. Inicializar odometría con valores de EEPROM
+    odometry = Odometry(currentConfig.wheelDiameter, currentConfig.wheelDistance);
 
-    Timer1.initialize(10000);
-    Timer1.attachInterrupt([]{ left.update(DT); right.update(DT); });
-    beep(1);
+    // 6. Configurar modo inicial
+    competitionManager.setMode(MODE_DEBUG);
+    modeIndicator.setMode(MODE_DEBUG);
+
+    // 7. Mostrar configuración inicial
+    eepromManager.printConfig(currentConfig);
+    
+    Serial.println("{\"type\":\"system\",\"message\":\"Inicialización completada - Robot listo\"}");
+    Serial.println("{\"type\":\"system\",\"commands\":\"start, stop, set_pid, set_speed, set_mode, calibrate_sensors, get_status\"}");
+
+    lastOdometryUpdate = millis();
+    lastSensorRead = millis();
 }
 
-// ---------- LOOP ----------
+// =============================================================================
+// LOOP PRINCIPAL
+// =============================================================================
+
 void loop() {
-    static uint32_t t0 = 0;
-    if (micros() - t0 >= 1000) { //1000
-        t0 = micros();
-        readQTR();
-        switch (mode) {
-            case LINE_FOLLOW: {
-                //if (!qtrCalibrated) { motorWrite(0, 0); break; }
-                float currentPos = kalmanLine();
-                float steer = linePID(currentPos);
-                lineErr = setpointLine - currentPos;
-                lineCorr = steer;
-                float baseRPM = baseSpeed * 60.0f;
-                float steerRPM = steer * 1.0f;
-                left.setRPM(baseRPM - steerRPM);
-                right.setRPM(baseRPM + steerRPM);
-                break;
-            }
-            case REMOTE: handleRemote(); break;
-            case SERVO: servo.update(); break;
-        }
-        if (teleEnabled && millis() - lastTele >= /*10*/ 1500) { lastTele = millis(); sendTele(); }
+    unsigned long currentTime = millis();
+    
+    // 1. Actualizar indicador de modo (cada 100ms)
+    if (currentTime - lastModeUpdate >= 100) {
+        modeIndicator.setMode(competitionManager.getCurrentMode());
+        modeIndicator.update();
+        lastModeUpdate = currentTime;
     }
+    
+    // 2. Verificar y actualizar modo de operación
+    competitionManager.checkMode();
+    OperationMode currentMode = competitionManager.getCurrentMode();
+    
+    // 3. Procesar comandos seriales (si están habilitados)
+    if (competitionManager.isSerialEnabled() && Serial.available()) {
+        String command = Serial.readStringUntil('\n');
+        command.trim();
+        commHandler.processCommand(command);
+    }
+    
+    // 4. Manejar calibración si fue solicitada
+    if (calibrationRequested) {
+        performCalibration();
+        calibrationRequested = false;
+    }
+    
+    // 5. Control de alimentación de sensores según modo
+    bool shouldEnableSensors = (currentMode != MODE_REMOTE_CONTROL);
+    if (sensorsEnabled != shouldEnableSensors) {
+        sensorsEnabled = shouldEnableSensors;
+        sensorArray.setPower(sensorsEnabled);
+    }
+    
+    // 6. Ejecutar lógica principal según modo de operación
+    switch (currentMode) {
+        case MODE_REMOTE_CONTROL:
+            executeRemoteControlMode();
+            break;
+        case MODE_COMPETITION:
+            executeCompetitionMode();
+            break;
+        case MODE_DEBUG:
+        case MODE_TUNING:
+            executeDebugMode();
+            break;
+        case MODE_CALIBRATION:
+            executeCalibrationMode();
+            break;
+    }
+    
+    // 7. Actualizaciones de sistemas comunes
+    updateCommonSystems();
+    
+    // 8. Envío de telemetría
+    sendOptimizedTelemetry(currentMode);
+    
+    // 9. Pequeño delay para estabilidad
+    delay(10);
 }
 
-// ---------- AUX ----------
-void motorWrite(int l, int r) {
-    left.setRPM(l / 2);
-    right.setRPM(r / 2);
-}
+// =============================================================================
+// IMPLEMENTACIÓN MODOS DE OPERACIÓN
+// =============================================================================
 
-void handleRemote() {
-    if (remote.throttle != 0 || remote.turn != 0) {
-        float base = remote.throttle * baseSpeed * 60.0f;
-        float steer = remote.turn * baseSpeed * 60.0f;
-        left.setRPM(base - steer);
-        right.setRPM(base + steer);
+/**
+ * Modo Control Remoto - control manual vía JSON
+ */
+void executeRemoteControlMode() {
+    // Verificar conexión del control remoto
+    if (millis() - lastRemoteCheck > 500) {
+        remoteControl.checkConnection();
+        lastRemoteCheck = millis();
+    }
+    
+    // Aplicar velocidades del control remoto
+    if (remoteControl.isConnected()) {
+        motorController.tankDrive(remoteControl.getLeftSpeed(), remoteControl.getRightSpeed());
     } else {
-        // Detener motores si no hay comandos
-        left.setRPM(0);
-        right.setRPM(0);
+        // Timeout - detener motores
+        motorController.stopAll();
+    }
+    
+    // Leer sensores para feedback visual (pero no para control)
+    if (millis() - lastSensorRead >= 50) {
+        sensorArray.readLinePosition();
+        lastSensorRead = millis();
     }
 }
 
-void calibrateQTR() {
-    led(HIGH);
-    for (uint8_t j = 0; j < 6; j++) {
-        qtrMin[j] = 1023;
-        qtrMax[j] = 0;
+/**
+ * Modo Competencia - máxima performance, telemetría mínima
+ */
+void executeCompetitionMode() {
+    // Leer sensores cada 20ms para respuesta rápida
+    if (millis() - lastSensorRead >= 20) {
+        int error = sensorArray.readLinePosition();
+        int sensorSum = sensorArray.getSensorSum();
+        
+        // Detección de obstáculos
+        float distance = readDistance();
+        IntelligentAvoidance::AvoidanceAction avoidanceAction = 
+            obstacleAvoidance.evaluateObstacle(distance, motorController.getBaseSpeed());
+        
+        // Actualizar máquina de estados
+        bool criticalObstacle = (avoidanceAction == IntelligentAvoidance::EMERGENCY_STOP);
+        stateMachine.updateState(error, sensorSum, criticalObstacle, MODE_COMPETITION);
+        
+        // Ejecutar acciones
+        executeIntelligentActions(error, avoidanceAction);
+        
+        lastSensorRead = millis();
     }
-    for (uint16_t i = 0; i < 400; i++) {
-        readQTR();
-        for (uint8_t j = 0; j < 6; j++) {
-            if (qtr[j] < qtrMin[j]) qtrMin[j] = qtr[j];
-            if (qtr[j] > qtrMax[j]) qtrMax[j] = qtr[j];
+}
+
+/**
+ * Modo Debug/Tuning - funcionalidad completa con telemetría
+ */
+void executeDebugMode() {
+    // Leer sensores cada 30ms
+    if (millis() - lastSensorRead >= 30) {
+        int error = sensorArray.readLinePosition();
+        int sensorSum = sensorArray.getSensorSum();
+        
+        // Actualizar odometría
+        updateOdometry();
+        
+        // Detección de obstáculos
+        float distance = readDistance();
+        IntelligentAvoidance::AvoidanceAction avoidanceAction = 
+            obstacleAvoidance.evaluateObstacle(distance, motorController.getBaseSpeed());
+        
+        // Actualizar máquina de estados
+        bool criticalObstacle = (avoidanceAction == IntelligentAvoidance::EMERGENCY_STOP);
+        stateMachine.updateState(error, sensorSum, criticalObstacle, MODE_DEBUG);
+        
+        // Ejecutar acciones
+        executeIntelligentActions(error, avoidanceAction);
+        
+        lastSensorRead = millis();
+    }
+}
+
+/**
+ * Modo Calibración - solo lectura de sensores
+ */
+void executeCalibrationMode() {
+    motorController.stopAll();
+    
+    // Enviar datos de sensores cada 500ms
+    if (millis() - lastSensorRead >= 500) {
+        Serial.println(sensorArray.getSensorDataJSON());
+        lastSensorRead = millis();
+    }
+}
+
+// =============================================================================
+// FUNCIONES AUXILIARES
+// =============================================================================
+
+/**
+ * Realizar calibración automática de sensores
+ */
+void performCalibration() {
+    Serial.println("{\"type\":\"calibration\",\"message\":\"Iniciando proceso de calibración automática...\"}");
+    
+    sensorArray.performAutoCalibration();
+    
+    // Guardar calibración en EEPROM
+    sensorArray.saveCalibrationToConfig(currentConfig);
+    if (eepromManager.saveConfig(currentConfig)) {
+        Serial.println("{\"type\":\"calibration\",\"message\":\"Calibración guardada exitosamente en EEPROM\"}");
+    } else {
+        Serial.println("{\"type\":\"calibration\",\"message\":\"Error al guardar calibración en EEPROM\"}");
+    }
+}
+
+/**
+ * Actualizar sistemas comunes a todos los modos
+ */
+void updateCommonSystems() {
+    // Actualizar velocidades de encoders
+    encoderController.updateVelocities();
+    
+    // Actualizar odometría (excepto en modo calibración)
+    if (competitionManager.getCurrentMode() != MODE_CALIBRATION) {
+        updateOdometry();
+    }
+}
+
+/**
+ * Actualizar odometría del robot
+ */
+void updateOdometry() {
+    unsigned long currentTime = millis();
+    if (currentTime - lastOdometryUpdate >= 50) { // 20Hz
+        odometry.update(encoderController.getLeftCount(), 
+                       encoderController.getRightCount(), 
+                       currentTime - lastOdometryUpdate);
+        lastOdometryUpdate = currentTime;
+    }
+}
+
+/**
+ * Ejecutar acciones considerando evasión de obstáculos
+ */
+void executeIntelligentActions(int error, IntelligentAvoidance::AvoidanceAction action) {
+    switch (action) {
+        case IntelligentAvoidance::EMERGENCY_STOP:
+            motorController.stopAll();
+            break;
+        case IntelligentAvoidance::REVERSE:
+            motorController.tankDrive(-100, -100);
+            break;
+        case IntelligentAvoidance::SLOW_DOWN:
+            // Reducir velocidad base temporalmente
+            followLineWithSpeed(error, motorController.getBaseSpeed() * 0.5);
+            break;
+        default:
+            // Comportamiento normal según estado de la máquina de estados
+            executeStateActions(error);
+            break;
+    }
+}
+
+/**
+ * Ejecutar acciones según estado actual
+ */
+void executeStateActions(int error) {
+    switch (stateMachine.getCurrentState()) {
+        case STATE_FOLLOWING_LINE:
+            followLineWithSpeed(error, motorController.getBaseSpeed());
+            break;
+        case STATE_SEARCHING_LINE:
+            searchForLine();
+            break;
+        case STATE_STOPPED:
+            motorController.stopAll();
+            break;
+        case STATE_TURNING_RIGHT:
+            motorController.tankDrive(150, -150);
+            break;
+        case STATE_TURNING_LEFT:
+            motorController.tankDrive(-150, 150);
+            break;
+        case STATE_SHARP_CURVE:
+            followLineWithSpeed(error * 1.3, motorController.getBaseSpeed());
+            break;
+        case STATE_AVOIDING_OBSTACLE:
+            avoidObstacle();
+            break;
+        case STATE_REMOTE_CONTROL:
+            // Los motores se controlan desde executeRemoteControlMode
+            break;
+    }
+}
+
+/**
+ * Seguir línea con control PID a velocidad específica
+ */
+void followLineWithSpeed(int error, int speed) {
+    double correction = linePID.compute(error);
+    int leftSpeed = speed + correction;
+    int rightSpeed = speed - correction;
+    motorController.tankDrive(leftSpeed, rightSpeed);
+}
+
+/**
+ * Buscar línea perdida
+ */
+void searchForLine() {
+    int direction = stateMachine.getSearchDirection();
+    motorController.tankDrive(120 * direction, -120 * direction);
+}
+
+/**
+ * Ejecutar maniobra de evasión de obstáculos
+ */
+void avoidObstacle() {
+    static int avoidPhase = 0;
+    static unsigned long phaseStartTime = 0;
+    
+    if (millis() - phaseStartTime > 500) {
+        avoidPhase++;
+        phaseStartTime = millis();
+    }
+    
+    switch (avoidPhase) {
+        case 0: // Retroceder
+            motorController.tankDrive(-150, -150);
+            break;
+        case 1: // Girar
+            motorController.tankDrive(-150, 150);
+            break;
+        case 2: // Avanzar
+            motorController.tankDrive(150, 150);
+            break;
+        default:
+            avoidPhase = 0;
+            break;
+    }
+}
+
+/**
+ * Enviar telemetría optimizada según modo
+ */
+void sendOptimizedTelemetry(OperationMode mode) {
+    if (!competitionManager.isSerialEnabled()) return;
+    
+    unsigned long currentTime = millis();
+    if (currentTime - lastTelemetry >= 200) { // 5Hz max
+        switch (mode) {
+            case MODE_REMOTE_CONTROL:
+                Serial.println(remoteControl.getStatusJSON());
+                break;
+            case MODE_COMPETITION:
+                // Telemetría mínima para competencia
+                {
+                    StaticJsonDocument<128> doc;
+                    doc["t"] = currentTime;
+                    doc["s"] = stateMachine.getStateString().substring(0,1);
+                    doc["d"] = String(readDistance(), 1);
+                    String jsonString;
+                    serializeJson(doc, jsonString);
+                    Serial.println(jsonString);
+                }
+                break;
+            default:
+                // Telemetría completa para debugging/tuning
+                Serial.println(sensorArray.getSensorDataJSON());
+                Serial.println(odometry.getPoseJSON());
+                Serial.println(stateMachine.getStateJSON());
+                Serial.println(modeIndicator.getStatusJSON());
+                
+                // Log de datos para análisis
+                dataLogger.logData(
+                    sensorArray.readLinePosition(), 
+                    motorController.getBaseSpeed(), 
+                    motorController.getBaseSpeed(),
+                    encoderController.getLeftRPM(),
+                    encoderController.getRightRPM(),
+                    stateMachine.getStateString()
+                );
+                break;
         }
-        delay(5);
+        lastTelemetry = currentTime;
     }
-    qtrCalibrated = true;
-    eepWrite(EEPROM_ADDR_QTR_MIN, qtrMin);
-    eepWrite(EEPROM_ADDR_QTR_MAX, qtrMax);
-    led(LOW);
+}
+
+// =============================================================================
+// FUNCIONES DE HARDWARE
+// =============================================================================
+
+/**
+ * Inicializar sensor ultrasónico
+ */
+void setupUltrasonic() {
+    pinMode(TRIG_PIN, OUTPUT);
+    pinMode(ECHO_PIN, INPUT);
+    digitalWrite(TRIG_PIN, LOW);
+}
+
+/**
+ * Leer distancia con sensor ultrasónico
+ * @return Distancia en cm, 0 si error
+ */
+float readDistance() {
+    digitalWrite(TRIG_PIN, LOW);
+    delayMicroseconds(2);
+    digitalWrite(TRIG_PIN, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(TRIG_PIN, LOW);
+    
+    long duration = pulseIn(ECHO_PIN, HIGH, 30000); // Timeout 30ms
+    if (duration == 0) {
+        return 0; // Timeout o error
+    }
+    
+    return (duration * 0.0343) / 2.0;
 }

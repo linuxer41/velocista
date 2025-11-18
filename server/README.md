@@ -1,6 +1,6 @@
 📘 README – API JSON del Robot "Velocista"
 Revisado: noviembre-2024
-Versión firmware: 2.0 (modos unificados + rc simplificado)
+Versión firmware: 2.1 (mejoras en seguidor de línea + factory reset)
 
 1. Objetivo
 Documento de referencia para cualquier capa front-end (App móvil, web, desktop) que desee:
@@ -28,6 +28,7 @@ Claves en inglés descriptivo (camelCase) para facilitar parseo automático
 | eeprom | int 1 | Guarda config actual en EEPROM | {"eeprom":1} |
 | tele | int | Control telemetría: 0=off, 1=on, 2=get once | {"tele":1} |
 | qtr | int 1 | Calibra sensores QTR (mueve robot sobre línea y fondo) | {"qtr":1} |
+| factory_reset | int 1 | Resetea configuración a valores de fábrica | {"factory_reset":1} |
 
 Mensajes de comando (comando recibido):
 ```json
@@ -35,7 +36,7 @@ Mensajes de comando (comando recibido):
 ```
 
 4. Telemetría (robot → ENVÍA)
-Se emite automáticamente cada 1000 ms.
+Se emite automáticamente cada 500 ms.
 Ejemplo completo:
 ```json
 {
@@ -50,7 +51,6 @@ Ejemplo completo:
       "vel": 9.87,
       "acc": 0.5,
       "rpm": 39.7,
-      "encoder": 23,
       "distance": 833.46,
       "pwm": 150
     },
@@ -58,15 +58,14 @@ Ejemplo completo:
       "vel": 0,
       "acc": 0.5,
       "rpm": 0,
-      "encoder": 0,
       "distance": 0,
       "pwm": -50
     },
     "battery": 12.1,
-    "qtr": [1023,1023,1023,1023,1012,516],
-    "pid": [0.01, 0.01, 0.01],
-    "set_point": 2500,
-    "base_speed": 0.8,
+    "qtr": [1000,1000,1000,1000,506,0],
+    "pid": [1.2, 0.001, 0.05],
+    "set_point": 0,
+    "base_speed": 0.6,
     "error": 0,
     "correction": 0
   }
@@ -87,18 +86,16 @@ Descripción de campos:
 | payload.left.vel | float | cm/s | Velocidad motor izquierdo |
 | payload.left.acc | float | cm/s² | Aceleración motor izquierdo |
 | payload.left.rpm | float | rpm | RPM motor izquierdo |
-| payload.left.encoder | int32_t | ticks | Conteo encoder izquierdo |
 | payload.left.distance | float | cm | Distancia recorrida motor izquierdo |
 | payload.left.pwm | int16_t | -255..255 | PWM motor izquierdo |
 | payload.right | object | - | Datos motor derecho |
 | payload.right.vel | float | cm/s | Velocidad motor derecho |
 | payload.right.acc | float | cm/s² | Aceleración motor derecho |
 | payload.right.rpm | float | rpm | RPM motor derecho |
-| payload.right.encoder | int32_t | ticks | Conteo encoder derecho |
 | payload.right.distance | float | cm | Distancia recorrida motor derecho |
 | payload.right.pwm | int16_t | -255..255 | PWM motor derecho |
 | payload.battery | float | V | Voltaje de batería |
-| payload.qtr[] | array[int] | 0-1023 | Valores crudos de los 6 sensores QTR |
+| payload.qtr[] | array[int] | 0-1000 | Valores de los 6 sensores QTR (calibrados) |
 | payload.pid[] | array[float] | - | Ganancias PID [Kp, Ki, Kd] |
 | payload.set_point | float | - | Punto de referencia de línea (0-5000) |
 | payload.base_speed | float | - | Velocidad base configurada (0-1) |
@@ -137,19 +134,29 @@ Finaliza con: {"type": "status", "payload": {"status": "servo_completed"}}
 8. Persistencia en EEPROM
 {"eeprom":1} → guarda PID, velocidad-base y modo actual
 Se auto-cargan al reiniciar
+{"factory_reset":1} → resetea todo a valores de fábrica
 
 9. Referencias de hardware
 Puerto serie: 9600,8,N,1 (HW 0-TX / 1-RX)
 Bluetooth: emparejar y abrir puerto serie estándar
 Divisor batería: 100 kΩ / 10 kΩ → pin A6, relación 11:1
-Sensores IR: 6 canales analógicos A0-A5
-Encoders: 90 PPR, rueda 4,5 cm → 0,039 cm/tick
+Sensores IR QTR: 6 canales analógicos A0-A5
+Encoders: 358 PPR * reducción 10:1, rueda 4,5 cm diámetro → 253 pulsos/cm
+Motores:
+- Izquierdo: adelante pin 6, atrás pin 5
+- Derecho: adelante pin 10, atrás pin 9
+Encoders:
+- Izquierdo: A pin 7, B pin 8
+- Derecho: A pin 2, B pin 3
+LED calibración: pin 13
+LED QTR: pin 12
+Buzzer: pin 4
 
 10. Ejemplo rápido de sesión
 ```
 >> {"mode":0}
 << {"type": "cmd", "payload": {"buffer": "{\"mode\":0}"}}
-<< {"type": "telemetry", "payload": {"timestamp": 12345, "mode": 0, "velocity": 9.87, "acceleration": 0.5, "distance": 833.46, "left": {"vel": 9.87, "acc": 0.5, "rpm": 39.7, "encoder": 23, "distance": 833.46, "pwm": 150}, "right": {"vel": 0, "acc": 0.5, "rpm": 0, "encoder": 0, "distance": 0, "pwm": -50}, "battery": 12.1, "qtr": [1023,1023,1023,1023,1012,516], "pid": [0.01, 0.01, 0.01], "set_point": 2500, "base_speed": 0.8, "error": 0, "correction": 0}}
+<< {"type": "telemetry", "payload": {"timestamp": 12345, "mode": 0, "velocity": 9.87, "acceleration": 0.5, "distance": 833.46, "left": {"vel": 9.87, "acc": 0.5, "rpm": 39.7, "distance": 833.46, "pwm": 150}, "right": {"vel": 0, "acc": 0.5, "rpm": 0, "distance": 0, "pwm": -50}, "battery": 12.1, "qtr": [1000,1000,1000,1000,506,0], "pid": [1.2, 0.001, 0.05], "set_point": 0, "base_speed": 0.6, "error": 0, "correction": 0}}
 
 >> {"servo":{"distance":25,"angle":45}}
 << {"type": "cmd", "payload": {"buffer": "{\"servo\":{\"distance\":25,\"angle\":45}}"}}

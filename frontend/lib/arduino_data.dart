@@ -110,10 +110,32 @@ class ArduinoData {
     this.baseSpeed,
   });
 
-  /// Parse JSON from Arduino according to the new 3-mode system
+  /// Parse JSON from Arduino according to the new API
   static ArduinoData fromJson(String jsonString) {
     final map = jsonDecode(jsonString);
 
+    // Check if it's the new telemetry payload
+    if (map.containsKey('type') && map['type'] == 'telemetry') {
+      final payload = map['payload'] as Map<String, dynamic>;
+      return ArduinoData(
+        operationMode: payload['mode'] ?? 0,
+        modeName: OperationMode.fromId(payload['mode'] ?? 0).displayName,
+        leftEncoderSpeed: (payload['left']?['vel'] as num?)?.toDouble() ?? 0.0,
+        rightEncoderSpeed: (payload['right']?['vel'] as num?)?.toDouble() ?? 0.0,
+        leftEncoderCount: 0, // Not available in new telemetry
+        rightEncoderCount: 0, // Not available in new telemetry
+        totalDistance: (payload['distance'] as num?)?.toDouble() ?? 0.0,
+        sensors: (payload['qtr'] as List<dynamic>?)?.map((e) => (e as num).toInt()).toList() ?? [],
+        battery: (payload['battery'] as num?)?.toDouble() ?? 0.0,
+        position: (payload['set_point'] as num?)?.toDouble(),
+        error: (payload['error'] as num?)?.toDouble(),
+        correction: (payload['correction'] as num?)?.toDouble(),
+        pid: (payload['pid'] as List<dynamic>?)?.map((e) => (e as num).toDouble()).toList(),
+        baseSpeed: (payload['base_speed'] as num?)?.toDouble(),
+      );
+    }
+
+    // Fallback to old format parsing
     return ArduinoData(
       operationMode: map['mode'] ?? map[_keyOperationMode] ?? 0,
       modeName: map['modeName'] ?? map[_keyModeName] ?? 'Unknown',
@@ -124,45 +146,45 @@ class ArduinoData {
       totalDistance: _parseDoubleValue(map['distance']?['total_cm'] ?? map[_keyTotalDistance]),
       sensors: _parseSensorsData(map['sensors']?['qtr'] ?? map[_keySensors]),
       battery: _parseDoubleValue(map['battery'] ?? 0.0),
-      
+
       // Line Following specific fields
-      position: (map[_keyPosition] is num) 
-          ? (map[_keyPosition] as num).toDouble() 
+      position: (map[_keyPosition] is num)
+          ? (map[_keyPosition] as num).toDouble()
           : double.tryParse('${map[_keyPosition]}'),
-      error: (map[_keyError] is num) 
-          ? (map[_keyError] as num).toDouble() 
+      error: (map[_keyError] is num)
+          ? (map[_keyError] as num).toDouble()
           : double.tryParse('${map[_keyError]}'),
-      correction: (map[_keyCorrection] is num) 
-          ? (map[_keyCorrection] as num).toDouble() 
+      correction: (map[_keyCorrection] is num)
+          ? (map[_keyCorrection] as num).toDouble()
           : double.tryParse('${map[_keyCorrection]}'),
-      leftSpeedCmd: (map[_keyLeftSpeedCmd] is num) 
-          ? (map[_keyLeftSpeedCmd] as num).toDouble() 
+      leftSpeedCmd: (map[_keyLeftSpeedCmd] is num)
+          ? (map[_keyLeftSpeedCmd] as num).toDouble()
           : double.tryParse('${map[_keyLeftSpeedCmd]}'),
-      rightSpeedCmd: (map[_keyRightSpeedCmd] is num) 
-          ? (map[_keyRightSpeedCmd] as num).toDouble() 
+      rightSpeedCmd: (map[_keyRightSpeedCmd] is num)
+          ? (map[_keyRightSpeedCmd] as num).toDouble()
           : double.tryParse('${map[_keyRightSpeedCmd]}'),
-      
+
       // Autopilot specific fields
-      throttle: (map[_keyThrottle] is num) 
-          ? (map[_keyThrottle] as num).toDouble() 
+      throttle: (map[_keyThrottle] is num)
+          ? (map[_keyThrottle] as num).toDouble()
           : double.tryParse('${map[_keyThrottle]}'),
-      brake: (map[_keyBrake] is num) 
-          ? (map[_keyBrake] as num).toDouble() 
+      brake: (map[_keyBrake] is num)
+          ? (map[_keyBrake] as num).toDouble()
           : double.tryParse('${map[_keyBrake]}'),
-      turn: (map[_keyTurn] is num) 
-          ? (map[_keyTurn] as num).toDouble() 
+      turn: (map[_keyTurn] is num)
+          ? (map[_keyTurn] as num).toDouble()
           : double.tryParse('${map[_keyTurn]}'),
       direction: map[_keyDirection] as int?,
-      
+
       // Manual specific fields
-      leftSpeed: (map[_keyLeftSpeed] is num) 
-          ? (map[_keyLeftSpeed] as num).toDouble() 
+      leftSpeed: (map[_keyLeftSpeed] is num)
+          ? (map[_keyLeftSpeed] as num).toDouble()
           : double.tryParse('${map[_keyLeftSpeed]}'),
-      rightSpeed: (map[_keyRightSpeed] is num) 
-          ? (map[_keyRightSpeed] as num).toDouble() 
+      rightSpeed: (map[_keyRightSpeed] is num)
+          ? (map[_keyRightSpeed] as num).toDouble()
           : double.tryParse('${map[_keyRightSpeed]}'),
-      maxSpeed: (map[_keyMaxSpeed] is num) 
-          ? (map[_keyMaxSpeed] as num).toDouble() 
+      maxSpeed: (map[_keyMaxSpeed] is num)
+          ? (map[_keyMaxSpeed] as num).toDouble()
           : double.tryParse('${map[_keyMaxSpeed]}'),
     );
   }
@@ -413,7 +435,7 @@ class SpeedBaseCommand {
   SpeedBaseCommand(this.baseSpeed);
 
   Map<String, dynamic> toJson() {
-    return {'speed': {'base': baseSpeed}};
+    return {'base_speed': baseSpeed};
   }
 }
 
@@ -423,9 +445,15 @@ class EepromSaveCommand {
   }
 }
 
+class FactoryResetCommand {
+  Map<String, dynamic> toJson() {
+    return {'factory_reset': 1};
+  }
+}
+
 class TelemetryRequestCommand {
   Map<String, dynamic> toJson() {
-    return {'telemetry': 1};
+    return {'tele': 2}; // Get once
   }
 }
 
@@ -435,13 +463,13 @@ class TelemetryEnableCommand {
   TelemetryEnableCommand(this.enable);
 
   Map<String, dynamic> toJson() {
-    return {'telemetry_enable': enable};
+    return {'tele': enable ? 1 : 0};
   }
 }
 
 class CalibrateQtrCommand {
   Map<String, dynamic> toJson() {
-    return {'calibrate_qtr': 1};
+    return {'qtr': 1};
   }
 }
 
@@ -464,52 +492,16 @@ class PidCommand {
 }
 
 class RcCommand {
-  // Direction + Acceleration mode
-  final double? direction; // 0-360 degrees
-  final double? acceleration; // 0.0-1.0
-
-  // Autopilot mode (throttle/turn)
-  final double? throttle; // -1.0 to 1.0
-  final double? turn; // -1.0 to 1.0
-
-  // Manual mode (left/right)
-  final double? left; // -1.0 to 1.0
-  final double? right; // -1.0 to 1.0
+  final double throttle; // -1.0 to 1.0
+  final double turn; // -1.0 to 1.0
 
   RcCommand({
-    this.direction,
-    this.acceleration,
-    this.throttle,
-    this.turn,
-    this.left,
-    this.right,
-  }) {
-    // Validate that only one mode is used
-    final modesUsed = [
-      direction != null || acceleration != null,
-      throttle != null || turn != null,
-      left != null || right != null,
-    ].where((mode) => mode).length;
-
-    if (modesUsed > 1) {
-      throw ArgumentError('Only one RC control mode can be used at a time');
-    }
-    if (modesUsed == 0) {
-      throw ArgumentError('At least one RC control mode must be specified');
-    }
-  }
+    required this.throttle,
+    required this.turn,
+  });
 
   Map<String, dynamic> toJson() {
-    final rcMap = <String, dynamic>{};
-
-    if (direction != null) rcMap['direction'] = direction;
-    if (acceleration != null) rcMap['acceleration'] = acceleration;
-    if (throttle != null) rcMap['throttle'] = throttle;
-    if (turn != null) rcMap['turn'] = turn;
-    if (left != null) rcMap['left'] = left;
-    if (right != null) rcMap['right'] = right;
-
-    return {'rc': rcMap};
+    return {'rc': {'throttle': throttle, 'turn': turn}};
   }
 }
 
@@ -701,15 +693,15 @@ class MotorData {
   final double vel;
   final double acc;
   final double rpm;
-  final int encoder;
   final double distance;
+  final int pwm;
 
   MotorData({
     required this.vel,
     required this.acc,
     required this.rpm,
-    required this.encoder,
     required this.distance,
+    required this.pwm,
   });
 
   static MotorData fromJson(Map<String, dynamic> json) {
@@ -717,8 +709,8 @@ class MotorData {
       vel: (json['vel'] as num?)?.toDouble() ?? 0.0,
       acc: (json['acc'] as num?)?.toDouble() ?? 0.0,
       rpm: (json['rpm'] as num?)?.toDouble() ?? 0.0,
-      encoder: (json['encoder'] as num?)?.toInt() ?? 0,
       distance: (json['distance'] as num?)?.toDouble() ?? 0.0,
+      pwm: (json['pwm'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -727,8 +719,8 @@ class MotorData {
       'vel': vel,
       'acc': acc,
       'rpm': rpm,
-      'encoder': encoder,
       'distance': distance,
+      'pwm': pwm,
     };
   }
 }
