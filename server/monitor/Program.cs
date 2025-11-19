@@ -321,7 +321,10 @@ namespace SerialWebSocketServer
                     return JsonSerializer.Serialize(new { type = "sensor_data", timestamp = uint.Parse(parts[0]), sensors = s, error = error, sum = sum }, options);
                 case (byte)MessageType.MSG_ODOMETRY:
                     if (parts.Length < 4) return string.Empty;
-                    return JsonSerializer.Serialize(new { type = "odometry", timestamp = uint.Parse(parts[0]), x = float.Parse(parts[1]), y = float.Parse(parts[2]), theta = float.Parse(parts[3]) }, options);
+                    float x = float.TryParse(parts[1], out var xVal) && !float.IsNaN(xVal) ? xVal : 0.0f;
+                    float y = float.TryParse(parts[2], out var yVal) && !float.IsNaN(yVal) ? yVal : 0.0f;
+                    float theta = float.TryParse(parts[3], out var tVal) && !float.IsNaN(tVal) ? tVal : 0.0f;
+                    return JsonSerializer.Serialize(new { type = "odometry", timestamp = uint.Parse(parts[0]), x = x, y = y, theta = theta }, options);
                 case (byte)MessageType.MSG_STATE:
                     if (parts.Length < 3) return string.Empty;
                     return JsonSerializer.Serialize(new { type = "state", timestamp = uint.Parse(parts[0]), state = byte.Parse(parts[1]), distance = float.Parse(parts[2]) }, options);

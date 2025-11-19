@@ -91,6 +91,10 @@ public:
 
     static void sendOdometry(uint32_t ts, float x, float y, float th)
     {
+        // Reemplazar NaN con 0 para evitar errores en JSON
+        if (isnan(x)) x = 0.0;
+        if (isnan(y)) y = 0.0;
+        if (isnan(th)) th = 0.0;
         String csv = String(MSG_ODOMETRY) + "," + String(ts) + "," + String(x, 6) + "," + String(y, 6) + "," + String(th, 6);
         Serial.println(csv);
     }
