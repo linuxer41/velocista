@@ -1,15 +1,14 @@
-/**
- * ARCHIVO: models.h
- * DESCRIPCIÓN: Definiciones de mensajes binarios para comunicación
- * FUNCIONALIDAD: Serialización/deserialización binaria, centralización de salida
- */
-
+/*********************************************************************
+ *  models.h  –  versión simplificada con CSV
+ *  Copiar-pegar tal cual en tu proyecto
+ *********************************************************************/
 #ifndef MODELS_H
 #define MODELS_H
 
 #include <Arduino.h>
+#include <string.h>
 
-// Tipos de mensajes
+/* ===================== TUS ENUMS ===================== */
 enum MessageType : uint8_t {
     MSG_SYSTEM = 0,
     MSG_SENSOR_DATA = 1,
@@ -22,7 +21,6 @@ enum MessageType : uint8_t {
     MSG_COMMAND_ACK = 8
 };
 
-// Comandos entrantes
 enum CommandType : uint8_t {
     CMD_SET_PID = 0,
     CMD_SET_SPEED = 1,
@@ -32,214 +30,192 @@ enum CommandType : uint8_t {
     CMD_STOP = 5,
     CMD_GET_STATUS = 6
 };
+/* ===================================================== */
 
-// Estructuras de mensajes salientes
-struct SystemMessage {
-    uint8_t type;
-    char message[64];
-};
-
+/* ================= TUS STRUCTS (intactos) ================ */
+struct SystemMessage {  uint8_t type;  char message[64]; };
 struct SensorDataMessage {
-    uint8_t type;
-    uint32_t timestamp;
-    int16_t sensors[6];
-    int16_t error;
-    int16_t sum;
+    uint8_t type;  uint32_t timestamp;  int16_t sensors[6];
+    int16_t error; int16_t sum;
 };
-
 struct OdometryMessage {
-    uint8_t type;
-    uint32_t timestamp;
-    float x;
-    float y;
-    float theta;
+    uint8_t type;  uint32_t timestamp;  float x,y,theta;
 };
-
 struct StateMessage {
-    uint8_t type;
-    uint32_t timestamp;
-    uint8_t state;
-    float distance;
+    uint8_t type;  uint32_t timestamp;  uint8_t state;  float distance;
 };
-
 struct ModeChangeMessage {
-    uint8_t type;
-    uint8_t oldMode;
-    uint8_t newMode;
-    uint8_t serialEnabled;
+    uint8_t type;  uint8_t oldMode,newMode,serialEnabled;
 };
-
 struct PidTuningMessage {
-    uint8_t type;
-    float kp;
-    float ki;
-    float kd;
-    float integral;
+    uint8_t type;  float kp,ki,kd,integral;
 };
-
 struct CompetitionMessage {
-    uint8_t type;
-    uint8_t mode;
-    uint32_t time;
-    uint8_t lapCount;
+    uint8_t type;  uint8_t mode,lapCount;  uint32_t time;
 };
-
 struct RemoteStatusMessage {
-    uint8_t type;
-    uint8_t connected;
-    int16_t leftSpeed;
-    int16_t rightSpeed;
+    uint8_t type;  uint8_t connected;  int16_t leftSpeed,rightSpeed;
 };
+/* -------- comandos entrantes -------- */
+struct CommandHeader { uint8_t type; };
+struct SetPidCommand { uint8_t type; float kp,ki,kd; };
+struct SetSpeedCommand { uint8_t type; int16_t speed; };
+struct SetModeCommand { uint8_t type; uint8_t mode; };
+struct CalibrateCommand { uint8_t type; };
+/* ======================================================== */
 
-// Estructuras de comandos entrantes
-struct CommandHeader {
-    uint8_t type;
-};
-
-struct SetPidCommand {
-    uint8_t type;
-    float kp;
-    float ki;
-    float kd;
-};
-
-struct SetSpeedCommand {
-    uint8_t type;
-    int16_t speed;
-};
-
-struct SetModeCommand {
-    uint8_t type;
-    uint8_t mode;
-};
-
-struct CalibrateCommand {
-    uint8_t type;
-};
-
-// Clase centralizada para serialización
-class CommunicationSerializer {
+class CommunicationSerializer
+{
 public:
-    // Métodos para enviar mensajes
-    static void sendSystemMessage(const char* message) {
-        SystemMessage msg;
-        msg.type = MSG_SYSTEM;
-        strncpy(msg.message, message, sizeof(msg.message) - 1);
-        msg.message[sizeof(msg.message) - 1] = '\0';
-        writeMessage(&msg, sizeof(msg));
+    /* ================= ENVÍO DE MENSAJES ================= */
+
+    static void sendSystemMessage(const char* txt)
+    {
+        String csv = String(MSG_SYSTEM) + "," + String(txt);
+        Serial.println(csv);
     }
 
-    static void sendSensorData(uint32_t timestamp, const int16_t sensors[6], int16_t error, int16_t sum) {
-        SensorDataMessage msg;
-        msg.type = MSG_SENSOR_DATA;
-        msg.timestamp = timestamp;
-        memcpy(msg.sensors, sensors, sizeof(msg.sensors));
-        msg.error = error;
-        msg.sum = sum;
-        writeMessage(&msg, sizeof(msg));
+    static void sendSensorData(uint32_t ts, const int16_t s[6], int16_t err, int16_t sum)
+    {
+        String csv = String(MSG_SENSOR_DATA) + "," + String(ts);
+        for (int i = 0; i < 6; i++)
+        {
+            csv += "," + String(s[i]);
+        }
+        csv += "," + String(err) + "," + String(sum);
+        Serial.println(csv);
     }
 
-    static void sendOdometry(uint32_t timestamp, float x, float y, float theta) {
-        OdometryMessage msg;
-        msg.type = MSG_ODOMETRY;
-        msg.timestamp = timestamp;
-        msg.x = x;
-        msg.y = y;
-        msg.theta = theta;
-        writeMessage(&msg, sizeof(msg));
+    static void sendOdometry(uint32_t ts, float x, float y, float th)
+    {
+        String csv = String(MSG_ODOMETRY) + "," + String(ts) + "," + String(x, 6) + "," + String(y, 6) + "," + String(th, 6);
+        Serial.println(csv);
     }
 
-    static void sendState(uint32_t timestamp, uint8_t state, float distance) {
-        StateMessage msg;
-        msg.type = MSG_STATE;
-        msg.timestamp = timestamp;
-        msg.state = state;
-        msg.distance = distance;
-        writeMessage(&msg, sizeof(msg));
+    static void sendState(uint32_t ts, uint8_t st, float dist)
+    {
+        String csv = String(MSG_STATE) + "," + String(ts) + "," + String(st) + "," + String(dist, 6);
+        Serial.println(csv);
     }
 
-    static void sendModeChange(uint8_t oldMode, uint8_t newMode, uint8_t serialEnabled) {
-        ModeChangeMessage msg;
-        msg.type = MSG_MODE_CHANGE;
-        msg.oldMode = oldMode;
-        msg.newMode = newMode;
-        msg.serialEnabled = serialEnabled;
-        writeMessage(&msg, sizeof(msg));
+    static void sendModeChange(uint8_t oldM, uint8_t newM, uint8_t serEn)
+    {
+        String csv = String(MSG_MODE_CHANGE) + "," + String(oldM) + "," + String(newM) + "," + String(serEn);
+        Serial.println(csv);
     }
 
-    static void sendPidTuning(float kp, float ki, float kd, float integral) {
-        PidTuningMessage msg;
-        msg.type = MSG_PID_TUNING;
-        msg.kp = kp;
-        msg.ki = ki;
-        msg.kd = kd;
-        msg.integral = integral;
-        writeMessage(&msg, sizeof(msg));
+    static void sendPidTuning(float kp, float ki, float kd, float integ)
+    {
+        String csv = String(MSG_PID_TUNING) + "," + String(kp, 6) + "," + String(ki, 6) + "," + String(kd, 6) + "," + String(integ, 6);
+        Serial.println(csv);
     }
 
-    static void sendCompetition(uint8_t mode, uint32_t time, uint8_t lapCount) {
-        CompetitionMessage msg;
-        msg.type = MSG_COMPETITION;
-        msg.mode = mode;
-        msg.time = time;
-        msg.lapCount = lapCount;
-        writeMessage(&msg, sizeof(msg));
+    static void sendCompetition(uint8_t mode, uint32_t time, uint8_t laps)
+    {
+        String csv = String(MSG_COMPETITION) + "," + String(mode) + "," + String(time) + "," + String(laps);
+        Serial.println(csv);
     }
 
-    static void sendRemoteStatus(uint8_t connected, int16_t leftSpeed, int16_t rightSpeed) {
-        RemoteStatusMessage msg;
-        msg.type = MSG_REMOTE_STATUS;
-        msg.connected = connected;
-        msg.leftSpeed = leftSpeed;
-        msg.rightSpeed = rightSpeed;
-        writeMessage(&msg, sizeof(msg));
+    static void sendRemoteStatus(uint8_t conn, int16_t lSp, int16_t rSp)
+    {
+        String csv = String(MSG_REMOTE_STATUS) + "," + String(conn) + "," + String(lSp) + "," + String(rSp);
+        Serial.println(csv);
     }
 
-    static void sendCommandAck(uint8_t commandType) {
-        uint8_t msg[2] = {MSG_COMMAND_ACK, commandType};
-        writeMessage(msg, sizeof(msg));
+    static void sendCommandAck(uint8_t cmdType)
+    {
+        String csv = String(MSG_COMMAND_ACK) + "," + String(cmdType);
+        Serial.println(csv);
     }
 
-    // Método para procesar comandos entrantes (binarios)
-    static bool processBinaryCommand(const uint8_t* buffer, size_t length) {
-        if (length < 1) return false;
-        uint8_t type = buffer[0];
-        switch (type) {
-            case CMD_SET_PID: {
-                if (length < sizeof(SetPidCommand)) return false;
-                SetPidCommand* cmd = (SetPidCommand*)buffer;
-                // Aquí se aplicaría el comando, pero se deja para main.cpp
-                return true;
+    /* ------------- RECEPCIÓN (llamar en loop) ------------- */
+
+    static void parseStream()
+    {
+        while (Serial.available())
+        {
+            String line = Serial.readStringUntil('\n');
+            if (line.length() > 0)
+            {
+                dispatch(line);
             }
-            case CMD_SET_SPEED: {
-                if (length < sizeof(SetSpeedCommand)) return false;
-                SetSpeedCommand* cmd = (SetSpeedCommand*)buffer;
-                return true;
-            }
-            case CMD_SET_MODE: {
-                if (length < sizeof(SetModeCommand)) return false;
-                SetModeCommand* cmd = (SetModeCommand*)buffer;
-                return true;
-            }
-            case CMD_CALIBRATE: {
-                if (length < sizeof(CalibrateCommand)) return false;
-                return true;
-            }
-            case CMD_START:
-            case CMD_STOP:
-            case CMD_GET_STATUS: {
-                return true;
-            }
-            default:
-                return false;
         }
     }
 
 private:
-    // Funciones auxiliares de serialización
-    static void writeMessage(const void* data, size_t size) {
-        Serial.write((const uint8_t*)data, size);
+    /* ---------- DISPATCH A COMANDOS (ejemplo) ---------- */
+
+    static void dispatch(String line)
+    {
+        // Parse CSV: type,value1,value2,...
+        int commaIndex = line.indexOf(',');
+        if (commaIndex == -1)
+        {
+            return;
+        }
+        String typeStr = line.substring(0, commaIndex);
+        uint8_t type = typeStr.toInt();
+        String params = line.substring(commaIndex + 1);
+
+        switch (type)
+        {
+        case CMD_SET_PID:
+        {
+            // params: kp,ki,kd
+            int idx1 = params.indexOf(',');
+            int idx2 = params.indexOf(',', idx1 + 1);
+            if (idx1 != -1 && idx2 != -1)
+            {
+                float kp = params.substring(0, idx1).toFloat();
+                float ki = params.substring(idx1 + 1, idx2).toFloat();
+                float kd = params.substring(idx2 + 1).toFloat();
+                SetPidCommand c;
+                c.type = type;
+                c.kp = kp;
+                c.ki = ki;
+                c.kd = kd;
+                (void)c; // Prevent unused variable warning
+                // TODO: aplicar PID …
+            }
+        }
+        break;
+        case CMD_SET_SPEED:
+        {
+            // params: speed
+            int16_t speed = params.toInt();
+            SetSpeedCommand c;
+            c.type = type;
+            c.speed = speed;
+            (void)c; // Prevent unused variable warning
+            // TODO: aplicar speed …
+        }
+        break;
+        case CMD_SET_MODE:
+        {
+            uint8_t mode = params.toInt();
+            SetModeCommand c;
+            c.type = type;
+            c.mode = mode;
+            (void)c;
+        }
+        break;
+        case CMD_CALIBRATE:
+        {
+            CalibrateCommand c;
+            c.type = type;
+            (void)c;
+        }
+        break;
+        case CMD_START:
+        case CMD_STOP:
+        case CMD_GET_STATUS:
+        {
+            // No params
+        }
+        break;
+        /* … otros comandos … */
+        }
     }
 };
 
-#endif
+#endif   // MODELS_H

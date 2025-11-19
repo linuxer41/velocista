@@ -29,8 +29,6 @@ public:
         for (int i = 0; i < 10; i++) {
             lapTimes[i] = 0.0;
         }
-
-        CommunicationSerializer::sendSystemMessage("Gestor de competencia inicializado");
     }
     
     /**
@@ -50,6 +48,7 @@ public:
         if (mode == currentMode) return;
         
         OperationMode oldMode = currentMode;
+        (void)oldMode; // Prevent unused variable warning
         currentMode = mode;
         
         // Configurar según modo

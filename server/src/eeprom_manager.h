@@ -66,11 +66,11 @@ public:
         config.kd = DEFAULT_KD;
         config.baseSpeed = DEFAULT_BASE_SPEED;
         config.wheelDiameter = WHEEL_DIAMETER_MM;
-        config.wheelDistance = WHEEL_DISTANCE_MM;
+        config.wheelDistance = WHEEL_DIAMETER_MM;
         config.rcDeadzone = RC_DEADZONE;
         config.rcMaxThrottle = RC_MAX_THROTTLE;
         config.rcMaxSteering = RC_MAX_STEERING;
-        
+
         // Valores por defecto para calibración de sensores
         for (int i = 0; i < NUM_SENSORS; i++) {
             config.sensorMin[i] = 1023;
@@ -85,7 +85,7 @@ public:
      * Borrar configuración EEPROM
      */
     void clearConfig() {
-        for (int i = EEPROM_CONFIG_ADDR; i < EEPROM_CONFIG_ADDR + sizeof(RobotConfig); i++) {
+        for (unsigned int i = EEPROM_CONFIG_ADDR; i < EEPROM_CONFIG_ADDR + sizeof(RobotConfig); i++) {
             EEPROM.write(i, 0);
         }
         CommunicationSerializer::sendSystemMessage("EEPROM borrada");

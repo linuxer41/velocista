@@ -28,7 +28,6 @@ public:
         pinMode(ledPin, OUTPUT);
         digitalWrite(ledPin, LOW);
 
-        CommunicationSerializer::sendSystemMessage("Indicador de modo inicializado");
     }
     
     /**

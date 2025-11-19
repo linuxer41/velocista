@@ -41,8 +41,6 @@ public:
         // Configurar pin de alimentación
         pinMode(SENSOR_POWER_PIN, OUTPUT);
         setPower(false); // Iniciar con sensores apagados
-
-        CommunicationSerializer::sendSystemMessage("Array de sensores inicializado");
     }
     
     /**

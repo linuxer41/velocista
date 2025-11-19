@@ -32,7 +32,6 @@ public:
         pinMode(MOTOR_RIGHT_PIN1, OUTPUT);
         pinMode(MOTOR_RIGHT_PIN2, OUTPUT);
         stopAll();
-        CommunicationSerializer::sendSystemMessage("Controlador de motores inicializado");
     }
     
     /**

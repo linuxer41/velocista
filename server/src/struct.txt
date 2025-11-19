@@ -1,4 +1,4 @@
-robot_seguidor/
+src/
 ├── robot_seguidor.ino      # Archivo principal
 ├── config.h                # Configuraciones y pines
 ├── motor_controller.h      # Control de motores DRV8833
