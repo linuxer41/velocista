@@ -45,6 +45,22 @@ unsigned long lastSensorRead     = 0;
 bool calibrationRequested = false;
 bool sensorsEnabled       = false;
 
+// Pointers for dispatch
+MotorController* motorControllerPtr = &motorController;
+EncoderController* encoderControllerPtr = &encoderController;
+SensorArray* sensorArrayPtr = &sensorArray;
+AdvancedPID* linePIDPtr = &linePID;
+Odometry* odometryPtr = &odometry;
+EEPROMManager* eepromManagerPtr = &eepromManager;
+IntelligentAvoidance* obstacleAvoidancePtr = &obstacleAvoidance;
+CompetitionManager* competitionManagerPtr = &competitionManager;
+RemoteControl* remoteControlPtr = &remoteControl;
+ModeIndicator* modeIndicatorPtr = &modeIndicator;
+StateMachine* stateMachinePtr = &stateMachine;
+UltrasonicInterrupt* ultrasonicSensorPtr = &ultrasonicSensor;
+RobotConfig* currentConfigPtr = &currentConfig;
+bool* calibrationRequestedPtr = &calibrationRequested;
+
 // Funciones de modos de operación
 void executeRemoteControlMode();
 void executeCompetitionMode();
@@ -108,60 +124,60 @@ void loop()
 {
     unsigned long t = millis();
 
-    // /* 1. Indicador modo cada 100 ms */
-    // if (t - lastModeUpdate >= 100)
-    // {
-    //     modeIndicator.setMode(competitionManager.getCurrentMode());
-    //     modeIndicator.update();
-    //     lastModeUpdate = t;
-    // }
+    /* 1. Indicador modo cada 100 ms */
+    if (t - lastModeUpdate >= 100)
+    {
+        modeIndicator.setMode(competitionManager.getCurrentMode());
+        modeIndicator.update();
+        lastModeUpdate = t;
+    }
 
-    // /* 2. Recepción de tramas robustas */
-    // CommunicationSerializer::parseStream();
+    /* 2. Recepción de tramas robustas */
+    CommunicationSerializer::parseStream();
 
-    // /* 3. Cambio de modo */
-    // competitionManager.checkMode();
-    // OperationMode currentMode = competitionManager.getCurrentMode();
+    /* 3. Cambio de modo */
+    competitionManager.checkMode();
+    OperationMode currentMode = competitionManager.getCurrentMode();
 
-    // /* 4. Calibración si se solicitó */
-    // if (calibrationRequested)
-    // {
-    //     performCalibration();
-    //     calibrationRequested = false;
-    // }
+    /* 4. Calibración si se solicitó */
+    if (calibrationRequested)
+    {
+        performCalibration();
+        calibrationRequested = false;
+    }
 
-    // /* 5. Activar/desactivar sensores según modo */
-    // bool should = (currentMode != MODE_REMOTE_CONTROL);
-    // if (sensorsEnabled != should)
-    // {
-    //     sensorsEnabled = should;
-    //     sensorArray.setPower(sensorsEnabled);
-    // }
+    /* 5. Activar/desactivar sensores según modo */
+    bool should = (currentMode != MODE_REMOTE_CONTROL);
+    if (sensorsEnabled != should)
+    {
+        sensorsEnabled = should;
+        sensorArray.setPower(sensorsEnabled);
+    }
 
-    // /* 6. Ejecutar lógica del modo */
-    // switch (currentMode)
-    // {
-    //     case MODE_REMOTE_CONTROL:
-    //         executeRemoteControlMode();
-    //         break;
-    //     case MODE_COMPETITION:
-    //         executeCompetitionMode();
-    //         break;
-    //     case MODE_DEBUG:
-    //     case MODE_TUNING:
-    //         executeDebugMode();
-    //         break;
-    //     case MODE_CALIBRATION:
-    //         executeCalibrationMode();
-    //         break;
-    // }
+    /* 6. Ejecutar lógica del modo */
+    switch (currentMode)
+    {
+        case MODE_REMOTE_CONTROL:
+            executeRemoteControlMode();
+            break;
+        case MODE_COMPETITION:
+            executeCompetitionMode();
+            break;
+        case MODE_DEBUG:
+        case MODE_TUNING:
+            executeDebugMode();
+            break;
+        case MODE_CALIBRATION:
+            executeCalibrationMode();
+            break;
+    }
 
-    // /* 7. Actualizaciones comunes */
-    // updateCommonSystems();
-    // ultrasonicSensor.process();
-    // sendOptimizedTelemetry(currentMode);
+    /* 7. Actualizaciones comunes */
+    updateCommonSystems();
+    ultrasonicSensor.process();
+    sendOptimizedTelemetry(currentMode);
 
-    // delay(10);
+    delay(10);
 }
 
 /* ============================================================== */
@@ -347,3 +363,87 @@ float getUltrasonicDistance()       { return ultrasonicSensor.getDistance(); }
 /* ============================================================== */
 void encoderLeftISR()  { encoderController.incrementLeft(); }
 void encoderRightISR() { encoderController.incrementRight(); }
+
+/* ============================================================== */
+/* =================  COMMAND DISPATCH  ========================= */
+/* ============================================================== */
+void dispatchCommand(String line)
+{
+    // Parse CSV: type,value1,value2,...
+    int commaIndex = line.indexOf(',');
+    if (commaIndex == -1)
+    {
+        return;
+    }
+    String typeStr = line.substring(0, commaIndex);
+    uint8_t type = typeStr.toInt();
+    String params = line.substring(commaIndex + 1);
+
+    switch (type)
+    {
+    case CMD_SET_PID:
+    {
+        // params: kp,ki,kd
+        int idx1 = params.indexOf(',');
+        int idx2 = params.indexOf(',', idx1 + 1);
+        if (idx1 != -1 && idx2 != -1)
+        {
+            float kp = params.substring(0, idx1).toFloat();
+            float ki = params.substring(idx1 + 1, idx2).toFloat();
+            float kd = params.substring(idx2 + 1).toFloat();
+            linePIDPtr->setGains(kp, ki, kd);
+            currentConfigPtr->kp = kp;
+            currentConfigPtr->ki = ki;
+            currentConfigPtr->kd = kd;
+            eepromManagerPtr->saveConfig(*currentConfigPtr);
+            CommunicationSerializer::sendCommandAck(type);
+        }
+    }
+    break;
+    case CMD_SET_SPEED:
+    {
+        // params: speed
+        int16_t speed = params.toInt();
+        motorControllerPtr->setBaseSpeed(speed);
+        currentConfigPtr->baseSpeed = speed;
+        eepromManagerPtr->saveConfig(*currentConfigPtr);
+        CommunicationSerializer::sendCommandAck(type);
+    }
+    break;
+    case CMD_SET_MODE:
+    {
+        uint8_t mode = params.toInt();
+        competitionManagerPtr->setMode((OperationMode)mode);
+        CommunicationSerializer::sendCommandAck(type);
+    }
+    break;
+    case CMD_CALIBRATE:
+    {
+        *calibrationRequestedPtr = true;
+        CommunicationSerializer::sendCommandAck(type);
+    }
+    break;
+    case CMD_START:
+    {
+        // Assuming start means set to competition mode or something
+        competitionManagerPtr->setMode(MODE_COMPETITION);
+        CommunicationSerializer::sendCommandAck(type);
+    }
+    break;
+    case CMD_STOP:
+    {
+        motorControllerPtr->stopAll();
+        CommunicationSerializer::sendCommandAck(type);
+    }
+    break;
+    case CMD_GET_STATUS:
+    {
+        String status = "Mode: " + competitionManagerPtr->getModeString() +
+                       ", Speed: " + String(motorControllerPtr->getBaseSpeed()) +
+                       ", Serial: " + (competitionManagerPtr->isSerialEnabled() ? "ON" : "OFF");
+        CommunicationSerializer::sendSystemMessage(status.c_str());
+    }
+    break;
+    /* … otros comandos … */
+    }
+}

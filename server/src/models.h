@@ -8,6 +8,9 @@
 #include <Arduino.h>
 #include <string.h>
 
+// Global dispatch function
+void dispatchCommand(String line);
+
 /* ===================== TUS ENUMS ===================== */
 enum MessageType : uint8_t {
     MSG_SYSTEM = 0,
@@ -137,85 +140,12 @@ public:
             String line = Serial.readStringUntil('\n');
             if (line.length() > 0)
             {
-                dispatch(line);
+                dispatchCommand(line);
             }
         }
     }
 
 private:
-    /* ---------- DISPATCH A COMANDOS (ejemplo) ---------- */
-
-    static void dispatch(String line)
-    {
-        // Parse CSV: type,value1,value2,...
-        int commaIndex = line.indexOf(',');
-        if (commaIndex == -1)
-        {
-            return;
-        }
-        String typeStr = line.substring(0, commaIndex);
-        uint8_t type = typeStr.toInt();
-        String params = line.substring(commaIndex + 1);
-
-        switch (type)
-        {
-        case CMD_SET_PID:
-        {
-            // params: kp,ki,kd
-            int idx1 = params.indexOf(',');
-            int idx2 = params.indexOf(',', idx1 + 1);
-            if (idx1 != -1 && idx2 != -1)
-            {
-                float kp = params.substring(0, idx1).toFloat();
-                float ki = params.substring(idx1 + 1, idx2).toFloat();
-                float kd = params.substring(idx2 + 1).toFloat();
-                SetPidCommand c;
-                c.type = type;
-                c.kp = kp;
-                c.ki = ki;
-                c.kd = kd;
-                (void)c; // Prevent unused variable warning
-                // TODO: aplicar PID …
-            }
-        }
-        break;
-        case CMD_SET_SPEED:
-        {
-            // params: speed
-            int16_t speed = params.toInt();
-            SetSpeedCommand c;
-            c.type = type;
-            c.speed = speed;
-            (void)c; // Prevent unused variable warning
-            // TODO: aplicar speed …
-        }
-        break;
-        case CMD_SET_MODE:
-        {
-            uint8_t mode = params.toInt();
-            SetModeCommand c;
-            c.type = type;
-            c.mode = mode;
-            (void)c;
-        }
-        break;
-        case CMD_CALIBRATE:
-        {
-            CalibrateCommand c;
-            c.type = type;
-            (void)c;
-        }
-        break;
-        case CMD_START:
-        case CMD_STOP:
-        case CMD_GET_STATUS:
-        {
-            // No params
-        }
-        break;
-        /* … otros comandos … */
-        }
-    }
 };
 
 #endif   // MODELS_H
