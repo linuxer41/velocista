@@ -1,490 +1,296 @@
-/*********************************************************************
- *  robot_seguidor.ino  –  listo para usar con protocolo robusto
- *  (magic-byte 0xA5 + CRC-16 + ACK)
- *  Copiar-pegar y compilar
- *********************************************************************/
-
 #include "config.h"
-#include "motor_controller.h"
-#include "encoder_controller.h"
-#include "sensor_array.h"
-#include "advanced_pid.h"
-#include "odometry.h"
-#include "eeprom_manager.h"
-#include "intelligent_avoidance.h"
-#include "competition_manager.h"
-#include "remote_control.h"
-#include "mode_indicator.h"
-#include "state_machine.h"
-#include "models.h"
-#include "ultrasonic_interrupt.h"
 
-/* =======================  INSTANCIAS  ======================= */
-MotorController        motorController;
-EncoderController      encoderController;
-SensorArray            sensorArray;
-AdvancedPID            linePID(DEFAULT_KP, DEFAULT_KI, DEFAULT_KD);
-Odometry               odometry;
-EEPROMManager          eepromManager;
-IntelligentAvoidance   obstacleAvoidance(odometry);
-CompetitionManager     competitionManager;
-RemoteControl          remoteControl;
-ModeIndicator          modeIndicator;
-StateMachine           stateMachine;
-UltrasonicInterrupt    ultrasonicSensor;
+// ==========================
+// VARIABLES GLOBALES
+// ==========================
+RobotConfig config;
+OperationMode currentMode = MODE_LINE_FOLLOWING;
+bool debugEnabled = false;
 
-RobotConfig            currentConfig;
+// Sensores
+int sensorValues[NUM_SENSORS];
+int linePosition = 0;
+bool lineFound = false;
 
-/* ===================  TIMING  =================== */
-unsigned long lastOdometryUpdate = 0;
-unsigned long lastTelemetry      = 0;
-unsigned long lastRemoteCheck    = 0;
-unsigned long lastModeUpdate     = 0;
-unsigned long lastSensorRead     = 0;
+// Motores
+int leftSpeed = 0;
+int rightSpeed = 0;
+int targetLeftSpeed = 0;
+int targetRightSpeed = 0;
 
-bool calibrationRequested = false;
-bool sensorsEnabled       = false;
-bool telemetryEnabled     = true;
+// Encoders
+volatile long encoderLeftCount = 0;
+volatile long encoderRightCount = 0;
+long lastLeftCount = 0;
+long lastRightCount = 0;
+unsigned long lastSpeedCheck = 0;
 
-// Pointers for dispatch
-MotorController* motorControllerPtr = &motorController;
-EncoderController* encoderControllerPtr = &encoderController;
-SensorArray* sensorArrayPtr = &sensorArray;
-AdvancedPID* linePIDPtr = &linePID;
-Odometry* odometryPtr = &odometry;
-EEPROMManager* eepromManagerPtr = &eepromManager;
-IntelligentAvoidance* obstacleAvoidancePtr = &obstacleAvoidance;
-CompetitionManager* competitionManagerPtr = &competitionManager;
-RemoteControl* remoteControlPtr = &remoteControl;
-ModeIndicator* modeIndicatorPtr = &modeIndicator;
-StateMachine* stateMachinePtr = &stateMachine;
-UltrasonicInterrupt* ultrasonicSensorPtr = &ultrasonicSensor;
-RobotConfig* currentConfigPtr = &currentConfig;
-bool* calibrationRequestedPtr = &calibrationRequested;
+// PID
+float pidError = 0, pidLastError = 0, pidIntegral = 0, pidDerivative = 0;
+float pidOutput = 0;
 
-// Funciones de modos de operación
-void executeRemoteControlMode();
-void executeCompetitionMode();
-void executeDebugMode();
-void executeCalibrationMode();
+// Control de velocidad
+float leftRPM = 0, rightRPM = 0;
+float targetRPM = 0;
 
-// Funciones auxiliares
-void performCalibration();
-void updateCommonSystems();
-void updateOdometry();
-void executeIntelligentActions(int error, IntelligentAvoidance::AvoidanceAction action);
-void executeStateActions(int error);
-void followLineWithSpeed(int error, int speed);
-void searchForLine();
-void avoidObstacle();
-void sendOptimizedTelemetry(OperationMode mode);
-void triggerUltrasonicMeasurement();
-float getUltrasonicDistance();
-void encoderLeftISR();
-void encoderRightISR();
-
-/* ============================================================== */
-/* --------------------  SETUP  --------------------------------- */
-/* ============================================================== */
-
-void setup()
-{
-    Serial.begin(9600);
-    delay(1000);
-    CommunicationSerializer::sendSystemMessage("Robot Seguidor 4.0 – PID, Odometria, Remoto, EEPROM, Evasion");
-    CommunicationSerializer::sendSystemMessage("Comandos: start, stop, set_pid, set_speed, set_mode, calibrate_sensors, get_status, toggle_telemetry");
-
-    motorController.initialize();
-    encoderController.initialize();
-    sensorArray.initialize();
-    ultrasonicSensor.initialize();
-
-    if (!eepromManager.loadConfig(currentConfig))
-    {
-        eepromManager.initializeDefaultConfig(currentConfig);
-    }
-
-    motorController.setBaseSpeed(currentConfig.baseSpeed);
-    linePID.setGains(currentConfig.kp, currentConfig.ki, currentConfig.kd);
-    sensorArray.calibrateFromConfig(currentConfig);
-    remoteControl.setLimits(currentConfig.rcDeadzone, currentConfig.rcMaxThrottle, currentConfig.rcMaxSteering);
-
-    odometry = Odometry(currentConfig.wheelDiameter, currentConfig.wheelDistance);
-
-    competitionManager.setMode(MODE_DEBUG);
-    modeIndicator.setMode(MODE_DEBUG);
-
-    lastOdometryUpdate = millis();
-    lastSensorRead     = millis();
-
+// ==========================
+// FUNCIONES AUXILIARES
+// ==========================
+void readSensors();
+void calculatePID();
+void updateMotors();
+void updateSpeedControl();
+void readEncoders();
+void loadConfig();
+void saveConfig();
+void printDebugInfo();
+void calibrateSensors();
+void countLeftEncoder();
+void countRightEncoder();
+// ==========================
+// INTERRUPCIONES ENCODERS
+// ==========================
+void countLeftEncoder() {
+  encoderLeftCount++;
+}
+void countRightEncoder() {
+  encoderRightCount++;
 }
 
-/* ============================================================== */
-/* --------------------  LOOP  ---------------------------------- */
-/* ============================================================== */
+// ==========================
+// SETUP
+// ==========================
+void setup() {
+  Serial.begin(9600);
+  while (!Serial);
 
-void loop()
-{
-    unsigned long t = millis();
+  pinMode(MOTOR_LEFT_PIN1, OUTPUT);
+  pinMode(MOTOR_LEFT_PIN2, OUTPUT);
+  pinMode(MOTOR_RIGHT_PIN1, OUTPUT);
+  pinMode(MOTOR_RIGHT_PIN2, OUTPUT);
+  pinMode(SENSOR_POWER_PIN, OUTPUT);
+  digitalWrite(SENSOR_POWER_PIN, HIGH);
 
-    /* 1. Indicador modo cada 100 ms */
-    if (t - lastModeUpdate >= 100)
-    {
-        modeIndicator.setMode(competitionManager.getCurrentMode());
-        modeIndicator.update();
-        lastModeUpdate = t;
+  for (int i = 0; i < NUM_SENSORS; i++) {
+    pinMode(SENSOR_PINS[i], INPUT);
+  }
+
+  attachInterrupt(digitalPinToInterrupt(ENCODER_LEFT_A), countLeftEncoder, RISING);
+  attachInterrupt(digitalPinToInterrupt(ENCODER_RIGHT_A), countRightEncoder, RISING);
+
+  loadConfig();
+
+  Serial.println("Robot iniciado. Modo: LINEA");
+}
+
+// ==========================
+// LOOP PRINCIPAL
+// ==========================
+void loop() {
+  readSensors();
+  calculatePID();
+
+  // Velocidad base
+  targetLeftSpeed = config.baseSpeed;
+  targetRightSpeed = config.baseSpeed;
+
+  updateMotors();
+
+  if (debugEnabled) {
+    printDebugInfo();
+  }
+
+  // Procesar comandos seriales
+  if (Serial.available()) {
+    String cmd = Serial.readStringUntil('\n');
+    cmd.trim();
+    if (cmd == "calibrate") {
+      calibrateSensors();
+    } else if (cmd == "debug on") {
+      debugEnabled = true;
+      Serial.println("Debug activado");
+    } else if (cmd == "debug off") {
+      debugEnabled = false;
+      Serial.println("Debug desactivado");
+    } else if (cmd == "mode line") {
+      currentMode = MODE_LINE_FOLLOWING;
+      Serial.println("Modo: Seguir linea");
+    } else if (cmd == "mode remote") {
+      currentMode = MODE_REMOTE_CONTROL;
+      Serial.println("Modo: Control remoto");
     }
+  }
 
-    /* 2. Recepción de tramas robustas */
-    CommunicationSerializer::parseStream();
+  delay(SENSOR_READ_DELAY);
+}
 
-    /* 3. Cambio de modo */
-    competitionManager.checkMode();
-    OperationMode currentMode = competitionManager.getCurrentMode();
+// ==========================
+// LECTURA DE SENSORES
+// ==========================
+void readSensors() {
+  int sum = 0;
+  int weightedSum = 0;
+  int activeSensors = 0;
 
-    /* 4. Calibración si se solicitó */
-    if (calibrationRequested)
-    {
-        performCalibration();
-        calibrationRequested = false;
+  for (int i = 0; i < NUM_SENSORS; i++) {
+    int val = analogRead(SENSOR_PINS[i]);
+    val = map(val, config.sensorMin[i], config.sensorMax[i], 0, 1000);
+    val = constrain(val, 0, 1000);
+    sensorValues[i] = val;
+
+    if (val > 500) {
+      weightedSum += i * 1000;
+      sum += val;
+      activeSensors++;
     }
+  }
 
-    /* 5. Activar/desactivar sensores según modo */
-    bool should = (currentMode != MODE_REMOTE_CONTROL);
-    if (sensorsEnabled != should)
-    {
-        sensorsEnabled = should;
-        sensorArray.setPower(sensorsEnabled);
+  if (activeSensors > 0) {
+    linePosition = weightedSum / sum - (NUM_SENSORS - 1) * 500;
+    lineFound = true;
+  } else {
+    lineFound = false;
+  }
+}
+
+// ==========================
+// CÁLCULO PID
+// ==========================
+void calculatePID() {
+  if (!lineFound) {
+    pidError = 0;
+    pidIntegral = 0;
+    pidOutput = 0;
+    return;
+  }
+
+  pidError = linePosition;
+  pidIntegral += pidError;
+  pidIntegral = constrain(pidIntegral, -1000, 1000); // Limitar integral
+  pidDerivative = pidError - pidLastError;
+
+  pidOutput = config.kp * pidError + config.ki * pidIntegral + config.kd * pidDerivative;
+  pidLastError = pidError;
+}
+
+// ==========================
+// CONTROL DE VELOCIDAD (LAZO CERRADO)
+// ==========================
+void updateSpeedControl() {
+  unsigned long now = millis();
+  if (now - lastSpeedCheck < 100) return;
+
+  float dt = (now - lastSpeedCheck) / 1000.0;
+
+  long leftDelta = encoderLeftCount - lastLeftCount;
+  long rightDelta = encoderRightCount - lastRightCount;
+
+  leftRPM = (leftDelta / (float)PULSES_PER_REVOLUTION) * 60.0 / dt;
+  rightRPM = (rightDelta / (float)PULSES_PER_REVOLUTION) * 60.0 / dt;
+
+  lastLeftCount = encoderLeftCount;
+  lastRightCount = encoderRightCount;
+  lastSpeedCheck = now;
+
+  targetRPM = (config.baseSpeed / 255.0) * 300.0; // estimación RPM max
+
+  float leftError = targetRPM - leftRPM;
+  float rightError = targetRPM - rightRPM;
+
+  targetLeftSpeed = constrain(config.baseSpeed + leftError * 2, -MAX_SPEED, MAX_SPEED);
+  targetRightSpeed = constrain(config.baseSpeed + rightError * 2, -MAX_SPEED, MAX_SPEED);
+}
+
+// ==========================
+// ACTUALIZAR MOTORES
+// ==========================
+void updateMotors() {
+  if (!lineFound) {
+    leftSpeed = 0;
+    rightSpeed = 0;
+  } else {
+    leftSpeed = constrain(targetLeftSpeed - pidOutput, -MAX_SPEED, MAX_SPEED);
+    rightSpeed = constrain(targetRightSpeed + pidOutput, -MAX_SPEED, MAX_SPEED);
+  }
+
+  // Izquierda
+  if (leftSpeed >= 0) {
+    analogWrite(MOTOR_LEFT_PIN1, leftSpeed);
+    analogWrite(MOTOR_LEFT_PIN2, 0);
+  } else {
+    analogWrite(MOTOR_LEFT_PIN1, 0);
+    analogWrite(MOTOR_LEFT_PIN2, -leftSpeed);
+  }
+
+  // Derecha
+  if (rightSpeed >= 0) {
+    analogWrite(MOTOR_RIGHT_PIN1, rightSpeed);
+    analogWrite(MOTOR_RIGHT_PIN2, 0);
+  } else {
+    analogWrite(MOTOR_RIGHT_PIN1, 0);
+    analogWrite(MOTOR_RIGHT_PIN2, -rightSpeed);
+  }
+}
+
+// ==========================
+// CONFIGURACIÓN EEPROM
+// ==========================
+void loadConfig() {
+  EEPROM.get(EEPROM_CONFIG_ADDR, config);
+  if (config.checksum != 1234567890) {
+    Serial.println("Config inválida, cargando valores por defecto");
+    config.kp = DEFAULT_KP;
+    config.ki = DEFAULT_KI;
+    config.kd = DEFAULT_KD;
+    config.baseSpeed = DEFAULT_BASE_SPEED;
+    config.wheelDiameter = WHEEL_DIAMETER_MM;
+    config.wheelDistance = WHEEL_DISTANCE_MM;
+    config.rcDeadzone = RC_DEADZONE;
+    config.rcMaxThrottle = RC_MAX_THROTTLE;
+    config.rcMaxSteering = RC_MAX_STEERING;
+    for (int i = 0; i < NUM_SENSORS; i++) {
+      config.sensorMin[i] = 0;
+      config.sensorMax[i] = 1023;
     }
+    config.checksum = 1234567890;
+    saveConfig();
+  }
+}
 
-    /* 6. Ejecutar lógica del modo */
-    switch (currentMode)
-    {
-        case MODE_REMOTE_CONTROL:
-            executeRemoteControlMode();
-            break;
-        case MODE_COMPETITION:
-            executeCompetitionMode();
-            break;
-        case MODE_DEBUG:
-        case MODE_TUNING:
-            executeDebugMode();
-            break;
-        case MODE_CALIBRATION:
-            executeCalibrationMode();
-            break;
+void saveConfig() {
+  EEPROM.put(EEPROM_CONFIG_ADDR, config);
+}
+
+// ==========================
+// CALIBRACIÓN SENSORES
+// ==========================
+void calibrateSensors() {
+  Serial.println("Calibrando sensores...");
+  for (int i = 0; i < NUM_SENSORS; i++) {
+    config.sensorMin[i] = 1023;
+    config.sensorMax[i] = 0;
+  }
+  unsigned long start = millis();
+  while (millis() - start < 5000) {  // 5 segundos
+    for (int i = 0; i < NUM_SENSORS; i++) {
+      int val = analogRead(SENSOR_PINS[i]);
+      if (val < config.sensorMin[i]) config.sensorMin[i] = val;
+      if (val > config.sensorMax[i]) config.sensorMax[i] = val;
     }
-
-    /* 7. Actualizaciones comunes */
-    updateCommonSystems();
-    ultrasonicSensor.process();
-    sendOptimizedTelemetry(currentMode);
-
     delay(10);
+  }
+  saveConfig();
+  Serial.println("Calibracion completada");
 }
 
-/* ============================================================== */
-/* =================  MODOS DE OPERACIÓN  ======================= */
-/* ============================================================== */
-void executeRemoteControlMode()
-{
-    if (millis() - lastRemoteCheck > 500)
-    {
-        remoteControl.checkConnection();
-        lastRemoteCheck = millis();
-    }
-
-    if (remoteControl.isConnected())
-    {
-        motorController.tankDrive(remoteControl.getLeftSpeed(), remoteControl.getRightSpeed());
-    }
-    else
-    {
-        motorController.stopAll();
-    }
-
-    if (millis() - lastSensorRead >= 50)
-    {
-        sensorArray.readLinePosition();
-        lastSensorRead = millis();
-    }
-}
-
-void executeCompetitionMode() {
-    if (millis() - lastSensorRead >= 20) {
-        int error     = sensorArray.readLinePosition();
-        int sum       = sensorArray.getSensorSum();
-        triggerUltrasonicMeasurement();
-        float dist    = getUltrasonicDistance();
-        auto action   = obstacleAvoidance.evaluateObstacle(dist, motorController.getBaseSpeed());
-        bool critical = (action == IntelligentAvoidance::EMERGENCY_STOP);
-
-        stateMachine.updateState(error, sum, critical, MODE_COMPETITION);
-        executeIntelligentActions(error, action);
-        lastSensorRead = millis();
-    }
-}
-
-void executeDebugMode() {
-    if (millis() - lastSensorRead >= 30) {
-        int error = sensorArray.readLinePosition();
-        int sum   = sensorArray.getSensorSum();
-        updateOdometry();
-        triggerUltrasonicMeasurement();
-        float dist  = getUltrasonicDistance();
-        auto action = obstacleAvoidance.evaluateObstacle(dist, motorController.getBaseSpeed());
-        bool critical = (action == IntelligentAvoidance::EMERGENCY_STOP);
-
-        stateMachine.updateState(error, sum, critical, MODE_DEBUG);
-        executeIntelligentActions(error, action);
-        lastSensorRead = millis();
-    }
-}
-
-void executeCalibrationMode() {
-    motorController.stopAll();
-    // Unified telemetry will be sent automatically by sendOptimizedTelemetry
-}
-
-/* ============================================================== */
-/* ==================  SISTEMAS AUXILIARES  ===================== */
-/* ============================================================== */
-void performCalibration() {
-    CommunicationSerializer::sendSystemMessage("Autocalibrando…");
-    sensorArray.performAutoCalibration();
-    sensorArray.saveCalibrationToConfig(currentConfig);
-    if (eepromManager.saveConfig(currentConfig))
-        CommunicationSerializer::sendSystemMessage("Calibración guardada");
-    else
-        CommunicationSerializer::sendSystemMessage("Error EEPROM");
-}
-
-void updateCommonSystems() {
-    encoderController.updateVelocities();
-    if (competitionManager.getCurrentMode() != MODE_CALIBRATION)
-        updateOdometry();
-}
-
-void updateOdometry() {
-    unsigned long t = millis();
-    if (t - lastOdometryUpdate >= 50) {
-        odometry.update(encoderController.getLeftCount(),
-                        encoderController.getRightCount(),
-                        t - lastOdometryUpdate);
-        lastOdometryUpdate = t;
-    }
-}
-
-void executeIntelligentActions(int error, IntelligentAvoidance::AvoidanceAction action) {
-    switch (action) {
-        case IntelligentAvoidance::EMERGENCY_STOP: motorController.stopAll(); break;
-        case IntelligentAvoidance::REVERSE:        motorController.tankDrive(-100, -100); break;
-        case IntelligentAvoidance::SLOW_DOWN:      followLineWithSpeed(error, motorController.getBaseSpeed() * 0.5f); break;
-        default:                                   executeStateActions(error); break;
-    }
-}
-
-void executeStateActions(int error) {
-    switch (stateMachine.getCurrentState()) {
-        case STATE_FOLLOWING_LINE:  followLineWithSpeed(error, motorController.getBaseSpeed()); break;
-        case STATE_SEARCHING_LINE:  searchForLine(); break;
-        case STATE_STOPPED:         motorController.stopAll(); break;
-        case STATE_TURNING_RIGHT:   motorController.tankDrive(150, -150); break;
-        case STATE_TURNING_LEFT:    motorController.tankDrive(-150, 150); break;
-        case STATE_SHARP_CURVE:     followLineWithSpeed(error * 1.3f, motorController.getBaseSpeed()); break;
-        case STATE_AVOIDING_OBSTACLE: avoidObstacle(); break;
-        default: break;
-    }
-}
-
-void followLineWithSpeed(int error, int speed) {
-    double corr = linePID.compute(error);
-    motorController.tankDrive(speed + corr, speed - corr);
-}
-
-void searchForLine() {
-    motorController.tankDrive(120 * stateMachine.getSearchDirection(), -120 * stateMachine.getSearchDirection());
-}
-
-void avoidObstacle() {
-    static int phase = 0;
-    static unsigned long t0 = 0;
-    if (millis() - t0 > 500) { phase++; t0 = millis(); }
-    switch (phase) {
-        case 0: motorController.tankDrive(-150, -150); break;
-        case 1: motorController.tankDrive(-150, 150);  break;
-        case 2: motorController.tankDrive(150, 150);   break;
-        default: phase = 0; break;
-    }
-}
-
-/* ============================================================== */
-/* ======================  TELEMETRÍA  ========================== */
-/* ============================================================== */
-void sendOptimizedTelemetry(OperationMode mode) {
-    if (!competitionManager.isSerialEnabled() || !telemetryEnabled) return;
-    unsigned long t = millis();
-    if (t - lastTelemetry < 200) return;
-    lastTelemetry = t;
-
-    // Trigger ultrasonic measurement
-    triggerUltrasonicMeasurement();
-
-    // Collect all telemetry data
-    int16_t pwmLeft = motorController.getCurrentLeftPWM();
-    int16_t pwmRight = motorController.getCurrentRightPWM();
-    float rpmLeft = encoderController.getLeftRPM();
-    float rpmRight = encoderController.getRightRPM();
-    float distanceTraveled = odometry.getTotalDistance();
-    float ultrasonicDistance = getUltrasonicDistance();
-    int16_t sensors[6];
-    for (int i = 0; i < 6; ++i) sensors[i] = sensorArray.readCalibratedSensor(i);
-    int16_t sensorError = sensorArray.readLinePosition();
-    int16_t sensorSum = sensorArray.getSensorSum();
-    float odomX = odometry.getX();
-    float odomY = odometry.getY();
-    float odomTheta = odometry.getTheta();
-    float pidKp = linePID.getKp();
-    float pidKi = linePID.getKi();
-    float pidKd = linePID.getKd();
-    float pidIntegral = linePID.getIntegral();
-    uint8_t remoteConnected = remoteControl.isConnected() ? 1 : 0;
-    int16_t remoteLeftSpeed = remoteControl.getLeftSpeed();
-    int16_t remoteRightSpeed = remoteControl.getRightSpeed();
-
-    // Send unified telemetry
-    TelemetryMessage msg = {
-        0, // type (not used)
-        t,
-        (uint8_t)mode,
-        (uint8_t)stateMachine.getCurrentState(),
-        pwmLeft,
-        pwmRight,
-        rpmLeft,
-        rpmRight,
-        distanceTraveled,
-        ultrasonicDistance,
-        {sensors[0], sensors[1], sensors[2], sensors[3], sensors[4], sensors[5]},
-        sensorError,
-        sensorSum,
-        odomX,
-        odomY,
-        odomTheta,
-        pidKp,
-        pidKi,
-        pidKd,
-        pidIntegral,
-        0.0f, // motorPidKp
-        0.0f, // motorPidKi
-        0.0f, // motorPidKd
-        0.0f, // motorPidIntegral
-        remoteConnected,
-        remoteLeftSpeed,
-        remoteRightSpeed
-    };
-    CommunicationSerializer::sendUnifiedTelemetry(msg);
-}
-
-/* ============================================================== */
-/* ===================  HARDWARE ULTRASÓNICO  =================== */
-/* ============================================================== */
-void triggerUltrasonicMeasurement() { ultrasonicSensor.triggerMeasurement(); }
-float getUltrasonicDistance()       { return ultrasonicSensor.getDistance(); }
-
-/* ============================================================== */
-/* =================  INTERRUPCIONES ENCODERS  ================== */
-/* ============================================================== */
-void encoderLeftISR()  { encoderController.incrementLeft(); }
-void encoderRightISR() { encoderController.incrementRight(); }
-
-/* ============================================================== */
-/* =================  COMMAND DISPATCH  ========================= */
-/* ============================================================== */
-void dispatchCommand(String line)
-{
-    // Parse CSV: type,value1,value2,...
-    int commaIndex = line.indexOf(',');
-    if (commaIndex == -1)
-    {
-        return;
-    }
-    String typeStr = line.substring(0, commaIndex);
-    uint8_t type = typeStr.toInt();
-    String params = line.substring(commaIndex + 1);
-
-    switch (type)
-    {
-    case CMD_SET_PID:
-    {
-        // params: kp,ki,kd
-        int idx1 = params.indexOf(',');
-        int idx2 = params.indexOf(',', idx1 + 1);
-        if (idx1 != -1 && idx2 != -1)
-        {
-            float kp = params.substring(0, idx1).toFloat();
-            float ki = params.substring(idx1 + 1, idx2).toFloat();
-            float kd = params.substring(idx2 + 1).toFloat();
-            linePIDPtr->setGains(kp, ki, kd);
-            currentConfigPtr->kp = kp;
-            currentConfigPtr->ki = ki;
-            currentConfigPtr->kd = kd;
-            eepromManagerPtr->saveConfig(*currentConfigPtr);
-            CommunicationSerializer::sendCommandAck(type);
-        }
-    }
-    break;
-    case CMD_SET_SPEED:
-    {
-        // params: speed
-        int16_t speed = params.toInt();
-        motorControllerPtr->setBaseSpeed(speed);
-        currentConfigPtr->baseSpeed = speed;
-        eepromManagerPtr->saveConfig(*currentConfigPtr);
-        CommunicationSerializer::sendCommandAck(type);
-    }
-    break;
-    case CMD_SET_MODE:
-    {
-        uint8_t mode = params.toInt();
-        competitionManagerPtr->setMode((OperationMode)mode);
-        CommunicationSerializer::sendCommandAck(type);
-    }
-    break;
-    case CMD_CALIBRATE:
-    {
-        *calibrationRequestedPtr = true;
-        CommunicationSerializer::sendCommandAck(type);
-    }
-    break;
-    case CMD_START:
-    {
-        // Assuming start means set to competition mode or something
-        competitionManagerPtr->setMode(MODE_COMPETITION);
-        CommunicationSerializer::sendCommandAck(type);
-    }
-    break;
-    case CMD_STOP:
-    {
-        motorControllerPtr->stopAll();
-        CommunicationSerializer::sendCommandAck(type);
-    }
-    break;
-    case CMD_GET_STATUS:
-    {
-        String status = "Mode: " + competitionManagerPtr->getModeString() +
-                       ", Speed: " + String(motorControllerPtr->getBaseSpeed()) +
-                       ", Serial: " + (competitionManagerPtr->isSerialEnabled() ? "ON" : "OFF") +
-                       ", Telemetry: " + (telemetryEnabled ? "ON" : "OFF");
-        CommunicationSerializer::sendSystemMessage(status.c_str());
-    }
-    break;
-    case CMD_TOGGLE_TELEMETRY:
-    {
-        telemetryEnabled = !telemetryEnabled;
-        CommunicationSerializer::sendSystemMessage(telemetryEnabled ? "Telemetry enabled" : "Telemetry disabled");
-        CommunicationSerializer::sendCommandAck(type);
-    }
-    break;
-    /* … otros comandos … */
-    }
+// ==========================
+// DEBUG
+// ==========================
+void printDebugInfo() {
+  Serial.print("LinePos: "); Serial.print(linePosition);
+  Serial.print(" | PID: "); Serial.print(pidOutput);
+  Serial.print(" | LRPM: "); Serial.print(leftRPM);
+  Serial.print(" | RRPM: "); Serial.print(rightRPM);
+  Serial.print(" | LSPD: "); Serial.print(leftSpeed);
+  Serial.print(" | RSPD: "); Serial.println(rightSpeed);
 }

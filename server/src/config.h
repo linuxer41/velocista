@@ -25,7 +25,7 @@
 // Array de sensores de línea (A0-A5) + Pin de alimentación
 #define NUM_SENSORS       6
 const int SENSOR_PINS[NUM_SENSORS] = {A0, A1, A2, A3, A4, A5};
-#define SENSOR_POWER_PIN  11  // Pin para encender/apagar LEDs de sensores
+#define SENSOR_POWER_PIN  12  // Pin para encender/apagar LEDs de sensores
 
 // Pines para encoders (interrupciones)
 #define ENCODER_LEFT_A    2
@@ -98,11 +98,8 @@ struct RobotConfig {
 // =============================================================================
 
 enum OperationMode {
-  MODE_CALIBRATION,      // Calibración de sensores
-  MODE_COMPETITION,      // Modo competencia (máxima performance)
-  MODE_TUNING,           // Ajuste de parámetros PID
-  MODE_DEBUG,            // Modo depuración (telemetría completa)
-  MODE_REMOTE_CONTROL    // Control remoto por JSON
+  MODE_LINE_FOLLOWING,   // Seguir línea
+  MODE_REMOTE_CONTROL    // Control remoto
 };
 
 #endif
