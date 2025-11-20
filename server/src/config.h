@@ -25,7 +25,7 @@
 // Array de sensores de línea (A0-A5) + Pin de alimentación
 #define NUM_SENSORS       6
 const int SENSOR_PINS[NUM_SENSORS] = {A0, A1, A2, A3, A4, A5};
-#define SENSOR_POWER_PIN  11  // Pin para encender/apagar LEDs de sensores
+#define SENSOR_POWER_PIN  12  // Pin para encender/apagar LEDs de sensores
 
 // Pines para encoders (interrupciones)
 #define ENCODER_LEFT_A    2
