@@ -14,14 +14,8 @@ namespace SerialWebSocketServer
     enum MessageType : byte
     {
         MSG_SYSTEM = 0,
-        MSG_SENSOR_DATA = 1,
-        MSG_ODOMETRY = 2,
-        MSG_STATE = 3,
-        MSG_MODE_CHANGE = 4,
-        MSG_PID_TUNING = 5,
-        MSG_COMPETITION = 6,
-        MSG_REMOTE_STATUS = 7,
-        MSG_COMMAND_ACK = 8
+        MSG_COMMAND_ACK = 1,
+        MSG_UNIFIED_TELEMETRY = 2
     }
 
     enum CommandType : byte
@@ -32,7 +26,8 @@ namespace SerialWebSocketServer
         CMD_CALIBRATE = 3,
         CMD_START = 4,
         CMD_STOP = 5,
-        CMD_GET_STATUS = 6
+        CMD_GET_STATUS = 6,
+        CMD_TOGGLE_TELEMETRY = 7
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -155,6 +150,7 @@ namespace SerialWebSocketServer
                     case "start":     if (serialPort?.IsOpen == true) SendStart();     break;
                     case "stop":      if (serialPort?.IsOpen == true) SendStop();      break;
                     case "get_status":if (serialPort?.IsOpen == true) SendGetStatus(); break;
+                    case "toggle_telemetry": if (serialPort?.IsOpen == true) SendToggleTelemetry(); break;
                 }
             }
             catch (Exception ex)
@@ -288,6 +284,13 @@ namespace SerialWebSocketServer
             SendCsv(csv);
         }
 
+        static void SendToggleTelemetry()
+        {
+            string csv = $"{(byte)CommandType.CMD_TOGGLE_TELEMETRY}";
+            Console.WriteLine($"[CMD] TOGGLE_TELEMETRY - {csv}");
+            SendCsv(csv);
+        }
+
         /* ====================  UTILS  ==================== */
 
         static string DeserializeToJson(byte type, string[] parts)
@@ -296,14 +299,8 @@ namespace SerialWebSocketServer
             string typeName = type switch
             {
                 0 => "MSG_SYSTEM",
-                1 => "MSG_SENSOR_DATA",
-                2 => "MSG_ODOMETRY",
-                3 => "MSG_STATE",
-                4 => "MSG_MODE_CHANGE",
-                5 => "MSG_PID_TUNING",
-                6 => "MSG_COMPETITION",
-                7 => "MSG_REMOTE_STATUS",
-                8 => "MSG_COMMAND_ACK",
+                1 => "MSG_COMMAND_ACK",
+                2 => "MSG_UNIFIED_TELEMETRY",
                 _ => $"UNKNOWN({type})"
             };
             Console.WriteLine($"[DECODE] Processing {typeName} (0x{type:X2}), parts: {string.Join(",", parts)}");
@@ -312,37 +309,43 @@ namespace SerialWebSocketServer
             {
                 case (byte)MessageType.MSG_SYSTEM:
                     return JsonSerializer.Serialize(new { type = "system", message = parts.Length > 0 ? parts[0] : "" }, options);
-                case (byte)MessageType.MSG_SENSOR_DATA:
-                    if (parts.Length < 9) return string.Empty;
-                    short[] s = new short[6];
-                    for (int i = 0; i < 6; i++) short.TryParse(parts[1 + i], out s[i]);
-                    short error = short.Parse(parts[7]);
-                    short sum = short.Parse(parts[8]);
-                    return JsonSerializer.Serialize(new { type = "sensor_data", timestamp = uint.Parse(parts[0]), sensors = s, error = error, sum = sum }, options);
-                case (byte)MessageType.MSG_ODOMETRY:
-                    if (parts.Length < 4) return string.Empty;
-                    float x = float.TryParse(parts[1], out var xVal) && !float.IsNaN(xVal) ? xVal : 0.0f;
-                    float y = float.TryParse(parts[2], out var yVal) && !float.IsNaN(yVal) ? yVal : 0.0f;
-                    float theta = float.TryParse(parts[3], out var tVal) && !float.IsNaN(tVal) ? tVal : 0.0f;
-                    return JsonSerializer.Serialize(new { type = "odometry", timestamp = uint.Parse(parts[0]), x = x, y = y, theta = theta }, options);
-                case (byte)MessageType.MSG_STATE:
-                    if (parts.Length < 3) return string.Empty;
-                    return JsonSerializer.Serialize(new { type = "state", timestamp = uint.Parse(parts[0]), state = byte.Parse(parts[1]), distance = float.Parse(parts[2]) }, options);
-                case (byte)MessageType.MSG_MODE_CHANGE:
-                    if (parts.Length < 3) return string.Empty;
-                    return JsonSerializer.Serialize(new { type = "mode_change", old_mode = byte.Parse(parts[0]), new_mode = byte.Parse(parts[1]), serial_enabled = byte.Parse(parts[2]) }, options);
-                case (byte)MessageType.MSG_PID_TUNING:
-                    if (parts.Length < 4) return string.Empty;
-                    return JsonSerializer.Serialize(new { type = "pid_tuning", kp = float.Parse(parts[0]), ki = float.Parse(parts[1]), kd = float.Parse(parts[2]), integral = float.Parse(parts[3]) }, options);
-                case (byte)MessageType.MSG_COMPETITION:
-                    if (parts.Length < 3) return string.Empty;
-                    return JsonSerializer.Serialize(new { type = "competition", mode = byte.Parse(parts[0]), time = uint.Parse(parts[1]), lap_count = byte.Parse(parts[2]) }, options);
-                case (byte)MessageType.MSG_REMOTE_STATUS:
-                    if (parts.Length < 3) return string.Empty;
-                    return JsonSerializer.Serialize(new { type = "remote_status", connected = byte.Parse(parts[0]), left_speed = short.Parse(parts[1]), right_speed = short.Parse(parts[2]) }, options);
                 case (byte)MessageType.MSG_COMMAND_ACK:
                     if (parts.Length < 1) return string.Empty;
                     return JsonSerializer.Serialize(new { type = "command_ack", command_type = byte.Parse(parts[0]) }, options);
+                case (byte)MessageType.MSG_UNIFIED_TELEMETRY:
+                    if (parts.Length < 31) return string.Empty;
+                    short[] sensors = new short[6];
+                    for (int i = 0; i < 6; i++) short.TryParse(parts[9 + i], out sensors[i]);
+                    return JsonSerializer.Serialize(new
+                    {
+                        type = "unified_telemetry",
+                        timestamp = uint.Parse(parts[0]),
+                        operationMode = byte.Parse(parts[1]),
+                        robotState = byte.Parse(parts[2]),
+                        pwmLeft = short.Parse(parts[3]),
+                        pwmRight = short.Parse(parts[4]),
+                        rpmLeft = float.Parse(parts[5]),
+                        rpmRight = float.Parse(parts[6]),
+                        distanceTraveled = float.Parse(parts[7]),
+                        ultrasonicDistance = float.Parse(parts[8]),
+                        sensors = sensors,
+                        sensorError = short.Parse(parts[15]),
+                        sensorSum = short.Parse(parts[16]),
+                        odometryX = float.Parse(parts[17]),
+                        odometryY = float.Parse(parts[18]),
+                        odometryTheta = float.Parse(parts[19]),
+                        linePidKp = float.Parse(parts[20]),
+                        linePidKi = float.Parse(parts[21]),
+                        linePidKd = float.Parse(parts[22]),
+                        linePidIntegral = float.Parse(parts[23]),
+                        motorPidKp = float.Parse(parts[24]),
+                        motorPidKi = float.Parse(parts[25]),
+                        motorPidKd = float.Parse(parts[26]),
+                        motorPidIntegral = float.Parse(parts[27]),
+                        remoteConnected = byte.Parse(parts[28]),
+                        remoteLeftSpeed = short.Parse(parts[29]),
+                        remoteRightSpeed = short.Parse(parts[30])
+                    }, options);
                 default:
                     return string.Empty;
             }

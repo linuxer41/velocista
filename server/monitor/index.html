@@ -250,6 +250,27 @@
             </div>
 
             <div class="panel">
+                <h3>⚙️ Motores</h3>
+                <p>PWM Izq: <span id="pwmLeft">--</span></p>
+                <p>PWM Der: <span id="pwmRight">--</span></p>
+                <p>RPM Izq: <span id="rpmLeft">--</span></p>
+                <p>RPM Der: <span id="rpmRight">--</span></p>
+            </div>
+
+            <div class="panel">
+                <h3>📏 Ultrasonico</h3>
+                <p>Distancia: <span id="ultrasonicDistance">--</span> cm</p>
+            </div>
+
+            <div class="panel">
+                <h3>🎛️ PID Motor</h3>
+                <p>Kp: <span id="motorPidKp">--</span></p>
+                <p>Ki: <span id="motorPidKi">--</span></p>
+                <p>Kd: <span id="motorPidKd">--</span></p>
+                <p>Integral: <span id="motorPidIntegral">--</span></p>
+            </div>
+
+            <div class="panel">
                 <h3>🎮 Control Remoto</h3>
                 <p>Conectado: <span id="remoteConnected">--</span></p>
                 <p>Motor Izq: <span id="remoteLeftSpeed">--</span></p>
@@ -299,6 +320,7 @@
                 <button onclick="sendStartCommand()">Iniciar</button>
                 <button onclick="sendStopCommand()">Detener</button>
                 <button onclick="sendGetStatusCommand()">Obtener Estado</button>
+                <button onclick="sendToggleTelemetryCommand()">Toggle Telemetría</button>
             </div>
         </div>
 
@@ -397,6 +419,18 @@
                     addLogEntry('remote', `Control Remoto - Conectado: ${data.connected}, Motores: ${data.left_speed}, ${data.right_speed}`);
                     break;
 
+                case 'unified_telemetry':
+                    updateSensorData({ sensors: data.sensors, error: data.sensorError, sum: data.sensorSum });
+                    updateOdometry({ x: data.odometryX, y: data.odometryY, theta: data.odometryTheta });
+                    updateState({ state: data.robotState, distance: data.distanceTraveled });
+                    updatePid({ kp: data.linePidKp, ki: data.linePidKi, kd: data.linePidKd, integral: data.linePidIntegral });
+                    updateMode({ new_mode: data.operationMode, serial_enabled: true });
+                    updateRemote({ connected: data.remoteConnected, left_speed: data.remoteLeftSpeed, right_speed: data.remoteRightSpeed });
+                    updateMotors({ pwmLeft: data.pwmLeft, pwmRight: data.pwmRight, rpmLeft: data.rpmLeft, rpmRight: data.rpmRight });
+                    updateUltrasonic({ distance: data.ultrasonicDistance });
+                    updateMotorPid({ kp: data.motorPidKp, ki: data.motorPidKi, kd: data.motorPidKd, integral: data.motorPidIntegral });
+                    break;
+
                 case 'command_ack':
                     addLogEntry('system', `Comando confirmado: ${data.command_type}`);
                     break;
@@ -455,6 +489,24 @@
             document.getElementById('remoteConnected').textContent = data.connected ? 'Sí' : 'No';
             document.getElementById('remoteLeftSpeed').textContent = data.left_speed;
             document.getElementById('remoteRightSpeed').textContent = data.right_speed;
+        }
+
+        function updateMotors(data) {
+            document.getElementById('pwmLeft').textContent = data.pwmLeft;
+            document.getElementById('pwmRight').textContent = data.pwmRight;
+            document.getElementById('rpmLeft').textContent = data.rpmLeft.toFixed(1);
+            document.getElementById('rpmRight').textContent = data.rpmRight.toFixed(1);
+        }
+
+        function updateUltrasonic(data) {
+            document.getElementById('ultrasonicDistance').textContent = data.distance.toFixed(1);
+        }
+
+        function updateMotorPid(data) {
+            document.getElementById('motorPidKp').textContent = data.kp.toFixed(2);
+            document.getElementById('motorPidKi').textContent = data.ki.toFixed(3);
+            document.getElementById('motorPidKd').textContent = data.kd.toFixed(2);
+            document.getElementById('motorPidIntegral').textContent = data.integral.toFixed(2);
         }
 
         function addLogEntry(type, message) {
@@ -532,6 +584,12 @@
         function sendGetStatusCommand() {
             sendCommand({
                 type: 'get_status'
+            });
+        }
+
+        function sendToggleTelemetryCommand() {
+            sendCommand({
+                type: 'toggle_telemetry'
             });
         }
 

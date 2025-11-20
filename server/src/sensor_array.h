@@ -25,7 +25,12 @@ public:
     /**
      * Constructor - inicializa arrays y configura pines
      */
-    SensorArray() : calibrated(false), lastReadTime(0), powerState(false) {
+    SensorArray() : calibrated(false), lastReadTime(0), powerState(false) {}
+
+    /**
+     * Inicializar arrays y configurar pines
+     */
+    void initialize() {
         // Inicializar arrays
         for (int i = 0; i < NUM_SENSORS; i++) {
             minValues[i] = 1023;
@@ -33,13 +38,16 @@ public:
             filteredValues[i] = 0;
             sensorWeights[i] = 1.0;
         }
-        
+
         // Configurar pesos para sensores centrales (más importantes)
         sensorWeights[2] = 1.2;  // Sensor 2 - más peso
         sensorWeights[3] = 1.2;  // Sensor 3 - más peso
-        
+
         // Configurar pin de alimentación
         pinMode(SENSOR_POWER_PIN, OUTPUT);
+        for (int i = 0; i < NUM_SENSORS; i++) {
+            pinMode(SENSOR_PINS[i], INPUT);
+        }
         setPower(false); // Iniciar con sensores apagados
     }
     
@@ -55,8 +63,6 @@ public:
             if (on) {
                 delay(10); // Pequeño delay para estabilización de LEDs
             }
-
-            CommunicationSerializer::sendSystemMessage(on ? "Sensor power on" : "Sensor power off");
         }
     }
     
@@ -71,12 +77,19 @@ public:
      */
     void applyLowPassFilter() {
         if (!powerState) return;
+
+        // led on
+        digitalWrite(SENSOR_POWER_PIN, HIGH);
+        delay(20);
         
         float alpha = 0.7; // Factor de suavizado (0-1)
         for (int i = 0; i < NUM_SENSORS; i++) {
             int rawValue = analogRead(SENSOR_PINS[i]);
             filteredValues[i] = alpha * filteredValues[i] + (1 - alpha) * rawValue;
         }
+
+        // led off
+        digitalWrite(SENSOR_POWER_PIN, LOW);
     }
     
     /**
@@ -169,7 +182,6 @@ public:
 
         // Mostrar valores de calibración
         CommunicationSerializer::sendSystemMessage("Valores de calibracion:");
-        // For simplicity, skip detailed values to save space
     }
     
     /**

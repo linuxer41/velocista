@@ -138,11 +138,11 @@ public:
         if (newState != currentState) {
             currentState = newState;
             stateStartTime = millis();
-            
-            // Log de cambio de estado (si el serial está habilitado)
-            if (currentOperationMode != MODE_COMPETITION) {
-                CommunicationSerializer::sendSystemMessage("Cambio de estado");
-            }
+
+            // Log de cambio de estado (comentado para evitar spam)
+            // if (currentOperationMode != MODE_COMPETITION) {
+            //     CommunicationSerializer::sendSystemMessage("Cambio de estado");
+            // }
         }
     }
     

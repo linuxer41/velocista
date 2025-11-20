@@ -44,6 +44,7 @@ unsigned long lastSensorRead     = 0;
 
 bool calibrationRequested = false;
 bool sensorsEnabled       = false;
+bool telemetryEnabled     = true;
 
 // Pointers for dispatch
 MotorController* motorControllerPtr = &motorController;
@@ -89,11 +90,13 @@ void encoderRightISR();
 void setup()
 {
     Serial.begin(9600);
+    delay(1000);
     CommunicationSerializer::sendSystemMessage("Robot Seguidor 4.0 – PID, Odometria, Remoto, EEPROM, Evasion");
-    CommunicationSerializer::sendSystemMessage("Comandos: start, stop, set_pid, set_speed, set_mode, calibrate_sensors, get_status");
+    CommunicationSerializer::sendSystemMessage("Comandos: start, stop, set_pid, set_speed, set_mode, calibrate_sensors, get_status, toggle_telemetry");
 
     motorController.initialize();
     encoderController.initialize();
+    sensorArray.initialize();
     ultrasonicSensor.initialize();
 
     if (!eepromManager.loadConfig(currentConfig))
@@ -110,10 +113,10 @@ void setup()
 
     competitionManager.setMode(MODE_DEBUG);
     modeIndicator.setMode(MODE_DEBUG);
-    CommunicationSerializer::sendModeChange(255, MODE_DEBUG, competitionManager.isSerialEnabled());
 
     lastOdometryUpdate = millis();
     lastSensorRead     = millis();
+
 }
 
 /* ============================================================== */
@@ -240,12 +243,7 @@ void executeDebugMode() {
 
 void executeCalibrationMode() {
     motorController.stopAll();
-    if (millis() - lastSensorRead >= 500) {
-        int16_t s[6];
-        for (int i = 0; i < 6; ++i) s[i] = sensorArray.readCalibratedSensor(i);
-        CommunicationSerializer::sendSensorData(millis(), s, sensorArray.readLinePosition(), sensorArray.getSensorSum());
-        lastSensorRead = millis();
-    }
+    // Unified telemetry will be sent automatically by sendOptimizedTelemetry
 }
 
 /* ============================================================== */
@@ -324,32 +322,67 @@ void avoidObstacle() {
 /* ======================  TELEMETRÍA  ========================== */
 /* ============================================================== */
 void sendOptimizedTelemetry(OperationMode mode) {
-    if (!competitionManager.isSerialEnabled()) return;
+    if (!competitionManager.isSerialEnabled() || !telemetryEnabled) return;
     unsigned long t = millis();
     if (t - lastTelemetry < 200) return;
     lastTelemetry = t;
 
-    switch (mode) {
-        case MODE_REMOTE_CONTROL:
-            CommunicationSerializer::sendRemoteStatus(remoteControl.isConnected(),
-                                                       remoteControl.getLeftSpeed(),
-                                                       remoteControl.getRightSpeed());
-            break;
-        case MODE_COMPETITION:
-            triggerUltrasonicMeasurement();
-            CommunicationSerializer::sendState(t, stateMachine.getCurrentState(), getUltrasonicDistance());
-            break;
-        default: {
-            int16_t s[6];
-            for (int i = 0; i < 6; ++i) s[i] = sensorArray.readCalibratedSensor(i);
-            CommunicationSerializer::sendSensorData(t, s, sensorArray.readLinePosition(), sensorArray.getSensorSum());
-            CommunicationSerializer::sendOdometry(t, odometry.getX(), odometry.getY(), odometry.getTheta());
-            triggerUltrasonicMeasurement();
-            CommunicationSerializer::sendState(t, stateMachine.getCurrentState(), getUltrasonicDistance());
-            CommunicationSerializer::sendPidTuning(linePID.getKp(), linePID.getKi(), linePID.getKd(), linePID.getIntegral());
-            break;
-        }
-    }
+    // Trigger ultrasonic measurement
+    triggerUltrasonicMeasurement();
+
+    // Collect all telemetry data
+    int16_t pwmLeft = motorController.getCurrentLeftPWM();
+    int16_t pwmRight = motorController.getCurrentRightPWM();
+    float rpmLeft = encoderController.getLeftRPM();
+    float rpmRight = encoderController.getRightRPM();
+    float distanceTraveled = odometry.getTotalDistance();
+    float ultrasonicDistance = getUltrasonicDistance();
+    int16_t sensors[6];
+    for (int i = 0; i < 6; ++i) sensors[i] = sensorArray.readCalibratedSensor(i);
+    int16_t sensorError = sensorArray.readLinePosition();
+    int16_t sensorSum = sensorArray.getSensorSum();
+    float odomX = odometry.getX();
+    float odomY = odometry.getY();
+    float odomTheta = odometry.getTheta();
+    float pidKp = linePID.getKp();
+    float pidKi = linePID.getKi();
+    float pidKd = linePID.getKd();
+    float pidIntegral = linePID.getIntegral();
+    uint8_t remoteConnected = remoteControl.isConnected() ? 1 : 0;
+    int16_t remoteLeftSpeed = remoteControl.getLeftSpeed();
+    int16_t remoteRightSpeed = remoteControl.getRightSpeed();
+
+    // Send unified telemetry
+    TelemetryMessage msg = {
+        0, // type (not used)
+        t,
+        (uint8_t)mode,
+        (uint8_t)stateMachine.getCurrentState(),
+        pwmLeft,
+        pwmRight,
+        rpmLeft,
+        rpmRight,
+        distanceTraveled,
+        ultrasonicDistance,
+        {sensors[0], sensors[1], sensors[2], sensors[3], sensors[4], sensors[5]},
+        sensorError,
+        sensorSum,
+        odomX,
+        odomY,
+        odomTheta,
+        pidKp,
+        pidKi,
+        pidKd,
+        pidIntegral,
+        0.0f, // motorPidKp
+        0.0f, // motorPidKi
+        0.0f, // motorPidKd
+        0.0f, // motorPidIntegral
+        remoteConnected,
+        remoteLeftSpeed,
+        remoteRightSpeed
+    };
+    CommunicationSerializer::sendUnifiedTelemetry(msg);
 }
 
 /* ============================================================== */
@@ -440,8 +473,16 @@ void dispatchCommand(String line)
     {
         String status = "Mode: " + competitionManagerPtr->getModeString() +
                        ", Speed: " + String(motorControllerPtr->getBaseSpeed()) +
-                       ", Serial: " + (competitionManagerPtr->isSerialEnabled() ? "ON" : "OFF");
+                       ", Serial: " + (competitionManagerPtr->isSerialEnabled() ? "ON" : "OFF") +
+                       ", Telemetry: " + (telemetryEnabled ? "ON" : "OFF");
         CommunicationSerializer::sendSystemMessage(status.c_str());
+    }
+    break;
+    case CMD_TOGGLE_TELEMETRY:
+    {
+        telemetryEnabled = !telemetryEnabled;
+        CommunicationSerializer::sendSystemMessage(telemetryEnabled ? "Telemetry enabled" : "Telemetry disabled");
+        CommunicationSerializer::sendCommandAck(type);
     }
     break;
     /* … otros comandos … */

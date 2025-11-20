@@ -16,12 +16,14 @@ private:
     int baseSpeed;        // Velocidad base (0-255)
     int maxSpeed;         // Velocidad máxima permitida
     bool safetyEnabled;   // Habilitar límites de seguridad
+    int currentLeftPWM;   // PWM actual motor izquierdo
+    int currentRightPWM;  // PWM actual motor derecho
 
 public:
     /**
      * Constructor - inicializa con valores por defecto
      */
-    MotorController() : baseSpeed(DEFAULT_BASE_SPEED), maxSpeed(MAX_SPEED), safetyEnabled(true) {}
+    MotorController() : baseSpeed(DEFAULT_BASE_SPEED), maxSpeed(MAX_SPEED), safetyEnabled(true), currentLeftPWM(0), currentRightPWM(0) {}
     
     /**
      * Inicializar pines de motores
@@ -42,7 +44,9 @@ public:
         if (safetyEnabled) {
             speed = constrain(speed, -maxSpeed, maxSpeed);
         }
-        
+
+        currentLeftPWM = speed;
+
         if (speed > 0) {
             // Movimiento hacia adelante
             analogWrite(MOTOR_LEFT_PIN1, speed);
@@ -66,7 +70,9 @@ public:
         if (safetyEnabled) {
             speed = constrain(speed, -maxSpeed, maxSpeed);
         }
-        
+
+        currentRightPWM = speed;
+
         if (speed > 0) {
             // Movimiento hacia adelante
             analogWrite(MOTOR_RIGHT_PIN1, speed);
@@ -117,6 +123,8 @@ public:
     int getMaxSpeed() const { return maxSpeed; }
     void setSafety(bool enabled) { safetyEnabled = enabled; }
     bool isSafetyEnabled() const { return safetyEnabled; }
+    int getCurrentLeftPWM() const { return currentLeftPWM; }
+    int getCurrentRightPWM() const { return currentRightPWM; }
     
 };
 

@@ -14,14 +14,8 @@ void dispatchCommand(String line);
 /* ===================== TUS ENUMS ===================== */
 enum MessageType : uint8_t {
     MSG_SYSTEM = 0,
-    MSG_SENSOR_DATA = 1,
-    MSG_ODOMETRY = 2,
-    MSG_STATE = 3,
-    MSG_MODE_CHANGE = 4,
-    MSG_PID_TUNING = 5,
-    MSG_COMPETITION = 6,
-    MSG_REMOTE_STATUS = 7,
-    MSG_COMMAND_ACK = 8
+    MSG_COMMAND_ACK = 1,
+    MSG_UNIFIED_TELEMETRY = 2
 };
 
 enum CommandType : uint8_t {
@@ -31,33 +25,41 @@ enum CommandType : uint8_t {
     CMD_CALIBRATE = 3,
     CMD_START = 4,
     CMD_STOP = 5,
-    CMD_GET_STATUS = 6
+    CMD_GET_STATUS = 6,
+    CMD_TOGGLE_TELEMETRY = 7
 };
 /* ===================================================== */
 
-/* ================= TUS STRUCTS (intactos) ================ */
+/* ================= TUS STRUCTS ================ */
 struct SystemMessage {  uint8_t type;  char message[64]; };
-struct SensorDataMessage {
-    uint8_t type;  uint32_t timestamp;  int16_t sensors[6];
-    int16_t error; int16_t sum;
-};
-struct OdometryMessage {
-    uint8_t type;  uint32_t timestamp;  float x,y,theta;
-};
-struct StateMessage {
-    uint8_t type;  uint32_t timestamp;  uint8_t state;  float distance;
-};
-struct ModeChangeMessage {
-    uint8_t type;  uint8_t oldMode,newMode,serialEnabled;
-};
-struct PidTuningMessage {
-    uint8_t type;  float kp,ki,kd,integral;
-};
-struct CompetitionMessage {
-    uint8_t type;  uint8_t mode,lapCount;  uint32_t time;
-};
-struct RemoteStatusMessage {
-    uint8_t type;  uint8_t connected;  int16_t leftSpeed,rightSpeed;
+struct TelemetryMessage {
+    uint8_t type;
+    uint32_t timestamp;
+    uint8_t operationMode;
+    uint8_t robotState;
+    int16_t pwmLeft;
+    int16_t pwmRight;
+    float rpmLeft;
+    float rpmRight;
+    float distanceTraveled;
+    float ultrasonicDistance;
+    int16_t sensors[6];
+    int16_t sensorError;
+    int16_t sensorSum;
+    float odometryX;
+    float odometryY;
+    float odometryTheta;
+    float linePidKp;
+    float linePidKi;
+    float linePidKd;
+    float linePidIntegral;
+    float motorPidKp;
+    float motorPidKi;
+    float motorPidKd;
+    float motorPidIntegral;
+    uint8_t remoteConnected;
+    int16_t remoteLeftSpeed;
+    int16_t remoteRightSpeed;
 };
 /* -------- comandos entrantes -------- */
 struct CommandHeader { uint8_t type; };
@@ -78,60 +80,28 @@ public:
         Serial.println(csv);
     }
 
-    static void sendSensorData(uint32_t ts, const int16_t s[6], int16_t err, int16_t sum)
-    {
-        String csv = String(MSG_SENSOR_DATA) + "," + String(ts);
-        for (int i = 0; i < 6; i++)
-        {
-            csv += "," + String(s[i]);
-        }
-        csv += "," + String(err) + "," + String(sum);
-        Serial.println(csv);
-    }
-
-    static void sendOdometry(uint32_t ts, float x, float y, float th)
-    {
-        // Reemplazar NaN con 0 para evitar errores en JSON
-        if (isnan(x)) x = 0.0;
-        if (isnan(y)) y = 0.0;
-        if (isnan(th)) th = 0.0;
-        String csv = String(MSG_ODOMETRY) + "," + String(ts) + "," + String(x, 6) + "," + String(y, 6) + "," + String(th, 6);
-        Serial.println(csv);
-    }
-
-    static void sendState(uint32_t ts, uint8_t st, float dist)
-    {
-        String csv = String(MSG_STATE) + "," + String(ts) + "," + String(st) + "," + String(dist, 6);
-        Serial.println(csv);
-    }
-
-    static void sendModeChange(uint8_t oldM, uint8_t newM, uint8_t serEn)
-    {
-        String csv = String(MSG_MODE_CHANGE) + "," + String(oldM) + "," + String(newM) + "," + String(serEn);
-        Serial.println(csv);
-    }
-
-    static void sendPidTuning(float kp, float ki, float kd, float integ)
-    {
-        String csv = String(MSG_PID_TUNING) + "," + String(kp, 6) + "," + String(ki, 6) + "," + String(kd, 6) + "," + String(integ, 6);
-        Serial.println(csv);
-    }
-
-    static void sendCompetition(uint8_t mode, uint32_t time, uint8_t laps)
-    {
-        String csv = String(MSG_COMPETITION) + "," + String(mode) + "," + String(time) + "," + String(laps);
-        Serial.println(csv);
-    }
-
-    static void sendRemoteStatus(uint8_t conn, int16_t lSp, int16_t rSp)
-    {
-        String csv = String(MSG_REMOTE_STATUS) + "," + String(conn) + "," + String(lSp) + "," + String(rSp);
-        Serial.println(csv);
-    }
-
     static void sendCommandAck(uint8_t cmdType)
     {
         String csv = String(MSG_COMMAND_ACK) + "," + String(cmdType);
+        Serial.println(csv);
+    }
+
+    static void sendUnifiedTelemetry(const TelemetryMessage& msg)
+    {
+        // Add pure noise to sensors for testing
+        int16_t noisySensors[6];
+        for (int i = 0; i < 6; i++) {
+            noisySensors[i] = msg.sensors[i] + 0;
+        }
+
+        String csv = String((int)MSG_UNIFIED_TELEMETRY) + "," + String(msg.timestamp) + "," + String(msg.operationMode) + "," + String(msg.robotState) + "," +
+                     String(msg.pwmLeft) + "," + String(msg.pwmRight) + "," + String(msg.rpmLeft, 2) + "," + String(msg.rpmRight, 2) + "," +
+                     String(msg.distanceTraveled, 2) + "," + String(msg.ultrasonicDistance, 2) + "," +
+                    //  String(noisySensors[0]) + "," + String(noisySensors[1]) + "," + String(noisySensors[2]) + "," + String(noisySensors[3]) + "," + String(noisySensors[4]) + "," + String(noisySensors[5]) + "," +
+                    //  String(msg.sensorError) + "," + String(msg.sensorSum) + "," + String(msg.odometryX, 2) + "," + String(msg.odometryY, 2) + "," + String(msg.odometryTheta, 2) + "," +
+                    //  String(msg.linePidKp, 2) + "," + String(msg.linePidKi, 3) + "," + String(msg.linePidKd, 2) + "," + String(msg.linePidIntegral, 2) + "," +
+                    //  String(msg.motorPidKp, 2) + "," + String(msg.motorPidKi, 3) + "," + String(msg.motorPidKd, 2) + "," + String(msg.motorPidIntegral, 2) + "," +
+                    //  String(msg.remoteConnected) + "," + String(msg.remoteLeftSpeed) + "," + String(msg.remoteRightSpeed);
         Serial.println(csv);
     }
 
