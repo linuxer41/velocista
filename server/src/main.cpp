@@ -5,7 +5,7 @@
 // ==========================
 RobotConfig config;
 OperationMode currentMode = MODE_LINE_FOLLOWING;
-bool debugEnabled = false;
+bool debugEnabled = true;
 
 // Sensores
 int sensorValues[NUM_SENSORS];
@@ -71,12 +71,15 @@ void setup() {
   pinMode(SENSOR_POWER_PIN, OUTPUT);
   digitalWrite(SENSOR_POWER_PIN, HIGH);
 
+  pinMode(ENCODER_LEFT_A, INPUT_PULLUP);
+  pinMode(ENCODER_RIGHT_A, INPUT_PULLUP);
+
   for (int i = 0; i < NUM_SENSORS; i++) {
     pinMode(SENSOR_PINS[i], INPUT);
   }
 
-  attachInterrupt(digitalPinToInterrupt(ENCODER_LEFT_A), countLeftEncoder, RISING);
-  attachInterrupt(digitalPinToInterrupt(ENCODER_RIGHT_A), countRightEncoder, RISING);
+  attachInterrupt(digitalPinToInterrupt(ENCODER_LEFT_A), countLeftEncoder, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(ENCODER_RIGHT_A), countRightEncoder, CHANGE);
 
   loadConfig();
 
@@ -90,9 +93,8 @@ void loop() {
   readSensors();
   calculatePID();
 
-  // Velocidad base
-  targetLeftSpeed = config.baseSpeed;
-  targetRightSpeed = config.baseSpeed;
+  // Control de velocidad (lazo cerrado)
+  updateSpeedControl();
 
   updateMotors();
 
@@ -292,5 +294,11 @@ void printDebugInfo() {
   Serial.print(" | LRPM: "); Serial.print(leftRPM);
   Serial.print(" | RRPM: "); Serial.print(rightRPM);
   Serial.print(" | LSPD: "); Serial.print(leftSpeed);
-  Serial.print(" | RSPD: "); Serial.println(rightSpeed);
+  Serial.print(" | RSPD: "); Serial.print(rightSpeed);
+  Serial.print(" | SENSORS: [");
+  for (int i = 0; i < NUM_SENSORS; i++) {
+    Serial.print(sensorValues[i]);
+    if (i < NUM_SENSORS - 1) Serial.print(",");
+  }
+  Serial.println("]");
 }
