@@ -17,10 +17,10 @@
 // =============================================================================
 
 // Pines para controlador DRV8833 - Motores
-#define MOTOR_LEFT_PIN1   5
-#define MOTOR_LEFT_PIN2   6
-#define MOTOR_RIGHT_PIN1  9
-#define MOTOR_RIGHT_PIN2  10
+#define MOTOR_LEFT_PIN1   10
+#define MOTOR_LEFT_PIN2   9
+#define MOTOR_RIGHT_PIN1  6
+#define MOTOR_RIGHT_PIN2  5
 
 // Array de sensores de línea (A0-A5) + Pin de alimentación
 #define NUM_SENSORS       6
@@ -45,10 +45,10 @@ const int SENSOR_PINS[NUM_SENSORS] = {A0, A1, A2, A3, A4, A5};
 // =============================================================================
 
 // Configuración encoders - Motor N20 300RPM con reductor 10:1
-const int16_t PULSES_PER_REVOLUTION = 36;
+const int16_t PULSES_PER_REVOLUTION = 72;
 const float WHEEL_DIAMETER_MM = 32.0f;  // Diámetro de ruedas en mm
 const float WHEEL_DISTANCE_MM = 85.0f;  // Distancia entre ruedas en mm
-const int16_t MAX_SPEED = 200;          // Velocidad máxima PWM
+const int16_t MAX_SPEED = 255;          // Velocidad máxima PWM
 const int16_t EEPROM_CONFIG_ADDR = 0;   // Dirección EEPROM para configuración
 
 // =============================================================================
@@ -69,10 +69,10 @@ const uint16_t SENSOR_READ_DELAY = 2;  // ms entre lectura de sensores
 // PARÁMETROS PID POR DEFECTO
 // =============================================================================
 
-const float DEFAULT_KP = 2.0f;          // Ganancia proporcional
-const float DEFAULT_KI = 0.05f;         // Ganancia integral
-const float DEFAULT_KD = 0.8f;          // Ganancia derivativa
-const int16_t DEFAULT_BASE_SPEED = 150; // Velocidad base
+const float DEFAULT_KP = 1.5f;          // Ganancia proporcional
+const float DEFAULT_KI = 0.02f;         // Ganancia integral
+const float DEFAULT_KD = 0.5f;          // Ganancia derivativa
+const int16_t DEFAULT_BASE_SPEED = 225; // Velocidad base
 
 // =============================================================================
 // ESTRUCTURA CONFIGURACIÓN EEPROM

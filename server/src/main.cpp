@@ -51,10 +51,18 @@ void countRightEncoder();
 // INTERRUPCIONES ENCODERS
 // ==========================
 void countLeftEncoder() {
-  encoderLeftCount++;
+  if (digitalRead(ENCODER_LEFT_A) == digitalRead(ENCODER_LEFT_B)) {
+    encoderLeftCount++;
+  } else {
+    encoderLeftCount--;
+  }
 }
 void countRightEncoder() {
-  encoderRightCount++;
+  if (digitalRead(ENCODER_RIGHT_A) == digitalRead(ENCODER_RIGHT_B)) {
+    encoderRightCount++;
+  } else {
+    encoderRightCount--;
+  }
 }
 
 // ==========================
@@ -72,7 +80,9 @@ void setup() {
   digitalWrite(SENSOR_POWER_PIN, HIGH);
 
   pinMode(ENCODER_LEFT_A, INPUT_PULLUP);
+  pinMode(ENCODER_LEFT_B, INPUT_PULLUP);
   pinMode(ENCODER_RIGHT_A, INPUT_PULLUP);
+  pinMode(ENCODER_RIGHT_B, INPUT_PULLUP);
 
   for (int i = 0; i < NUM_SENSORS; i++) {
     pinMode(SENSOR_PINS[i], INPUT);
@@ -140,9 +150,9 @@ void readSensors() {
     val = constrain(val, 0, 1000);
     sensorValues[i] = val;
 
-    if (val > 500) {
+    if (val < 500) {
       weightedSum += i * 1000;
-      sum += val;
+      sum += 1000;
       activeSensors++;
     }
   }
@@ -172,6 +182,7 @@ void calculatePID() {
   pidDerivative = pidError - pidLastError;
 
   pidOutput = config.kp * pidError + config.ki * pidIntegral + config.kd * pidDerivative;
+  pidOutput = constrain(pidOutput, -100, 100); // Limitar salida PID
   pidLastError = pidError;
 }
 
@@ -199,8 +210,8 @@ void updateSpeedControl() {
   float leftError = targetRPM - leftRPM;
   float rightError = targetRPM - rightRPM;
 
-  targetLeftSpeed = constrain(config.baseSpeed + leftError * 2, -MAX_SPEED, MAX_SPEED);
-  targetRightSpeed = constrain(config.baseSpeed + rightError * 2, -MAX_SPEED, MAX_SPEED);
+  targetLeftSpeed = config.baseSpeed;
+  targetRightSpeed = config.baseSpeed;
 }
 
 // ==========================
@@ -208,23 +219,25 @@ void updateSpeedControl() {
 // ==========================
 void updateMotors() {
   if (!lineFound) {
-    leftSpeed = 0;
-    rightSpeed = 0;
+    leftSpeed = 100;  // Girar a la derecha: izquierda adelante, derecha atrás
+    rightSpeed = -100;
   } else {
     leftSpeed = constrain(targetLeftSpeed - pidOutput, -MAX_SPEED, MAX_SPEED);
     rightSpeed = constrain(targetRightSpeed + pidOutput, -MAX_SPEED, MAX_SPEED);
   }
+  // rightSpeed = 200;
+  // leftSpeed = 150;
 
   // Izquierda
   if (leftSpeed >= 0) {
-    analogWrite(MOTOR_LEFT_PIN1, leftSpeed);
-    analogWrite(MOTOR_LEFT_PIN2, 0);
-  } else {
     analogWrite(MOTOR_LEFT_PIN1, 0);
-    analogWrite(MOTOR_LEFT_PIN2, -leftSpeed);
+    analogWrite(MOTOR_LEFT_PIN2, leftSpeed);
+  } else {
+    analogWrite(MOTOR_LEFT_PIN1, -leftSpeed);
+    analogWrite(MOTOR_LEFT_PIN2, 0);
   }
 
-  // Derecha
+  // Derecha (invertido por montaje)
   if (rightSpeed >= 0) {
     analogWrite(MOTOR_RIGHT_PIN1, rightSpeed);
     analogWrite(MOTOR_RIGHT_PIN2, 0);
