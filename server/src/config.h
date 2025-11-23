@@ -68,7 +68,7 @@ RobotConfig config;
 const int16_t PULSES_PER_REVOLUTION = 36;
 const float WHEEL_DIAMETER_MM = 32.0f;  // Diámetro de ruedas en mm
 const float WHEEL_DISTANCE_MM = 85.0f;  // Distancia entre ruedas en mm
-const int16_t MAX_SPEED = 225;          // Velocidad máxima PWM
+const int16_t MAX_SPEED = 230;          // Velocidad máxima PWM
 const int16_t EEPROM_CONFIG_ADDR = 0;   // Dirección EEPROM para configuración
 
 // =============================================================================
@@ -80,23 +80,16 @@ const int16_t RC_MAX_THROTTLE = 255;    // Throttle máximo
 const int16_t RC_MAX_STEERING = 150;    // Steering máximo
 
 // =============================================================================
-// CONFIGURACIÓN SENSORES
+// VALORES POR DEFECTO
 // =============================================================================
 
-const uint16_t SENSOR_READ_DELAY = 2;  // ms entre lectura de sensores
+const float DEFAULT_KP = 1.02;
+const float DEFAULT_KI = 0.0;
+const float DEFAULT_KD = 0.00;
+const int16_t DEFAULT_BASE_SPEED = 180;
 
 // =============================================================================
-// PARÁMETROS PID POR DEFECTO
-// =============================================================================
-
-const float DEFAULT_KP = 0.01f;          // Ganancia proporcional
-const float DEFAULT_KI = 0.02f;         // Ganancia integral
-const float DEFAULT_KD = 1.15f;          // Ganancia derivativa
-const int16_t DEFAULT_BASE_SPEED = 150; // Velocidad base
-const float SPEED_CORRECTION_K = 1.0f;  // Ganancia para corrección de velocidad
-
-// =============================================================================
-// MODOS OPERACIÓN
+// ENUMERACIONES
 // =============================================================================
 
 enum OperationMode {

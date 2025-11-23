@@ -1,10 +1,10 @@
 /**
- * ARCHIVO: eeprom.h
+ * ARCHIVO: eeprom_manager.h
  * DESCRIPCIÓN: Clase EEPROM para gestión de configuración
  */
 
-#ifndef EEPROM_H
-#define EEPROM_H
+#ifndef EEPROM_MANAGER_H
+#define EEPROM_MANAGER_H
 
 #include <EEPROM.h>
 #include <Arduino.h>
