@@ -1,68 +1,51 @@
+#include <EEPROM.h>
 #include "config.h"
+#include "eeprom.h"
+#include "motor.h"
+#include "sensors.h"
+
+// ==========================
+// INSTANCIAS DE CLASES
+// ==========================
+Motor leftMotor(MOTOR_LEFT_PIN1, MOTOR_LEFT_PIN2, LEFT, ENCODER_LEFT_A, ENCODER_LEFT_B);
+Motor rightMotor(MOTOR_RIGHT_PIN1, MOTOR_RIGHT_PIN2, RIGHT, ENCODER_RIGHT_A, ENCODER_RIGHT_B);
+EEPROMManager eeprom;
+QTR qtr;
 
 // ==========================
 // VARIABLES GLOBALES
 // ==========================
-RobotConfig config;
 OperationMode currentMode = MODE_LINE_FOLLOWING;
 bool debugEnabled = true;
-
-// Sensores
-int sensorValues[NUM_SENSORS];
-int linePosition = 0;
-bool lineFound = false;
-
-// Motores
-int leftSpeed = 0;
-int rightSpeed = 0;
-int targetLeftSpeed = 0;
-int targetRightSpeed = 0;
-
-// Encoders
-volatile long encoderLeftCount = 0;
-volatile long encoderRightCount = 0;
-long lastLeftCount = 0;
-long lastRightCount = 0;
-unsigned long lastSpeedCheck = 0;
-
-// PID
-float pidError = 0, pidLastError = 0, pidIntegral = 0, pidDerivative = 0;
-float pidOutput = 0;
-
-// Control de velocidad
-float leftRPM = 0, rightRPM = 0;
-float targetRPM = 0;
+float lastPidOutput = 0;
 
 // ==========================
 // FUNCIONES AUXILIARES
 // ==========================
-void readSensors();
-void calculatePID();
-void updateMotors();
-void updateSpeedControl();
-void readEncoders();
-void loadConfig();
-void saveConfig();
 void printDebugInfo();
-void calibrateSensors();
-void countLeftEncoder();
-void countRightEncoder();
-// ==========================
-// INTERRUPCIONES ENCODERS
-// ==========================
-void countLeftEncoder() {
-  if (digitalRead(ENCODER_LEFT_A) == digitalRead(ENCODER_LEFT_B)) {
-    encoderLeftCount++;
-  } else {
-    encoderLeftCount--;
-  }
+
+// PID calculation function
+float calculatePID(float setpoint, float input) {
+  static float integral = 0;
+  static float prevError = 0;
+  float error = setpoint - input;
+  integral += error * 0.01; // small dt approximation
+  integral = constrain(integral, -50, 50);
+  float derivative = (error - prevError) / 0.01;
+  float output = config.kp * error + config.ki * integral + config.kd * derivative;
+  prevError = error;
+  return output;
 }
-void countRightEncoder() {
-  if (digitalRead(ENCODER_RIGHT_A) == digitalRead(ENCODER_RIGHT_B)) {
-    encoderRightCount++;
-  } else {
-    encoderRightCount--;
-  }
+
+// ==========================
+// INTERRUPT SERVICE ROUTINES
+// ==========================
+void leftEncoderISR() {
+  leftMotor.updateEncoder();
+}
+
+void rightEncoderISR() {
+  rightMotor.updateEncoder();
 }
 
 // ==========================
@@ -72,26 +55,32 @@ void setup() {
   Serial.begin(9600);
   while (!Serial);
 
-  pinMode(MOTOR_LEFT_PIN1, OUTPUT);
-  pinMode(MOTOR_LEFT_PIN2, OUTPUT);
-  pinMode(MOTOR_RIGHT_PIN1, OUTPUT);
-  pinMode(MOTOR_RIGHT_PIN2, OUTPUT);
-  pinMode(SENSOR_POWER_PIN, OUTPUT);
-  digitalWrite(SENSOR_POWER_PIN, HIGH);
+  leftMotor.init();
+  rightMotor.init();
+  attachInterrupt(digitalPinToInterrupt(ENCODER_LEFT_A), leftEncoderISR, RISING);
+  attachInterrupt(digitalPinToInterrupt(ENCODER_RIGHT_A), rightEncoderISR, RISING);
+  qtr.init();
 
-  pinMode(ENCODER_LEFT_A, INPUT_PULLUP);
-  pinMode(ENCODER_LEFT_B, INPUT_PULLUP);
-  pinMode(ENCODER_RIGHT_A, INPUT_PULLUP);
-  pinMode(ENCODER_RIGHT_B, INPUT_PULLUP);
-
+  // Cargar configuración por defecto
+  config.kp = DEFAULT_KP;
+  config.ki = DEFAULT_KI;
+  config.kd = DEFAULT_KD;
+  config.baseSpeed = DEFAULT_BASE_SPEED;
+  config.wheelDiameter = WHEEL_DIAMETER_MM;
+  config.wheelDistance = WHEEL_DISTANCE_MM;
+  config.rcDeadzone = RC_DEADZONE;
+  config.rcMaxThrottle = RC_MAX_THROTTLE;
+  config.rcMaxSteering = RC_MAX_STEERING;
   for (int i = 0; i < NUM_SENSORS; i++) {
-    pinMode(SENSOR_PINS[i], INPUT);
+    config.sensorMin[i] = 0;
+    config.sensorMax[i] = 1023;
   }
+  // Opcional: cargar de EEPROM si existe
+  // config = eeprom.getConfig();
 
-  attachInterrupt(digitalPinToInterrupt(ENCODER_LEFT_A), countLeftEncoder, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(ENCODER_RIGHT_A), countRightEncoder, CHANGE);
+  qtr.setCalibration(config.sensorMin, config.sensorMax);
 
-  loadConfig();
+ qtr.calibrate();
 
   Serial.println("Robot iniciado. Modo: LINEA");
 }
@@ -100,13 +89,30 @@ void setup() {
 // LOOP PRINCIPAL
 // ==========================
 void loop() {
-  readSensors();
-  calculatePID();
+  qtr.read();
+  float pidOutput = calculatePID(0, qtr.linePosition); // setpoint 0
+  lastPidOutput = pidOutput;
 
   // Control de velocidad (lazo cerrado)
-  updateSpeedControl();
+  leftMotor.setTargetRPM((config.baseSpeed / 255.0) * 300.0);
+  rightMotor.setTargetRPM((config.baseSpeed / 255.0) * 300.0);
+  float leftRPM = leftMotor.getRPM();
+  float rightRPM = rightMotor.getRPM();
+  float rpmDiff = leftRPM - rightRPM;
+  int targetLeftSpeed = config.baseSpeed - SPEED_CORRECTION_K * rpmDiff;
+  int targetRightSpeed = config.baseSpeed + SPEED_CORRECTION_K * rpmDiff;
+  targetLeftSpeed = constrain(targetLeftSpeed, 0, 255);
+  targetRightSpeed = constrain(targetRightSpeed, 0, 255);
 
-  updateMotors();
+  // Control de motores
+  if (!qtr.lineFound) {
+    leftMotor.setSpeed(100);  // Girar a la derecha
+    rightMotor.setSpeed(-100);
+  } else {
+    leftMotor.setSpeed(constrain(targetLeftSpeed - pidOutput, -MAX_SPEED, MAX_SPEED));
+    rightMotor.setSpeed(constrain(targetRightSpeed + pidOutput, -MAX_SPEED, MAX_SPEED));
+  }
+
 
   if (debugEnabled) {
     printDebugInfo();
@@ -117,7 +123,7 @@ void loop() {
     String cmd = Serial.readStringUntil('\n');
     cmd.trim();
     if (cmd == "calibrate") {
-      calibrateSensors();
+      qtr.calibrate();
     } else if (cmd == "debug on") {
       debugEnabled = true;
       Serial.println("Debug activado");
@@ -136,179 +142,19 @@ void loop() {
   delay(SENSOR_READ_DELAY);
 }
 
-// ==========================
-// LECTURA DE SENSORES
-// ==========================
-void readSensors() {
-  int sum = 0;
-  int weightedSum = 0;
-  int activeSensors = 0;
-
-  for (int i = 0; i < NUM_SENSORS; i++) {
-    int val = analogRead(SENSOR_PINS[i]);
-    val = map(val, config.sensorMin[i], config.sensorMax[i], 0, 1000);
-    val = constrain(val, 0, 1000);
-    sensorValues[i] = val;
-
-    if (val < 500) {
-      weightedSum += i * 1000;
-      sum += 1000;
-      activeSensors++;
-    }
-  }
-
-  if (activeSensors > 0) {
-    linePosition = weightedSum / sum - (NUM_SENSORS - 1) * 500;
-    lineFound = true;
-  } else {
-    lineFound = false;
-  }
-}
-
-// ==========================
-// CÁLCULO PID
-// ==========================
-void calculatePID() {
-  if (!lineFound) {
-    pidError = 0;
-    pidIntegral = 0;
-    pidOutput = 0;
-    return;
-  }
-
-  pidError = linePosition;
-  pidIntegral += pidError;
-  pidIntegral = constrain(pidIntegral, -1000, 1000); // Limitar integral
-  pidDerivative = pidError - pidLastError;
-
-  pidOutput = config.kp * pidError + config.ki * pidIntegral + config.kd * pidDerivative;
-  pidOutput = constrain(pidOutput, -100, 100); // Limitar salida PID
-  pidLastError = pidError;
-}
-
-// ==========================
-// CONTROL DE VELOCIDAD (LAZO CERRADO)
-// ==========================
-void updateSpeedControl() {
-  unsigned long now = millis();
-  if (now - lastSpeedCheck < 100) return;
-
-  float dt = (now - lastSpeedCheck) / 1000.0;
-
-  long leftDelta = encoderLeftCount - lastLeftCount;
-  long rightDelta = encoderRightCount - lastRightCount;
-
-  leftRPM = (leftDelta / (float)PULSES_PER_REVOLUTION) * 60.0 / dt;
-  rightRPM = (rightDelta / (float)PULSES_PER_REVOLUTION) * 60.0 / dt;
-
-  lastLeftCount = encoderLeftCount;
-  lastRightCount = encoderRightCount;
-  lastSpeedCheck = now;
-
-  targetRPM = (config.baseSpeed / 255.0) * 300.0; // estimación RPM max
-
-  float leftError = targetRPM - leftRPM;
-  float rightError = targetRPM - rightRPM;
-
-  targetLeftSpeed = config.baseSpeed;
-  targetRightSpeed = config.baseSpeed;
-}
-
-// ==========================
-// ACTUALIZAR MOTORES
-// ==========================
-void updateMotors() {
-  if (!lineFound) {
-    leftSpeed = 100;  // Girar a la derecha: izquierda adelante, derecha atrás
-    rightSpeed = -100;
-  } else {
-    leftSpeed = constrain(targetLeftSpeed - pidOutput, -MAX_SPEED, MAX_SPEED);
-    rightSpeed = constrain(targetRightSpeed + pidOutput, -MAX_SPEED, MAX_SPEED);
-  }
-  // rightSpeed = 200;
-  // leftSpeed = 150;
-
-  // Izquierda
-  if (leftSpeed >= 0) {
-    analogWrite(MOTOR_LEFT_PIN1, 0);
-    analogWrite(MOTOR_LEFT_PIN2, leftSpeed);
-  } else {
-    analogWrite(MOTOR_LEFT_PIN1, -leftSpeed);
-    analogWrite(MOTOR_LEFT_PIN2, 0);
-  }
-
-  // Derecha (invertido por montaje)
-  if (rightSpeed >= 0) {
-    analogWrite(MOTOR_RIGHT_PIN1, rightSpeed);
-    analogWrite(MOTOR_RIGHT_PIN2, 0);
-  } else {
-    analogWrite(MOTOR_RIGHT_PIN1, 0);
-    analogWrite(MOTOR_RIGHT_PIN2, -rightSpeed);
-  }
-}
-
-// ==========================
-// CONFIGURACIÓN EEPROM
-// ==========================
-void loadConfig() {
-  EEPROM.get(EEPROM_CONFIG_ADDR, config);
-  if (config.checksum != 1234567890) {
-    Serial.println("Config inválida, cargando valores por defecto");
-    config.kp = DEFAULT_KP;
-    config.ki = DEFAULT_KI;
-    config.kd = DEFAULT_KD;
-    config.baseSpeed = DEFAULT_BASE_SPEED;
-    config.wheelDiameter = WHEEL_DIAMETER_MM;
-    config.wheelDistance = WHEEL_DISTANCE_MM;
-    config.rcDeadzone = RC_DEADZONE;
-    config.rcMaxThrottle = RC_MAX_THROTTLE;
-    config.rcMaxSteering = RC_MAX_STEERING;
-    for (int i = 0; i < NUM_SENSORS; i++) {
-      config.sensorMin[i] = 0;
-      config.sensorMax[i] = 1023;
-    }
-    config.checksum = 1234567890;
-    saveConfig();
-  }
-}
-
-void saveConfig() {
-  EEPROM.put(EEPROM_CONFIG_ADDR, config);
-}
-
-// ==========================
-// CALIBRACIÓN SENSORES
-// ==========================
-void calibrateSensors() {
-  Serial.println("Calibrando sensores...");
-  for (int i = 0; i < NUM_SENSORS; i++) {
-    config.sensorMin[i] = 1023;
-    config.sensorMax[i] = 0;
-  }
-  unsigned long start = millis();
-  while (millis() - start < 5000) {  // 5 segundos
-    for (int i = 0; i < NUM_SENSORS; i++) {
-      int val = analogRead(SENSOR_PINS[i]);
-      if (val < config.sensorMin[i]) config.sensorMin[i] = val;
-      if (val > config.sensorMax[i]) config.sensorMax[i] = val;
-    }
-    delay(10);
-  }
-  saveConfig();
-  Serial.println("Calibracion completada");
-}
 
 // ==========================
 // DEBUG
 // ==========================
 void printDebugInfo() {
-  Serial.print("LinePos: "); Serial.print(linePosition);
-  Serial.print(" | PID: "); Serial.print(pidOutput);
-  Serial.print(" | LRPM: "); Serial.print(leftRPM);
-  Serial.print(" | RRPM: "); Serial.print(rightRPM);
-  Serial.print(" | LSPD: "); Serial.print(leftSpeed);
-  Serial.print(" | RSPD: "); Serial.print(rightSpeed);
+  Serial.print("LinePos: "); Serial.print(qtr.linePosition);
+  Serial.print(" | PID: "); Serial.print(lastPidOutput);
+  Serial.print(" | LRPM: "); Serial.print(leftMotor.getRPM());
+  Serial.print(" | RRPM: "); Serial.print(rightMotor.getRPM());
+  Serial.print(" | LSPD: "); Serial.print(leftMotor.getSpeed());
+  Serial.print(" | RSPD: "); Serial.print(rightMotor.getSpeed());
   Serial.print(" | SENSORS: [");
+  int* sensorValues = qtr.getSensorValues();
   for (int i = 0; i < NUM_SENSORS; i++) {
     Serial.print(sensorValues[i]);
     if (i < NUM_SENSORS - 1) Serial.print(",");
