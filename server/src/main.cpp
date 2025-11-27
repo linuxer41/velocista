@@ -4,6 +4,7 @@
 #include "motor.h"
 #include "sensors.h"
 #include "pid.h"
+#include "debugger.h"
 
 // ==========================
 // INSTANCIAS DE CLASES
@@ -12,47 +13,31 @@ Motor leftMotor(MOTOR_LEFT_PIN1, MOTOR_LEFT_PIN2, LEFT, ENCODER_LEFT_A, ENCODER_
 Motor rightMotor(MOTOR_RIGHT_PIN1, MOTOR_RIGHT_PIN2, RIGHT, ENCODER_RIGHT_A, ENCODER_RIGHT_B);
 EEPROMManager eeprom;
 QTR qtr;
-PID leftPid(config.kp, config.ki, config.kd);
-PID rightPid(config.kp, config.ki, config.kd);
+PID linePid(DEFAULT_LINE_KP, DEFAULT_LINE_KI, DEFAULT_LINE_KD);
+PID leftPid(DEFAULT_LEFT_KP, DEFAULT_LEFT_KI, DEFAULT_LEFT_KD);
+PID rightPid(DEFAULT_RIGHT_KP, DEFAULT_RIGHT_KI, DEFAULT_RIGHT_KD);
+Debugger debugger;
 
 // ==========================
 // VARIABLES GLOBALES
 // ==========================
 OperationMode currentMode = MODE_LINE_FOLLOWING;
-bool debugEnabled = false;
-bool closedLoop = false;
+bool debugEnabled = true;
+bool cascade = true;
 const float BASE_RPM = 120.0; // Ajusta basado en pruebas (RPM equivalente a baseSpeed)
 float lastPidOutput = 0;
 unsigned long lastDebugTime = 0;
 unsigned long lastPidTime = 0;
 int lastLinePosition = 0;
+float leftTargetRPM = 0;
+float rightTargetRPM = 0;
+int throttle = 0;
+int steering = 0;
 
 // ==========================
 // FUNCIONES AUXILIARES
 // ==========================
 void printDebugInfo();
-
-// PID calculation function
-float calculatePID(float setpoint, float input) {
-  // Fixed dt = 0.004 seconds (4ms)
-  float dt = 0.004; 
-
-  static float integral = 0;
-  static float prevError = 0;
-  
-  float error = setpoint - input;
-  
-  integral += error * dt;
-  // Anti-windup
-  integral = constrain(integral, -100, 100); 
-  
-  float derivative = (error - prevError) / dt;
-  
-  float output = config.kp * error + config.ki * integral + config.kd * derivative;
-  
-  prevError = error;
-  return output;
-}
 
 // ==========================
 // INTERRUPT SERVICE ROUTINES
@@ -69,7 +54,7 @@ void rightEncoderISR() {
 // SETUP
 // ==========================
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(9600);
   while (!Serial);
 
   leftMotor.init();
@@ -78,27 +63,20 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(ENCODER_RIGHT_A), rightEncoderISR, RISING);
   qtr.init();
 
-  // Cargar configuración por defecto
-  config.kp = DEFAULT_KP;
-  config.ki = DEFAULT_KI;
-  config.kd = DEFAULT_KD;
-  config.baseSpeed = DEFAULT_BASE_SPEED;
-  config.wheelDiameter = WHEEL_DIAMETER_MM;
-  config.wheelDistance = WHEEL_DISTANCE_MM;
-  config.rcDeadzone = RC_DEADZONE;
-  config.rcMaxThrottle = RC_MAX_THROTTLE;
-  config.rcMaxSteering = RC_MAX_STEERING;
-  for (int i = 0; i < NUM_SENSORS; i++) {
-    config.sensorMin[i] = 0;
-    config.sensorMax[i] = 1023;
-  }
+  // Cargar configuración (EEPROMManager ya carga valores por defecto si inválidos)
+
+  eeprom.load();
+  // Configurar ganancias PID después de cargar
+  linePid.setGains(config.lineKp, config.lineKi, config.lineKd);
+  leftPid.setGains(config.leftKp, config.leftKi, config.leftKd);
+  rightPid.setGains(config.rightKp, config.rightKi, config.rightKd);
 
   qtr.setCalibration(config.sensorMin, config.sensorMax);
 
-  Serial.println("Calibrating... Move robot over line.");
+  debugger.systemMessage("Calibrating... Move robot over line.");
   qtr.calibrate();
 
-  Serial.println("Robot iniciado. Modo: LINEA");
+  debugger.systemMessage("Robot iniciado. Modo: LINEA");
   lastPidTime = micros();
 }
 
@@ -108,15 +86,15 @@ void setup() {
 void loop() {
   // Run PID loop at fixed 250Hz (4ms)
   if (micros() - lastPidTime >= 4000) {
-    lastPidTime = micros();
-    
-    qtr.read();
-    
-    if (qtr.lineFound) {
-      lastLinePosition = qtr.linePosition;
-    }
+    unsigned long currentTime = micros();
+    float dt = (currentTime - lastPidTime) / 1000000.0;
+    lastPidTime = currentTime;
 
-    float pidOutput = calculatePID(0, qtr.linePosition); 
+    qtr.read();
+
+    lastLinePosition = qtr.linePosition;
+
+    float pidOutput = linePid.calculate(0, qtr.linePosition, dt);
     lastPidOutput = pidOutput;
 
     // ==========================================
@@ -125,27 +103,14 @@ void loop() {
     int leftSpeed = 0;
     int rightSpeed = 0;
 
-    if (closedLoop) {
+    if (cascade) {
       // Closed-loop control using RPM and PID
-      float leftTargetRPM = 0;
-      float rightTargetRPM = 0;
 
       if (currentMode == MODE_LINE_FOLLOWING) {
-        if (!qtr.lineFound) {
-          // Line Lost: Spin to find it
-          if (lastLinePosition > 0) {
-            leftTargetRPM = BASE_RPM;
-            rightTargetRPM = -BASE_RPM;
-          } else {
-            leftTargetRPM = -BASE_RPM;
-            rightTargetRPM = BASE_RPM;
-          }
-        } else {
-          // Normal Following: Base +/- PID adjustment
-          float rpmAdjustment = pidOutput * 0.5; // Scale PID output to RPM (adjust factor)
-          leftTargetRPM = BASE_RPM - rpmAdjustment;
-          rightTargetRPM = BASE_RPM + rpmAdjustment;
-        }
+        // Normal Following: Base +/- PID adjustment
+        float rpmAdjustment = pidOutput * 0.5; // Scale PID output to RPM (adjust factor)
+        leftTargetRPM = BASE_RPM - rpmAdjustment;
+        rightTargetRPM = BASE_RPM + rpmAdjustment;
       } else {
         // Remote / Stop
         leftTargetRPM = 0;
@@ -153,30 +118,21 @@ void loop() {
       }
 
       // Calculate PID for each motor
-      leftSpeed = leftPid.calculate(leftTargetRPM, leftMotor.getRPM());
-      rightSpeed = rightPid.calculate(rightTargetRPM, rightMotor.getRPM());
+      leftSpeed = leftPid.calculate(leftTargetRPM, leftMotor.getRPM(), dt);
+      rightSpeed = rightPid.calculate(rightTargetRPM, rightMotor.getRPM(), dt);
 
     } else {
       // Open-loop control (original behavior)
+      leftTargetRPM = 0;
+      rightTargetRPM = 0;
       if (currentMode == MODE_LINE_FOLLOWING) {
-        if (!qtr.lineFound) {
-          // Line Lost: Spin to find it
-          if (lastLinePosition > 0) {
-            leftSpeed = 100;
-            rightSpeed = -100;
-          } else {
-            leftSpeed = -100;
-            rightSpeed = 100;
-          }
-        } else {
-          // Normal Following: Base +/- PID
-          leftSpeed = config.baseSpeed - pidOutput;
-          rightSpeed = config.baseSpeed + pidOutput;
-        }
+        // Normal Following: Base +/- PID
+        leftSpeed = config.baseSpeed - pidOutput;
+        rightSpeed = config.baseSpeed + pidOutput;
       } else {
-        // Remote / Stop
-        leftSpeed = 0;
-        rightSpeed = 0;
+        // Remote control
+        leftSpeed = throttle - steering;
+        rightSpeed = throttle + steering;
       }
     }
 
@@ -202,18 +158,132 @@ void loop() {
       leftMotor.setSpeed(0);
       rightMotor.setSpeed(0);
       qtr.calibrate();
+      debugger.ackMessage(cmd);
     } else if (cmd == "debug on") {
       debugEnabled = true;
-      Serial.println("Debug activado");
+      debugger.ackMessage(cmd);
     } else if (cmd == "debug off") {
       debugEnabled = false;
-      Serial.println("Debug desactivado");
+      debugger.ackMessage(cmd);
     } else if (cmd == "mode line") {
       currentMode = MODE_LINE_FOLLOWING;
-      Serial.println("Modo: Seguir linea");
+      debugger.ackMessage(cmd);
     } else if (cmd == "mode remote") {
       currentMode = MODE_REMOTE_CONTROL;
-      Serial.println("Modo: Control remoto");
+      debugger.ackMessage(cmd);
+    } else if (cmd == "cascade on") {
+      cascade = true;
+      debugger.ackMessage(cmd);
+    } else if (cmd == "cascade off") {
+      cascade = false;
+      debugger.ackMessage(cmd);
+    } else if (cmd.startsWith("set line ")) {
+      String vals = cmd.substring(9);
+      int comma1 = vals.indexOf(',');
+      int comma2 = vals.indexOf(',', comma1 + 1);
+      if (comma1 > 0 && comma2 > comma1) {
+        float kp = vals.substring(0, comma1).toFloat();
+        float ki = vals.substring(comma1 + 1, comma2).toFloat();
+        float kd = vals.substring(comma2 + 1).toFloat();
+        config.lineKp = kp;
+        config.lineKi = ki;
+        config.lineKd = kd;
+        linePid.setGains(kp, ki, kd);
+        debugger.ackMessage(cmd);
+      } else {
+        debugger.systemMessage("Formato: set line kp,ki,kd");
+      }
+    } else if (cmd.startsWith("set left ")) {
+      String vals = cmd.substring(9);
+      int comma1 = vals.indexOf(',');
+      int comma2 = vals.indexOf(',', comma1 + 1);
+      if (comma1 > 0 && comma2 > comma1) {
+        float kp = vals.substring(0, comma1).toFloat();
+        float ki = vals.substring(comma1 + 1, comma2).toFloat();
+        float kd = vals.substring(comma2 + 1).toFloat();
+        config.leftKp = kp;
+        config.leftKi = ki;
+        config.leftKd = kd;
+        leftPid.setGains(kp, ki, kd);
+        debugger.ackMessage(cmd);
+      } else {
+        debugger.systemMessage("Formato: set left kp,ki,kd");
+      }
+    } else if (cmd.startsWith("set right ")) {
+      String vals = cmd.substring(10);
+      int comma1 = vals.indexOf(',');
+      int comma2 = vals.indexOf(',', comma1 + 1);
+      if (comma1 > 0 && comma2 > comma1) {
+        float kp = vals.substring(0, comma1).toFloat();
+        float ki = vals.substring(comma1 + 1, comma2).toFloat();
+        float kd = vals.substring(comma2 + 1).toFloat();
+        config.rightKp = kp;
+        config.rightKi = ki;
+        config.rightKd = kd;
+        rightPid.setGains(kp, ki, kd);
+        debugger.ackMessage(cmd);
+      } else {
+        debugger.systemMessage("Formato: set right kp,ki,kd");
+      }
+    } else if (cmd.startsWith("throttle ")) {
+      int val = cmd.substring(9).toInt();
+      throttle = constrain(val, -MAX_SPEED, MAX_SPEED);
+      debugger.ackMessage(cmd);
+    } else if (cmd.startsWith("steering ")) {
+      int val = cmd.substring(9).toInt();
+      steering = constrain(val, -MAX_SPEED, MAX_SPEED);
+      debugger.ackMessage(cmd);
+    } else if (cmd == "save") {
+      saveConfig();
+      debugger.ackMessage(cmd);
+    } else if (cmd == "telemetry") {
+      printDebugInfo();
+      debugger.ackMessage(cmd);
+    } else if (cmd == "reset") {
+      // Restaurar valores por defecto
+      config.lineKp = DEFAULT_LINE_KP;
+      config.lineKi = DEFAULT_LINE_KI;
+      config.lineKd = DEFAULT_LINE_KD;
+      config.leftKp = DEFAULT_LEFT_KP;
+      config.leftKi = DEFAULT_LEFT_KI;
+      config.leftKd = DEFAULT_LEFT_KD;
+      config.rightKp = DEFAULT_RIGHT_KP;
+      config.rightKi = DEFAULT_RIGHT_KI;
+      config.rightKd = DEFAULT_RIGHT_KD;
+      config.baseSpeed = DEFAULT_BASE_SPEED;
+      config.wheelDiameter = WHEEL_DIAMETER_MM;
+      config.wheelDistance = WHEEL_DISTANCE_MM;
+      config.rcDeadzone = RC_DEADZONE;
+      config.rcMaxThrottle = RC_MAX_THROTTLE;
+      config.rcMaxSteering = RC_MAX_STEERING;
+      for (int i = 0; i < NUM_SENSORS; i++) {
+        config.sensorMin[i] = 0;
+        config.sensorMax[i] = 1023;
+      }
+      config.checksum = 1234567891;
+      saveConfig();
+      // Aplicar ganancias
+      linePid.setGains(config.lineKp, config.lineKi, config.lineKd);
+      leftPid.setGains(config.leftKp, config.leftKi, config.leftKd);
+      rightPid.setGains(config.rightKp, config.rightKi, config.rightKd);
+      debugger.ackMessage(cmd);
+    } else if (cmd == "help") {
+      debugger.systemMessage("Comandos disponibles:");
+      debugger.systemMessage("calibrate - Calibrar sensores");
+      debugger.systemMessage("debug on/off - Activar/desactivar debug");
+      debugger.systemMessage("telemetry - Enviar datos debug una vez");
+      debugger.systemMessage("mode line/remote - Cambiar modo");
+      debugger.systemMessage("cascade on/off - Control en cascada");
+      debugger.systemMessage("set line kp,ki,kd - Ajustar PID linea (ej: set line 2.0,0.05,0.75)");
+      debugger.systemMessage("set left kp,ki,kd - Ajustar PID motor izquierdo");
+      debugger.systemMessage("set right kp,ki,kd - Ajustar PID motor derecho");
+      debugger.systemMessage("throttle <valor> - Establecer acelerador (-230 a 230)");
+      debugger.systemMessage("steering <valor> - Establecer direccion (-230 a 230)");
+      debugger.systemMessage("save - Guardar configuracion");
+      debugger.systemMessage("reset - Restaurar valores por defecto y resetear EEPROM");
+      debugger.systemMessage("help - Mostrar esta ayuda");
+    } else {
+      debugger.systemMessage("Comando desconocido. Envia 'help' para lista de comandos.");
     }
   }
 }
@@ -222,13 +292,14 @@ void loop() {
 // DEBUG
 // ==========================
 void printDebugInfo() {
-  Serial.print("Pos:"); Serial.print(qtr.linePosition);
-  Serial.print("|PID:"); Serial.print(lastPidOutput);
-  // RPM is only read here for debugging, as requested
-  Serial.print("|LRPM:"); Serial.print(leftMotor.getRPM());
-  Serial.print("|RRPM:"); Serial.print(rightMotor.getRPM());
-  Serial.print("|LSPD:"); Serial.print(leftMotor.getSpeed());
-  Serial.print("|RSPD:"); Serial.print(rightMotor.getSpeed());
-  Serial.print("|Fnd:"); Serial.print(qtr.lineFound);
-  Serial.println();
+  int* sensors = qtr.getSensorValues();
+  String mode = String(currentMode);
+  String debugLine = debugger.buildDebugLine(
+    qtr.linePosition, cascade, mode, sensors, millis(),
+    config.lineKp, config.lineKi, config.lineKd, lastPidOutput, linePid.getError(), linePid.getIntegral(),
+    config.leftKp, config.leftKi, config.leftKd, leftPid.getOutput(), leftPid.getError(), leftPid.getIntegral(),
+    config.rightKp, config.rightKi, config.rightKd, rightPid.getOutput(), rightPid.getError(), rightPid.getIntegral(),
+    leftMotor.getRPM(), rightMotor.getRPM(), leftTargetRPM, rightTargetRPM, leftMotor.getSpeed(), rightMotor.getSpeed()
+  );
+  debugger.debugData(debugLine);
 }

@@ -2,11 +2,9 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
-/// Operation modes for the robot
 enum OperationMode {
-    lineFollowing(0, 'SEGUIDOR DE LÍNEA', Icons.route, 'SEGUID'),
-    remoteControl(1, 'CONTROL REMOTO', Icons.gamepad, 'CONTROL'),
-    servo(2, 'SERVO', Icons.straighten, 'SERVO');
+     lineFollowing(0, 'SEGUIDOR DE LÍNEA', Icons.route, 'SEGUID'),
+     remoteControl(1, 'CONTROL REMOTO', Icons.gamepad, 'CONTROL');
 
   const OperationMode(this.id, this.displayName, this.icon, this.shortName);
   final int id;
@@ -23,66 +21,67 @@ enum OperationMode {
 }
 
 class ArduinoData {
-  // Common JSON keys constants
-  static const String _keyOperationMode = 'operationMode';
-  static const String _keyModeName = 'modeName';
-  static const String _keyLeftEncoderSpeed = 'leftEncoderSpeed';
-  static const String _keyRightEncoderSpeed = 'rightEncoderSpeed';
-  static const String _keyLeftEncoderCount = 'leftEncoderCount';
-  static const String _keyRightEncoderCount = 'rightEncoderCount';
-  static const String _keyTotalDistance = 'totalDistance';
-  static const String _keySensors = 'sensors';
+   // Common JSON keys constants
+   static const String _keyOperationMode = 'operationMode';
+   static const String _keyModeName = 'modeName';
+   static const String _keyLeftEncoderSpeed = 'leftEncoderSpeed';
+   static const String _keyRightEncoderSpeed = 'rightEncoderSpeed';
+   static const String _keyLeftEncoderCount = 'leftEncoderCount';
+   static const String _keyRightEncoderCount = 'rightEncoderCount';
+   static const String _keyTotalDistance = 'totalDistance';
+   static const String _keySensors = 'sensors';
 
-  // Line Following specific keys
-  static const String _keyPosition = 'position';
-  static const String _keyError = 'error';
-  static const String _keyCorrection = 'correction';
-  static const String _keyLeftSpeedCmd = 'leftSpeedCmd';
-  static const String _keyRightSpeedCmd = 'rightSpeedCmd';
+   // Line Following specific keys
+   static const String _keyPosition = 'position';
+   static const String _keyError = 'error';
+   static const String _keyCorrection = 'correction';
+   static const String _keyLeftSpeedCmd = 'leftSpeedCmd';
+   static const String _keyRightSpeedCmd = 'rightSpeedCmd';
 
-  // Autopilot specific keys
-  static const String _keyThrottle = 'throttle';
-  static const String _keyBrake = 'brake';
-  static const String _keyTurn = 'turn';
-  static const String _keyDirection = 'direction';
+   // Autopilot specific keys
+   static const String _keyThrottle = 'throttle';
+   static const String _keyBrake = 'brake';
+   static const String _keyTurn = 'turn';
+   static const String _keyDirection = 'direction';
 
-  // Manual specific keys
-  static const String _keyLeftSpeed = 'leftSpeed';
-  static const String _keyRightSpeed = 'rightSpeed';
-  static const String _keyMaxSpeed = 'maxSpeed';
+   // Manual specific keys
+   static const String _keyLeftSpeed = 'leftSpeed';
+   static const String _keyRightSpeed = 'rightSpeed';
+   static const String _keyMaxSpeed = 'maxSpeed';
 
-  // Common data fields
-  final int operationMode; // 0=Line Following, 1=Autopilot, 2=Manual
-  final String modeName; // Mode name as string
-  final double leftEncoderSpeed; // Actual left encoder speed (cm/s)
-  final double rightEncoderSpeed; // Actual right encoder speed (cm/s)
-  final int leftEncoderCount; // Total left encoder pulses
-  final int rightEncoderCount; // Total right encoder pulses
-  final double totalDistance; // Total distance traveled (cm)
-  final List<int> sensors; // QTR sensor values (0 in non-lineal modes)
-  final double battery; // Battery percentage
+   // Common data fields
+   final int operationMode; // 0=Line Following, 1=Autopilot, 2=Manual
+   final String modeName; // Mode name as string
+   final double leftEncoderSpeed; // Actual left encoder speed (cm/s)
+   final double rightEncoderSpeed; // Actual right encoder speed (cm/s)
+   final int leftEncoderCount; // Total left encoder pulses
+   final int rightEncoderCount; // Total right encoder pulses
+   final double totalDistance; // Total distance traveled (cm)
+   final List<int> sensors; // QTR sensor values (0 in non-lineal modes)
+   final double battery; // Battery percentage
+   final bool closedLoop; // Closed loop control enabled
 
-  // Line Following specific data
-  final double? position; // Line position (2000-7000 for 6 sensors, 1000-8000 for 8)
-  final double? error; // Error from setpoint
-  final double? correction; // PID correction value
-  final double? leftSpeedCmd; // Left motor command speed (-1 to 1)
-  final double? rightSpeedCmd; // Right motor command speed (-1 to 1)
+   // Line Following specific data
+   final double? position; // Line position (2000-7000 for 6 sensors, 1000-8000 for 8)
+   final double? error; // Error from setpoint
+   final double? correction; // PID correction value
+   final double? leftSpeedCmd; // Left motor command speed (-1 to 1)
+   final double? rightSpeedCmd; // Right motor command speed (-1 to 1)
 
-  // Autopilot specific data
-  final double? throttle; // Acelerador (-1.0 a 1.0)
-  final double? brake; // Freno (0.0 a 1.0)
-  final double? turn; // Dirección (-1.0 a 1.0)
-  final int? direction; // Dirección de marcha (1=adelante, -1=atrás)
+   // Autopilot specific data
+   final double? throttle; // Acelerador (-1.0 a 1.0)
+   final double? brake; // Freno (0.0 a 1.0)
+   final double? turn; // Dirección (-1.0 a 1.0)
+   final int? direction; // Dirección de marcha (1=adelante, -1=atrás)
 
-  // Manual specific data
-  final double? leftSpeed; // Velocidad rueda izquierda (-1.0 a 1.0)
-  final double? rightSpeed; // Velocidad rueda derecha (-1.0 a 1.0)
-  final double? maxSpeed; // Velocidad máxima global (0.0 a 1.0)
+   // Manual specific data
+   final double? leftSpeed; // Velocidad rueda izquierda (-1.0 a 1.0)
+   final double? rightSpeed; // Velocidad rueda derecha (-1.0 a 1.0)
+   final double? maxSpeed; // Velocidad máxima global (0.0 a 1.0)
 
-  // PID and base speed data
-  final List<double>? pid; // [Kp, Ki, Kd]
-  final double? baseSpeed; // Base speed (0-1)
+   // PID and base speed data
+   final List<double>? pid; // [Kp, Ki, Kd]
+   final double? baseSpeed; // Base speed (0-1)
 
   ArduinoData({
     required this.operationMode,
@@ -94,6 +93,7 @@ class ArduinoData {
     required this.totalDistance,
     required this.sensors,
     this.battery = 0.0,
+    this.closedLoop = true,
     this.position,
     this.error,
     this.correction,
@@ -110,8 +110,20 @@ class ArduinoData {
     this.baseSpeed,
   });
 
-  /// Parse JSON from Arduino according to the new API
-  static ArduinoData fromJson(String jsonString) {
+  /// Parse data from Arduino (supports both JSON and pipe-separated formats)
+  static ArduinoData fromJson(String dataString) {
+    final trimmed = dataString.trim();
+
+    // Detect format: if starts with '{', it's JSON, else pipe-separated
+    if (trimmed.startsWith('{')) {
+      return _fromJsonFormat(trimmed);
+    } else {
+      return _fromPipeFormat(trimmed);
+    }
+  }
+
+  /// Parse JSON format
+  static ArduinoData _fromJsonFormat(String jsonString) {
     final map = jsonDecode(jsonString);
 
     // Check if it's the new telemetry payload
@@ -127,6 +139,7 @@ class ArduinoData {
         totalDistance: (payload['distance'] as num?)?.toDouble() ?? 0.0,
         sensors: (payload['qtr'] as List<dynamic>?)?.map((e) => (e as num).toInt()).toList() ?? [],
         battery: (payload['battery'] as num?)?.toDouble() ?? 0.0,
+        closedLoop: true, // Assume closed loop for telemetry
         position: (payload['set_point'] as num?)?.toDouble(),
         error: (payload['error'] as num?)?.toDouble(),
         correction: (payload['correction'] as num?)?.toDouble(),
@@ -146,6 +159,7 @@ class ArduinoData {
       totalDistance: _parseDoubleValue(map['distance']?['total_cm'] ?? map[_keyTotalDistance]),
       sensors: _parseSensorsData(map['sensors']?['qtr'] ?? map[_keySensors]),
       battery: _parseDoubleValue(map['battery'] ?? 0.0),
+      closedLoop: true, // Default to closed loop
 
       // Line Following specific fields
       position: (map[_keyPosition] is num)
@@ -189,6 +203,74 @@ class ArduinoData {
     );
   }
 
+  /// Parse pipe-separated format (new Arduino format)
+  static ArduinoData _fromPipeFormat(String pipeString) {
+    final dataMap = <String, String>{};
+
+    // Split by '|' and parse key:value pairs
+    final pairs = pipeString.split('|');
+    for (final pair in pairs) {
+      final colonIndex = pair.indexOf(':');
+      if (colonIndex > 0) {
+        final key = pair.substring(0, colonIndex).trim();
+        final value = pair.substring(colonIndex + 1).trim();
+        dataMap[key] = value;
+      }
+    }
+
+    // Parse values
+    final pos = double.tryParse(dataMap['Pos'] ?? '0') ?? 0.0;
+    final pidCorrection = double.tryParse(dataMap['PID'] ?? '0') ?? 0.0;
+    final lRpm = double.tryParse(dataMap['LRPM'] ?? '0') ?? 0.0;
+    final rRpm = double.tryParse(dataMap['RRPM'] ?? '0') ?? 0.0;
+    final lTargetRpm = double.tryParse(dataMap['LTRPM'] ?? '0') ?? 0.0;
+    final rTargetRpm = double.tryParse(dataMap['RTRPM'] ?? '0') ?? 0.0;
+    final lPwm = int.tryParse(dataMap['LSPD'] ?? '0') ?? 0;
+    final rPwm = int.tryParse(dataMap['RSPD'] ?? '0') ?? 0;
+    final closedLoop = (int.tryParse(dataMap['CL'] ?? '1') ?? 1) == 1;
+    final modeStr = dataMap['MODE'] ?? 'LINE';
+    final sensorsStr = dataMap['SENSORES'] ?? '[]';
+
+    // Parse sensors array
+    List<int> sensors = [];
+    if (sensorsStr.startsWith('[') && sensorsStr.endsWith(']')) {
+      final arrayContent = sensorsStr.substring(1, sensorsStr.length - 1);
+      sensors = arrayContent.split(',').map((s) => int.tryParse(s.trim()) ?? 0).toList();
+    }
+
+    // Map mode string to operation mode
+    int operationMode = 0; // Default to line following
+    String modeName = 'LINE FOLLOWING';
+    if (modeStr == 'REMOTE') {
+      operationMode = 1;
+      modeName = 'REMOTE CONTROL';
+    }
+
+    // Convert RPM to cm/s (assuming some conversion factor, adjust as needed)
+    // For now, use RPM as is, but in cm/s units
+    final leftSpeedCmS = lRpm; // TODO: Apply proper conversion
+    final rightSpeedCmS = rRpm;
+
+    return ArduinoData(
+      operationMode: operationMode,
+      modeName: modeName,
+      leftEncoderSpeed: leftSpeedCmS,
+      rightEncoderSpeed: rightSpeedCmS,
+      leftEncoderCount: 0, // Not provided in new format
+      rightEncoderCount: 0,
+      totalDistance: 0.0, // Not provided, calculate from RPM if needed
+      sensors: sensors,
+      battery: 0.0, // Not provided
+      closedLoop: closedLoop,
+      position: pos,
+      correction: pidCorrection,
+      leftSpeedCmd: lTargetRpm,
+      rightSpeedCmd: rTargetRpm,
+      leftSpeed: lPwm / 255.0, // PWM to normalized speed
+      rightSpeed: rPwm / 255.0,
+    );
+  }
+
   /// Convert to JSON string
   String toJson() {
     final Map<String, Object> map = {
@@ -201,6 +283,7 @@ class ArduinoData {
       _keyTotalDistance: totalDistance,
       _keySensors: sensors,
       'battery': battery,
+      'closedLoop': closedLoop,
     };
 
     // Add mode-specific fields
@@ -327,11 +410,6 @@ class ArduinoData {
   /// Check if this is remote control mode
   bool get isRemoteControlMode => operationMode == 1;
 
-  /// Check if this is servo distance mode
-  bool get isServoDistanceMode => operationMode == 3;
-
-  /// Check if this is point list mode
-  bool get isPointListMode => operationMode == 4;
 
   /// Parse sensors data with better error handling
   static List<int> _parseSensorsData(dynamic sensorsData) {
@@ -404,20 +482,6 @@ class ModeChangeCommand {
   }
 }
 
-class ServoCommand {
-  final double distance; // Distance in cm
-  final double? angle; // Optional angle in degrees
-
-  ServoCommand(this.distance, {this.angle});
-
-  Map<String, dynamic> toJson() {
-    final servoMap = <String, dynamic>{'distance': distance};
-    if (angle != null) {
-      servoMap['angle'] = angle;
-    }
-    return {'servo': servoMap};
-  }
-}
 
 class RoutePointsCommand {
   final String routePoints; // "dist,grados,dist,grados,..."

@@ -5,7 +5,6 @@ import '../arduino_data.dart';
 import '../connection_bottom_sheet.dart';
 import '../widgets/pid_control.dart';
 import '../widgets/remote_control.dart';
-import '../widgets/point_list_control.dart';
 import 'settings_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -74,9 +73,6 @@ class _HomePageState extends State<HomePage> {
         return PidControl(appState: appState);
       case OperationMode.remoteControl:
         return RemoteControl(appState: appState);
-
-      case OperationMode.servo:
-        return ServoControl(appState: appState);
     }
   }
 

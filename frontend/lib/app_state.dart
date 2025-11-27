@@ -188,6 +188,7 @@ class AppState extends ChangeNotifier {
         totalDistance: data.distance,
         sensors: data.qtr,
         battery: data.battery,
+        closedLoop: true, // Assume closed loop for telemetry
         position: data.setPoint, // set_point is the position reference
         error: data.error,
         correction: data.correction,
@@ -219,7 +220,7 @@ class AppState extends ChangeNotifier {
   }
 
   void _handleRawDataReceived(String rawData) {
-    // Parse the raw JSON data and handle it
+    // Parse the raw data and handle it
     final line = rawData.trim();
     if (line.isEmpty) return;
 
@@ -239,9 +240,9 @@ class AppState extends ChangeNotifier {
     }
     receivedDataBuffer.value = currentReceivedBuffer;
 
-    // Parse JSON for UI updates
+    // Parse data for UI updates
     try {
-      // Try to parse as ArduinoMessage wrapper
+      // Try to parse as ArduinoMessage wrapper (JSON format)
       final message = ArduinoMessage.fromJson(line);
       if (message != null) {
         if (message.isTelemetry) {
@@ -253,11 +254,16 @@ class AppState extends ChangeNotifier {
         return;
       }
 
+      // Try to parse as ArduinoData (pipe-separated or JSON format)
+      final arduinoData = ArduinoData.fromJson(line);
+      currentData.value = arduinoData;
+      notifyListeners();
+
     } catch (e) {
       if (e.toString().contains('JsonUnsupportedObjectError') ||
           e.toString().contains('FormatException')) {
-        print('JSON parse error: $e');
-        print('Raw JSON: "$line"');
+        print('Parse error: $e');
+        print('Raw data: "$line"');
       }
     }
   }

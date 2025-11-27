@@ -22,11 +22,20 @@ public:
 
   void load() {
     EEPROM.get(EEPROM_CONFIG_ADDR, config);
-    if (config.checksum != 1234567890) {
+    if (config.checksum != 1234567891) {
       Serial.println("Config inválida, cargando valores por defecto");
-      config.kp = DEFAULT_KP;
-      config.ki = DEFAULT_KI;
-      config.kd = DEFAULT_KD;
+      // PID para línea
+      config.lineKp = DEFAULT_LINE_KP;
+      config.lineKi = DEFAULT_LINE_KI;
+      config.lineKd = DEFAULT_LINE_KD;
+      // PID para motor izquierdo
+      config.leftKp = DEFAULT_LEFT_KP;
+      config.leftKi = DEFAULT_LEFT_KI;
+      config.leftKd = DEFAULT_LEFT_KD;
+      // PID para motor derecho
+      config.rightKp = DEFAULT_RIGHT_KP;
+      config.rightKi = DEFAULT_RIGHT_KI;
+      config.rightKd = DEFAULT_RIGHT_KD;
       config.baseSpeed = DEFAULT_BASE_SPEED;
       config.wheelDiameter = WHEEL_DIAMETER_MM;
       config.wheelDistance = WHEEL_DISTANCE_MM;
@@ -37,7 +46,7 @@ public:
         config.sensorMin[i] = 0;
         config.sensorMax[i] = 1023;
       }
-      config.checksum = 1234567890;
+      config.checksum = 1234567891;
       save();
     }
   }

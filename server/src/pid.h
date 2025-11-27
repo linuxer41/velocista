@@ -22,11 +22,11 @@ public:
     kd = d;
   }
 
-  float calculate(float setpoint, float measurement) {
+  float calculate(float setpoint, float measurement, float dt) {
     error = setpoint - measurement;
-    integral += error;
+    integral += error * dt;
     integral = constrain(integral, -1000, 1000); // Limitar integral
-    derivative = error - lastError;
+    derivative = (error - lastError) / dt;
 
     output = kp * error + ki * integral + kd * derivative;
     output = constrain(output, -225, 225); // Limitar salida PID
@@ -44,6 +44,14 @@ public:
 
   float getOutput() {
     return output;
+  }
+
+  float getError() {
+    return error;
+  }
+
+  float getIntegral() {
+    return integral;
   }
 };
 

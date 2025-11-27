@@ -44,9 +44,18 @@ const int SENSOR_PINS[NUM_SENSORS] = {A0, A1, A2, A3, A4, A5};
 // =============================================================================
 
 struct RobotConfig {
-   float kp;                             // Ganancia proporcional PID
-   float ki;                             // Ganancia integral PID
-   float kd;                             // Ganancia derivativa PID
+   // PID para línea
+   float lineKp;                         // Ganancia proporcional PID línea
+   float lineKi;                         // Ganancia integral PID línea
+   float lineKd;                         // Ganancia derivativa PID línea
+   // PID para motor izquierdo
+   float leftKp;                         // Ganancia proporcional PID motor izq
+   float leftKi;                         // Ganancia integral PID motor izq
+   float leftKd;                         // Ganancia derivativa PID motor izq
+   // PID para motor derecho
+   float rightKp;                        // Ganancia proporcional PID motor der
+   float rightKi;                        // Ganancia integral PID motor der
+   float rightKd;                        // Ganancia derivativa PID motor der
    int16_t baseSpeed;                    // Velocidad base
    float wheelDiameter;                  // Diámetro de rueda en mm
    float wheelDistance;                  // Distancia entre ruedas en mm
@@ -83,10 +92,21 @@ const int16_t RC_MAX_STEERING = 150;    // Steering máximo
 // VALORES POR DEFECTO
 // =============================================================================
 
-const float DEFAULT_KP = 1.02;
-const float DEFAULT_KI = 0.0;
-const float DEFAULT_KD = 0.00;
-const int16_t DEFAULT_BASE_SPEED = 180;
+// PID para línea (más agresivo para corrección rápida)
+const float DEFAULT_LINE_KP = 2.0;
+const float DEFAULT_LINE_KI = 0.05;
+const float DEFAULT_LINE_KD = 0.75;
+
+// PID para motores (más agresivo para alcanzar RPM objetivo)
+const float DEFAULT_LEFT_KP = 5.0;
+const float DEFAULT_LEFT_KI = 0.5;
+const float DEFAULT_LEFT_KD = 0.1;
+
+const float DEFAULT_RIGHT_KP = 5.0;
+const float DEFAULT_RIGHT_KI = 0.5;
+const float DEFAULT_RIGHT_KD = 0.1;
+
+const int16_t DEFAULT_BASE_SPEED = 200;
 
 // =============================================================================
 // ENUMERACIONES

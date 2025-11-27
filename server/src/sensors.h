@@ -17,10 +17,9 @@ private:
 
 public:
   float linePosition;
-  bool lineFound;
 
 
-  QTR() : linePosition(0.0), lineFound(false) {
+  QTR() : linePosition(0.0) {
     for (int i = 0; i < NUM_SENSORS; i++) {
       sensorMin[i] = 0;
       sensorMax[i] = 1023;
@@ -44,29 +43,28 @@ public:
   void read() {
     int sum = 0;
     int weightedSum = 0;
+    int totalVal = 0;
     digitalWrite(SENSOR_POWER_PIN, HIGH);
     delayMicroseconds(100);
-    for (int i = 0; i < NUM_SENSORS; i++) {
-      int val = analogRead(SENSOR_PINS[i]);
+    for (int i = 0; i < NUM_SENSORS; i++) {      int val = analogRead(SENSOR_PINS[i]);
       val = map(val, sensorMin[i], sensorMax[i], 0, 1000);
       val = constrain(val, 0, 1000);
       sensorValues[i] = val;
+      totalVal += val;
       int weight = 1000 - val;
       weightedSum += i * weight;
       sum += weight;
     }
     digitalWrite(SENSOR_POWER_PIN, LOW);
 
+    float avgVal = totalVal / (float)NUM_SENSORS;
+    // Calculate line position
     if (sum > 0) {
       linePosition = ((float)weightedSum / sum) * 1000.0 - 2500.0;
-      lineFound = true;
-    } else {
-      lineFound = false;
     }
   }
 
   void calibrate() {
-    Serial.println("Calibrando sensores...");
     for (int i = 0; i < NUM_SENSORS; i++) {
       sensorMin[i] = 1023;
       sensorMax[i] = 0;
@@ -89,7 +87,6 @@ public:
       config.sensorMax[i] = sensorMax[i];
     }
     saveConfig();
-    Serial.println("Calibracion completada");
   }
 
   int* getSensorValues() {
