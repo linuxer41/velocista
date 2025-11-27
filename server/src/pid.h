@@ -53,6 +53,10 @@ public:
   float getIntegral() {
     return integral;
   }
+
+  float getDerivative() {
+    return derivative;
+  }
 };
 
 #endif

@@ -80,7 +80,7 @@ class AppState extends ChangeNotifier {
     currentMode.value = mode;
     notifyListeners();
     // Send command to Arduino
-    await sendCommand(ModeChangeCommand(mode).toJson());
+    await sendCommand(ModeChangeCommand(mode).toCommand());
   }
 
   // Cambiar tema
@@ -161,7 +161,7 @@ class AppState extends ChangeNotifier {
   }
 
   // Enviar comando al Arduino
-  Future<bool> sendCommand(Map<String, dynamic> command) async {
+  Future<bool> sendCommand(String command) async {
     if (!isConnected.value) {
       return false;
     }
@@ -189,6 +189,8 @@ class AppState extends ChangeNotifier {
         sensors: data.qtr,
         battery: data.battery,
         closedLoop: true, // Assume closed loop for telemetry
+        cascade: true, // Assume cascade for telemetry
+        uptime: 0, // Not available
         position: data.setPoint, // set_point is the position reference
         error: data.error,
         correction: data.correction,
@@ -240,7 +242,20 @@ class AppState extends ChangeNotifier {
     }
     receivedDataBuffer.value = currentReceivedBuffer;
 
-    // Parse data for UI updates
+    // Handle different message types
+    if (line.startsWith('type:1|')) {
+      // System message - just log, no ArduinoData update
+      final message = line.substring(7);
+      print('System message: $message');
+      return;
+    } else if (line.startsWith('type:3|')) {
+      // Command acknowledgment - just log, no ArduinoData update
+      final ack = line.substring(7);
+      print('Command ack: $ack');
+      return;
+    }
+
+    // Parse data for UI updates (type:2 or legacy formats)
     try {
       // Try to parse as ArduinoMessage wrapper (JSON format)
       final message = ArduinoMessage.fromJson(line);
@@ -254,10 +269,12 @@ class AppState extends ChangeNotifier {
         return;
       }
 
-      // Try to parse as ArduinoData (pipe-separated or JSON format)
+      // Try to parse as ArduinoData (pipe-separated, typed, or JSON format)
       final arduinoData = ArduinoData.fromJson(line);
-      currentData.value = arduinoData;
-      notifyListeners();
+      if (arduinoData != null) {
+        currentData.value = arduinoData;
+        notifyListeners();
+      }
 
     } catch (e) {
       if (e.toString().contains('JsonUnsupportedObjectError') ||

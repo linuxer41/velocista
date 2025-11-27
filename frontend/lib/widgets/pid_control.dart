@@ -81,22 +81,19 @@ class _PidControlState extends State<PidControl> {
 
     widget.appState.updatePIDConfig(newConfig);
 
-    // Send PID command to Arduino
+    // Send PID command to Arduino (line following PID)
     final pidCommand = PidCommand(
+      type: 'line',
       kp: kp,
       ki: ki,
       kd: kd,
     );
-    widget.appState.sendCommand(pidCommand.toJson());
-
-    // Send base speed command
-    final speedCommand = SpeedBaseCommand(baseSpeed);
-    widget.appState.sendCommand(speedCommand.toJson());
+    widget.appState.sendCommand(pidCommand.toCommand());
   }
 
   void _calibrateSensors() {
     final command = CalibrateQtrCommand();
-    widget.appState.sendCommand(command.toJson());
+    widget.appState.sendCommand(command.toCommand());
   }
 
   @override

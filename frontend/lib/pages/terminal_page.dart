@@ -133,39 +133,41 @@ class _TerminalPageState extends State<TerminalPage> {
               child: ListView(
                 scrollDirection: Axis.horizontal,
                 children: [
-                  _buildQuickCommandChip('LINE_FOLLOW', '{"mode":0}'),
+                  _buildQuickCommandChip('LINE FOLLOW', 'mode 1'),
                   const SizedBox(width: 8),
-                  _buildQuickCommandChip('CONTROL REMOTO', '{"mode":1}'),
+                  _buildQuickCommandChip('REMOTE CTRL', 'mode 2'),
                   const SizedBox(width: 8),
-                  _buildQuickCommandChip('SERVO_DIST', '{"mode":2}'),
+                  _buildQuickCommandChip('CASCADE ON', 'cascade 1'),
                   const SizedBox(width: 8),
-                  _buildQuickCommandChip('POINT_LIST', '{"mode":3}'),
+                  _buildQuickCommandChip('CASCADE OFF', 'cascade 0'),
                   const SizedBox(width: 8),
-                  _buildQuickCommandChip('Servo 25cm', '{"servoDistance":25}'),
+                  _buildQuickCommandChip('PID LINE', 'set line 2.0,0.05,0.75'),
                   const SizedBox(width: 8),
-                  _buildQuickCommandChip('Servo 50cm', '{"servoDistance":50}'),
+                  _buildQuickCommandChip('PID LEFT', 'set left 5.0,0.5,0.1'),
                   const SizedBox(width: 8),
-                  _buildQuickCommandChip('Ruta Simple', '{"routePoints":"20,0,10,-90,20,0"}'),
+                  _buildQuickCommandChip('PID RIGHT', 'set right 5.0,0.5,0.1'),
                   const SizedBox(width: 8),
-                  _buildQuickCommandChip('Telemetry ON', '{"telemetry_enable":true}'),
+                  _buildQuickCommandChip('RC Forward', 'rc 200,0'),
                   const SizedBox(width: 8),
-                  _buildQuickCommandChip('Telemetry OFF', '{"telemetry_enable":false}'),
+                  _buildQuickCommandChip('RC Left', 'rc 150,-150'),
                   const SizedBox(width: 8),
-                  _buildQuickCommandChip('Get Telemetry', '{"telemetry":1}'),
+                  _buildQuickCommandChip('RC Right', 'rc 150,150'),
                   const SizedBox(width: 8),
-                  _buildQuickCommandChip('Save EEPROM', '{"eeprom":1}'),
+                  _buildQuickCommandChip('RC Stop', 'rc 0,0'),
                   const SizedBox(width: 8),
-                  _buildQuickCommandChip('Calibrate QTR', '{"calibrate_qtr":1}'),
+                  _buildQuickCommandChip('DEBUG ON', 'debug 1'),
                   const SizedBox(width: 8),
-                  _buildQuickCommandChip('PID Config', '{"pid":[1.2,0.05,0.02]}'),
+                  _buildQuickCommandChip('DEBUG OFF', 'debug 0'),
                   const SizedBox(width: 8),
-                  _buildQuickCommandChip('Speed Base', '{"speed":{"base":0.7}}'),
+                  _buildQuickCommandChip('TELEMETRY', 'telemetry'),
                   const SizedBox(width: 8),
-                  _buildQuickCommandChip('Remote Dir+Acc', '{"remote_control":{"direction":90,"acceleration":0.5}}'),
+                  _buildQuickCommandChip('CALIBRATE', 'calibrate'),
                   const SizedBox(width: 8),
-                  _buildQuickCommandChip('Remote Auto', '{"remote_control":{"throttle":0.5,"turn":-0.3}}'),
+                  _buildQuickCommandChip('SAVE', 'save'),
                   const SizedBox(width: 8),
-                  _buildQuickCommandChip('Remote Manual', '{"remote_control":{"left":0.8,"right":-0.8}}'),
+                  _buildQuickCommandChip('RESET', 'reset'),
+                  const SizedBox(width: 8),
+                  _buildQuickCommandChip('HELP', 'help'),
                 ],
               ),
             ),
@@ -433,19 +435,8 @@ class _TerminalPageState extends State<TerminalPage> {
       return;
     }
 
-    try {
-      final Map<String, dynamic> parsedCommand;
-      if (command.startsWith('{')) {
-        parsedCommand = Map<String, dynamic>.from(
-            command.contains('"') ? jsonDecode(command) : {'raw': command});
-      } else {
-        parsedCommand = {'raw': command};
-      }
-
-      await widget.provider.sendCommand(parsedCommand);
-    } catch (e) {
-      // Error de formato JSON - silently fail
-    }
+    // Send command as plain text
+    await widget.provider.sendCommand(command);
   }
 
   void _clearConsole() {

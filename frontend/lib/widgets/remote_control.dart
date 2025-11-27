@@ -37,18 +37,18 @@ class _RemoteControlState extends State<RemoteControl> {
 
   void _sendCommand() {
     final command = RcCommand(
-      throttle: _throttle,
-      turn: _turn,
+      throttle: (_throttle * 230).round(),
+      steering: (_turn * 230).round(),
     );
-    widget.appState.sendCommand(command.toJson());
+    widget.appState.sendCommand(command.toCommand());
   }
 
   void _emergencyStop() {
     final command = RcCommand(
-      throttle: 0.0,
-      turn: 0.0,
+      throttle: 0,
+      steering: 0,
     );
-    widget.appState.sendCommand(command.toJson());
+    widget.appState.sendCommand(command.toCommand());
 
     // Reset joystick
     _resetJoystick();
@@ -202,8 +202,8 @@ class _RemoteControlState extends State<RemoteControl> {
               Expanded(
                 child: OutlinedButton(
                   onPressed: () {
-                    final command = RcCommand(throttle: 0.0, turn: 0.0);
-                    widget.appState.sendCommand(command.toJson());
+                    final command = RcCommand(throttle: 0, steering: 0);
+                    widget.appState.sendCommand(command.toCommand());
                     _resetJoystick();
                   },
                   child: const Text('Stop', style: TextStyle(fontSize: 10)),
@@ -217,8 +217,8 @@ class _RemoteControlState extends State<RemoteControl> {
               Expanded(
                 child: OutlinedButton(
                   onPressed: () {
-                    final command = RcCommand(throttle: 0.0, turn: 0.0);
-                    widget.appState.sendCommand(command.toJson());
+                    final command = RcCommand(throttle: 0, steering: 0);
+                    widget.appState.sendCommand(command.toCommand());
                     _resetJoystick();
                   },
                   child: const Text('Park', style: TextStyle(fontSize: 10)),

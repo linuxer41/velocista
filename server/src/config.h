@@ -88,6 +88,20 @@ const int16_t RC_DEADZONE = 10;         // Zona muerta para joystick
 const int16_t RC_MAX_THROTTLE = 255;    // Throttle máximo
 const int16_t RC_MAX_STEERING = 150;    // Steering máximo
 
+// Batería
+const uint8_t BATTERY_PIN = A7;         // Pin para medir voltaje de batería
+const float BATTERY_FACTOR = 5.0 / 1023.0 * (10.0 + 2.2) / 2.2; // Factor de conversión (divisor resistivo)
+
+// Tiempos de bucle
+const uint16_t LOOP_LINE_MS  = 10;   // 100 Hz para PID de línea
+const uint16_t LOOP_SPEED_MS = 5;    // 200 Hz para PID de velocidad
+
+// Velocidad base
+const float BASE_RPM = 120.0f; // RPM base para control de velocidad
+
+// Debug
+const unsigned long DEBUG_INTERVAL_MS = 100; // Intervalo de envío de debug en ms
+
 // =============================================================================
 // VALORES POR DEFECTO
 // =============================================================================

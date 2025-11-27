@@ -83,6 +83,10 @@ public:
     return targetRPM;
   }
 
+  long getEncoderCount() {
+    return encoderCount;
+  }
+
   void updateEncoder() {
     if (location == LEFT) {
       if (digitalRead(encoderBPin)) {

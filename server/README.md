@@ -9,13 +9,13 @@ Este proyecto implementa un robot seguidor de línea basado en Arduino con contr
 ### Componentes Principales
 - **Sensores**: 6 sensores infrarrojos QTR para detección de línea
 - **Motores**: 2 motores DC con encoders para retroalimentación RPM
-- **Control**: PID triple (línea, motor izquierdo, motor derecho)
+- **Control**: PID cascada (línea + velocidad) con lazos separados (100Hz línea, 200Hz velocidad)
 - **Comunicación**: Serial (9600 baud) para comandos y telemetría
 - **Debugger**: Clase centralizada para manejo de mensajes seriales (sistema y debug)
 
 ### Modos de Operación
-- **LINE FOLLOWING**: Sigue la línea negra usando PID
-- **REMOTE CONTROL**: Control manual vía throttle/steering
+- **LINE FOLLOWING**: Sigue la línea negra usando PID cascada (configurable on/off)
+- **REMOTE CONTROL**: Control manual vía throttle/steering (siempre cascada)
 
 ## Comandos Seriales
 
@@ -28,9 +28,8 @@ save               - Guarda configuración actual en EEPROM
 
 ### Control de Modo
 ```
-mode line          - Cambia a modo seguimiento de línea
-mode remote        - Cambia a modo control remoto
-cascade on/off  - Activa/desactiva control en cascada
+mode 1/2             - Cambia a modo seguimiento de línea (1) o control remoto (2)
+cascade 0/1          - Desactiva/activa control en cascada (solo en modo línea)
 ```
 
 ### Ajuste de PID
@@ -42,23 +41,22 @@ set right kp,ki,kd  - Configura PID motor derecho (ej: set right 5.0,0.5,0.1)
 
 ### Control Remoto
 ```
-throttle <valor>    - Establece velocidad base (-230 a 230)
-steering <valor>    - Establece dirección (-230 a 230)
+rc throttle,steering - Control remoto (ej: rc 200,50)
 ```
 
 ### Debug y Telemetría
 ```
-debug on/off        - Activa/desactiva salida continua de debug
+debug 0/1           - Desactiva/activa salida continua de debug
 telemetry           - Envía datos de debug una sola vez
 help                - Muestra lista de comandos disponibles
 ```
 
 ## Formato de Salida Debug
 
-La salida de debug se envía cada 100ms cuando está activada:
+La salida de debug se envía cada 500ms cuando está activada:
 
 ```
-type:2|LINE_PID:[2.00,0.05,0.75,429.30,-225.00,150.00,50.00]|LVEL:[120.00,232.50,166]|RVEL:[120.00,7.50,53]|LEFT_PID:[5.00,0.50,0.10,232.50,166.00,112.50,25.00]|RIGHT_PID:[5.00,0.50,0.10,7.50,53.00,-7.50,15.00]|CASCADE:1|MODE:0|UPTIME:5000|QTR:[687,292,0,0,0,0]
+type:2|LINE_PID:[2.00,0.05,0.75,429.30,-225.00,150.00,50.00,5.25]|LVEL:[120.00,232.50,166,1234]|RVEL:[120.00,7.50,53,5678]|LEFT_PID:[5.00,0.50,0.10,232.50,166.00,112.50,25.00,2.10]|RIGHT_PID:[5.00,0.50,0.10,7.50,53.00,-7.50,15.00,1.85]|QTR:[687,292,0,0,0,0]|CASCADE:1|MODE:0|BATT:7.85|LOOP_US:45|UPTIME:5000
 ```
 
 Los mensajes de sistema (comandos, estados) usan prefijo `type:1|` (mínimos para no sobrecargar):
@@ -74,13 +72,15 @@ type:3|ack:mode line
 ```
 
 ### Campos de Debug
-- **LINE_PID**: [KP,KI,KD,posicion_linea,output,error,integral] del PID de línea
-- **LVEL/RVEL**: [RPM_actual,RPM_objetivo,PWM] izquierdo/derecho
-- **LEFT_PID/RIGHT_PID**: [KP,KI,KD,RPM_objetivo,output,error,integral] del PID de motor
-- **CASCADE**: Control en cascada (1=activado, 0=desactivado)
-- **MODE**: Modo actual (0=LINE_FOLLOWING, 1=REMOTE_CONTROL)
-- **UPTIME**: Tiempo desde inicio en ms
+- **LINE_PID**: [KP,KI,KD,posicion_linea,output,error,integral,derivada] del PID de línea
+- **LVEL/RVEL**: [RPM_actual,RPM_objetivo,PWM,encoder_count] izquierdo/derecho
+- **LEFT_PID/RIGHT_PID**: [KP,KI,KD,RPM_objetivo,output,error,integral,derivada] del PID de motor
 - **QTR**: Valores crudos de los 6 sensores QTR
+- **CASCADE**: Control en cascada (1=activado, 0=desactivado, solo en modo línea)
+- **MODE**: Modo actual (0=LINE_FOLLOWING, 1=REMOTE_CONTROL)
+- **BATT**: Voltaje de batería en V
+- **LOOP_US**: Tiempo de ejecución del último ciclo PID en microsegundos
+- **UPTIME**: Tiempo desde inicio en ms
 
 ## Configuración Inicial
 
@@ -166,8 +166,8 @@ function parseDebugData(debugString) {
 }
 
 // Ejemplo:
-// Input: "type:2|LINE_PID:[2.00,0.05,0.75,429.30,-225.00,150.00,50.00]|LVEL:[120.00,232.50,166]|..."
-// Output: { LINE_PID: [2, 0.05, 0.75, 429.3, -225, 150, 50], LVEL: [120, 232.5, 166], ... }
+// Input: "type:2|LINE_PID:[2.00,0.05,0.75,429.30,-225.00,150.00,50.00,5.25]|LVEL:[120.00,232.50,166,1234]|..."
+// Output: { LINE_PID: [2, 0.05, 0.75, 429.3, -225, 150, 50, 5.25], LVEL: [120, 232.5, 166, 1234], ... }
 ```
 
 ### Recomendaciones para UI
@@ -175,7 +175,7 @@ function parseDebugData(debugString) {
 - **Barras de PID**: Visualizar ganancias KP/KI/KD ajustables
 - **Velocímetros**: RPM actual vs objetivo para cada motor
 - **Sensores QTR**: Barra de 6 valores para ver cobertura de línea
-- **Controles**: Sliders para throttle/steering en modo remoto
+- **Controles**: Joystick o sliders para throttle/steering en modo remoto
 - **Logs**: Área de texto para mensajes type:1 y confirmaciones
 
 ### Comandos Recomendados para UI
@@ -183,14 +183,16 @@ function parseDebugData(debugString) {
 2. **Modo**: Selector LINE/REMOTE
 3. **PID Tuning**: Sliders para KP/KI/KD con envío automático
 4. **Telemetría**: Gráfico en tiempo real de posición, RPM, sensores
-5. **Control Remoto**: Joystick virtual para throttle/steering
+5. **Control Remoto**: Joystick virtual para enviar comandos `rc throttle,steering`
 6. **Calibración**: Botón para iniciar calibración con progreso
 
 ## Consideraciones Técnicas
 
 ### Control PID
-- **Lazo Cerrado**: Usa encoders para mantener RPM objetivo
-- **Lazo Abierto**: Control directo de PWM (útil para testing)
+- **Cascada**: PID de línea (100Hz) establece RPM objetivo, PID de velocidad (200Hz) mantiene RPM
+- **Lazo Cerrado**: Usa encoders para retroalimentación RPM
+- **Lazo Abierto**: Control directo PWM (solo en modo línea con cascada desactivada)
+- **Modo Remoto**: Siempre cascada para control preciso de velocidad
 - **Saturación**: Salidas limitadas a ±230 PWM
 
 ### Sensores

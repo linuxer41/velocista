@@ -171,23 +171,22 @@ class SerialClient {
   }
 
 
-  /// Send JSON command
-  Future<bool> sendCommand(Map<String, dynamic> command) async {
+  /// Send text command
+  Future<bool> sendCommand(String command) async {
     if (!_isConnected) {
       onError?.call('Not connected to device');
       return false;
     }
 
     try {
-      final jsonString = jsonEncode(command) + '\n';
-      final bytes = utf8.encode(jsonString);
+      final commandString = command + '\n';
 
       // Add sent command to terminal
-      onCommandSent?.call(jsonString);
+      onCommandSent?.call(commandString);
 
       if (_connectionType == 'bluetooth' && _bluetoothConnection != null) {
-        _bluetoothConnection!.writeString(jsonString);
-        print('Bluetooth command sent: $jsonString');
+        _bluetoothConnection!.writeString(commandString);
+        print('Bluetooth command sent: $commandString');
         return true;
       }
 

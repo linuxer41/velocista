@@ -55,11 +55,16 @@ class _PointListControlState extends State<ServoControl> {
   }
 
   void _sendRoute() {
-    if (_points.isEmpty) return;
-
-    final routeString = _points.map((point) => point.toString()).join(',');
-    final command = RoutePointsCommand(routeString);
-    widget.appState.sendCommand(command.toJson());
+    // Route points command removed in new protocol
+    // This functionality is no longer available
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Funcionalidad de rutas no disponible en la nueva versión'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   void _clearRoute() {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../app_state.dart';
+import '../arduino_data.dart';
 
 class SettingsPage extends StatefulWidget {
   final AppState appState;
@@ -512,17 +513,9 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   void _saveSettings() {
-    // Save PID parameters and limits
-    final p = double.tryParse(_pController.text) ?? 0.5;
-    final i = double.tryParse(_iController.text) ?? 0.1;
-    final d = double.tryParse(_dController.text) ?? 0.2;
-
-    // Send PID configuration
-    widget.appState.sendCommand({
-      'pid': [p, i, d],
-      'max_speed': _maxSpeed / 100.0,
-      'max_acceleration': _maxAcceleration / 100.0,
-    });
+    // Save settings command
+    final command = EepromSaveCommand();
+    widget.appState.sendCommand(command.toCommand());
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -536,7 +529,8 @@ class _SettingsPageState extends State<SettingsPage> {
 
   void _startCalibration() {
     // Send calibration command
-    widget.appState.sendCommand({'calibrate_qtr': 1});
+    final command = CalibrateQtrCommand();
+    widget.appState.sendCommand(command.toCommand());
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(

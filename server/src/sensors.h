@@ -57,7 +57,6 @@ public:
     }
     digitalWrite(SENSOR_POWER_PIN, LOW);
 
-    float avgVal = totalVal / (float)NUM_SENSORS;
     // Calculate line position
     if (sum > 0) {
       linePosition = ((float)weightedSum / sum) * 1000.0 - 2500.0;

@@ -8,6 +8,40 @@
 
 #include <Arduino.h>
 
+// Struct para datos de debug
+struct DebugData {
+  // Posición y modo
+  float linePos;
+  bool cascade;
+  OperationMode mode;
+
+  // Sensores
+  int sensors[6];
+  unsigned long uptime;
+
+  // PID de línea
+  float lineKp, lineKi, lineKd;
+  float linePidOut, lineError, lineIntegral, lineDeriv;
+
+  // PID izquierdo
+  float leftKp, leftKi, leftKd;
+  float lPidOut, lError, lIntegral, lDeriv;
+
+  // PID derecho
+  float rightKp, rightKi, rightKd;
+  float rPidOut, rError, rIntegral, rDeriv;
+
+  // Velocidades
+  float lRpm, rRpm, lTargetRpm, rTargetRpm;
+  int lSpeed, rSpeed;
+
+  // Sistema
+  float battery;
+  unsigned long loopTime;
+  int freeMem;
+  long encL, encR;
+};
+
 class Debugger {
 public:
   Debugger() {}
@@ -19,9 +53,62 @@ public:
   }
 
   // Datos de debug (telemetría)
-  void debugData(String data) {
+  void debugData(DebugData& data) {
     Serial.print("type:2|");
-    Serial.println(data);
+    Serial.print("LINE_PID:[");
+    Serial.print(data.lineKp, 2); Serial.print(",");
+    Serial.print(data.lineKi, 2); Serial.print(",");
+    Serial.print(data.lineKd, 2); Serial.print(",");
+    Serial.print(data.linePos, 2); Serial.print(",");
+    Serial.print(data.linePidOut, 2); Serial.print(",");
+    Serial.print(data.lineError, 2); Serial.print(",");
+    Serial.print(data.lineIntegral, 2); Serial.print(",");
+    Serial.print(data.lineDeriv, 2); Serial.print("]");
+    Serial.print("|LVEL:[");
+    Serial.print(data.lRpm, 2); Serial.print(",");
+    Serial.print(data.lTargetRpm, 2); Serial.print(",");
+    Serial.print(data.lSpeed); Serial.print(",");
+    Serial.print(data.encL); Serial.print("]");
+    Serial.print("|RVEL:[");
+    Serial.print(data.rRpm, 2); Serial.print(",");
+    Serial.print(data.rTargetRpm, 2); Serial.print(",");
+    Serial.print(data.rSpeed); Serial.print(",");
+    Serial.print(data.encR); Serial.print("]");
+    Serial.print("|LEFT_PID:[");
+    Serial.print(data.leftKp, 2); Serial.print(",");
+    Serial.print(data.leftKi, 2); Serial.print(",");
+    Serial.print(data.leftKd, 2); Serial.print(",");
+    Serial.print(data.lTargetRpm, 2); Serial.print(",");
+    Serial.print(data.lPidOut, 2); Serial.print(",");
+    Serial.print(data.lError, 2); Serial.print(",");
+    Serial.print(data.lIntegral, 2); Serial.print(",");
+    Serial.print(data.lDeriv, 2); Serial.print("]");
+    Serial.print("|RIGHT_PID:[");
+    Serial.print(data.rightKp, 2); Serial.print(",");
+    Serial.print(data.rightKi, 2); Serial.print(",");
+    Serial.print(data.rightKd, 2); Serial.print(",");
+    Serial.print(data.rTargetRpm, 2); Serial.print(",");
+    Serial.print(data.rPidOut, 2); Serial.print(",");
+    Serial.print(data.rError, 2); Serial.print(",");
+    Serial.print(data.rIntegral, 2); Serial.print(",");
+    Serial.print(data.rDeriv, 2); Serial.print("]");
+    Serial.print("|QTR:[");
+    Serial.print(data.sensors[0]); Serial.print(",");
+    Serial.print(data.sensors[1]); Serial.print(",");
+    Serial.print(data.sensors[2]); Serial.print(",");
+    Serial.print(data.sensors[3]); Serial.print(",");
+    Serial.print(data.sensors[4]); Serial.print(",");
+    Serial.print(data.sensors[5]); Serial.print("]");
+    Serial.print("|CASCADE:");
+    Serial.print(data.cascade ? "1" : "0");
+    Serial.print("|MODE:");
+    Serial.print((int)data.mode);
+    Serial.print("|BATT:");
+    Serial.print(data.battery, 2);
+    Serial.print("|LOOP_US:");
+    Serial.print(data.loopTime);
+    Serial.print("|UPTIME:");
+    Serial.println(data.uptime);
   }
 
   // Confirmación de comando procesado
@@ -30,32 +117,6 @@ public:
     Serial.println(cmd);
   }
 
-  // Método para construir línea de debug
-  String buildDebugLine(float linePos, bool cascade, String mode,
-                      int* sensors, unsigned long uptime,
-                      float lineKp, float lineKi, float lineKd, float linePidOut, float lineError, float lineIntegral,
-                      float leftKp, float leftKi, float leftKd, float lPidOut, float lError, float lIntegral,
-                      float rightKp, float rightKi, float rightKd, float rPidOut, float rError, float rIntegral,
-                      float lRpm, float rRpm, float lTargetRpm, float rTargetRpm, int lSpeed, int rSpeed) {
-    String line = "LINE_PID:[" + String(lineKp, 2) + "," + String(lineKi, 2) + "," + String(lineKd, 2) + "," +
-                  String(linePos, 2) + "," + String(linePidOut, 2) + "," + String(lineError, 2) + "," + String(lineIntegral, 2) + "]" +
-                  "|LEFT_VEL:[" + String(lRpm, 2) + "," + String(lTargetRpm, 2) + "," + String(lSpeed) + "]" +
-                  "|RIGHT_VEL:[" + String(rRpm, 2) + "," + String(rTargetRpm, 2) + "," + String(rSpeed) + "]" +
-                  "|LEFT_PID:[" + String(leftKp, 2) + "," + String(leftKi, 2) + "," + String(leftKd, 2) + "," +
-                  String(lTargetRpm, 2) + "," + String(lPidOut, 2) + "," + String(lError, 2) + "," + String(lIntegral, 2) + "]" +
-                  "|RIGHT_PID:[" + String(rightKp, 2) + "," + String(rightKi, 2) + "," + String(rightKd, 2) + "," +
-                  String(rTargetRpm, 2) + "," + String(rPidOut, 2) + "," + String(rError, 2) + "," + String(rIntegral, 2) + "]" +
-                  "|CASCADE:" + String(cascade ? "1" : "0") +
-                  "|MODE:" + mode +
-                  "|UPTIME:" + String(uptime) +
-                  "|QTR:[";
-    for(int i = 0; i < 6; i++) {
-      line += String(sensors[i]);
-      if(i < 5) line += ",";
-    }
-    line += "]";
-    return line;
-  }
 };
 
 #endif

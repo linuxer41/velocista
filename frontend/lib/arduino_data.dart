@@ -3,8 +3,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 enum OperationMode {
-     lineFollowing(0, 'SEGUIDOR DE LÍNEA', Icons.route, 'SEGUID'),
-     remoteControl(1, 'CONTROL REMOTO', Icons.gamepad, 'CONTROL');
+     lineFollowing(1, 'SEGUIDOR DE LÍNEA', Icons.route, 'SEGUID'),
+     remoteControl(2, 'CONTROL REMOTO', Icons.gamepad, 'CONTROL');
 
   const OperationMode(this.id, this.displayName, this.icon, this.shortName);
   final int id;
@@ -60,6 +60,8 @@ class ArduinoData {
    final List<int> sensors; // QTR sensor values (0 in non-lineal modes)
    final double battery; // Battery percentage
    final bool closedLoop; // Closed loop control enabled
+   final bool cascade; // Cascade control enabled
+   final int uptime; // Time since startup in ms
 
    // Line Following specific data
    final double? position; // Line position (2000-7000 for 6 sensors, 1000-8000 for 8)
@@ -67,6 +69,13 @@ class ArduinoData {
    final double? correction; // PID correction value
    final double? leftSpeedCmd; // Left motor command speed (-1 to 1)
    final double? rightSpeedCmd; // Right motor command speed (-1 to 1)
+
+   // Extended PID data
+   final List<double>? linePid; // [KP,KI,KD,posicion_linea,output,error,integral,derivada]
+   final List<double>? leftVel; // [RPM_actual,RPM_objetivo,PWM,encoder_count]
+   final List<double>? rightVel; // [RPM_actual,RPM_objetivo,PWM,encoder_count]
+   final List<double>? leftPid; // [KP,KI,KD,RPM_objetivo,output,error,integral,derivada]
+   final List<double>? rightPid; // [KP,KI,KD,RPM_objetivo,output,error,integral,derivada]
 
    // Autopilot specific data
    final double? throttle; // Acelerador (-1.0 a 1.0)
@@ -94,6 +103,8 @@ class ArduinoData {
     required this.sensors,
     this.battery = 0.0,
     this.closedLoop = true,
+    this.cascade = true,
+    this.uptime = 0,
     this.position,
     this.error,
     this.correction,
@@ -108,11 +119,21 @@ class ArduinoData {
     this.maxSpeed,
     this.pid,
     this.baseSpeed,
+    this.linePid,
+    this.leftVel,
+    this.rightVel,
+    this.leftPid,
+    this.rightPid,
   });
 
-  /// Parse data from Arduino (supports both JSON and pipe-separated formats)
-  static ArduinoData fromJson(String dataString) {
+  /// Parse data from Arduino (supports JSON, pipe-separated, and typed message formats)
+  static ArduinoData? fromJson(String dataString) {
     final trimmed = dataString.trim();
+
+    // Handle typed messages (type:1|, type:2|, type:3|)
+    if (trimmed.startsWith('type:')) {
+      return _fromTypedMessageFormat(trimmed);
+    }
 
     // Detect format: if starts with '{', it's JSON, else pipe-separated
     if (trimmed.startsWith('{')) {
@@ -271,6 +292,123 @@ class ArduinoData {
     );
   }
 
+  /// Parse typed message format (type:1|, type:2|, type:3|)
+  static ArduinoData? _fromTypedMessageFormat(String messageString) {
+    if (messageString.startsWith('type:2|')) {
+      // Debug/telemetry data
+      final dataPart = messageString.substring(7); // Remove 'type:2|'
+      return _parseDebugData(dataPart);
+    } else if (messageString.startsWith('type:1|')) {
+      // System message - not ArduinoData, return null
+      return null;
+    } else if (messageString.startsWith('type:3|')) {
+      // Command acknowledgment - not ArduinoData, return null
+      return null;
+    }
+    return null;
+  }
+
+  /// Parse debug data from type:2 messages
+  static ArduinoData _parseDebugData(String debugString) {
+    final dataMap = <String, dynamic>{};
+
+    // Split by '|' and parse key:value pairs
+    final pairs = debugString.split('|');
+    for (final pair in pairs) {
+      final colonIndex = pair.indexOf(':');
+      if (colonIndex > 0) {
+        final key = pair.substring(0, colonIndex).trim();
+        final value = pair.substring(colonIndex + 1).trim();
+        dataMap[key] = value;
+      }
+    }
+
+    // Parse arrays
+    final linePid = _parseDoubleArray(dataMap['LINE_PID']);
+    final leftVel = _parseDoubleArray(dataMap['LVEL']);
+    final rightVel = _parseDoubleArray(dataMap['RVEL']);
+    final leftPid = _parseDoubleArray(dataMap['LEFT_PID']);
+    final rightPid = _parseDoubleArray(dataMap['RIGHT_PID']);
+    final qtr = _parseIntArray(dataMap['QTR']);
+
+    // Parse simple values
+    final cascade = (int.tryParse(dataMap['CASCADE'] ?? '1') ?? 1) == 1;
+    final mode = int.tryParse(dataMap['MODE'] ?? '0') ?? 0;
+    final uptime = int.tryParse(dataMap['UPTIME'] ?? '0') ?? 0;
+
+    // Extract values from arrays
+    double? position, error, correction, leftSpeedCmd, rightSpeedCmd;
+    double leftEncoderSpeed = 0.0, rightEncoderSpeed = 0.0;
+    int leftEncoderCount = 0, rightEncoderCount = 0;
+
+    if (linePid != null && linePid.length >= 5) {
+      position = linePid[3]; // posicion_linea
+      correction = linePid[4]; // output
+      if (linePid.length >= 6) error = linePid[5]; // error
+    }
+
+    if (leftVel != null && leftVel.length >= 4) {
+      leftEncoderSpeed = leftVel[0]; // RPM_actual
+      leftSpeedCmd = leftVel[1]; // RPM_objetivo
+      leftEncoderCount = leftVel[3].toInt(); // encoder_count
+    }
+
+    if (rightVel != null && rightVel.length >= 4) {
+      rightEncoderSpeed = rightVel[0]; // RPM_actual
+      rightSpeedCmd = rightVel[1]; // RPM_objetivo
+      rightEncoderCount = rightVel[3].toInt(); // encoder_count
+    }
+
+    return ArduinoData(
+      operationMode: mode,
+      modeName: mode == 0 ? 'LINE FOLLOWING' : 'REMOTE CONTROL',
+      leftEncoderSpeed: leftEncoderSpeed,
+      rightEncoderSpeed: rightEncoderSpeed,
+      leftEncoderCount: leftEncoderCount,
+      rightEncoderCount: rightEncoderCount,
+      totalDistance: 0.0, // Not provided in new format
+      sensors: qtr ?? [],
+      battery: 0.0, // Not provided
+      closedLoop: true, // Assume closed loop
+      cascade: cascade,
+      uptime: uptime,
+      position: position,
+      error: error,
+      correction: correction,
+      leftSpeedCmd: leftSpeedCmd,
+      rightSpeedCmd: rightSpeedCmd,
+      linePid: linePid,
+      leftVel: leftVel,
+      rightVel: rightVel,
+      leftPid: leftPid,
+      rightPid: rightPid,
+    );
+  }
+
+  /// Parse array of doubles from string like "[1.0,2.0,3.0]"
+  static List<double>? _parseDoubleArray(dynamic value) {
+    if (value is! String) return null;
+    final str = value.trim();
+    if (!str.startsWith('[') || !str.endsWith(']')) return null;
+
+    final content = str.substring(1, str.length - 1);
+    if (content.isEmpty) return [];
+
+    return content.split(',').map((s) => double.tryParse(s.trim()) ?? 0.0).toList();
+  }
+
+  /// Parse array of ints from string like "[1,2,3]"
+  static List<int>? _parseIntArray(dynamic value) {
+    if (value is! String) return null;
+    final str = value.trim();
+    if (!str.startsWith('[') || !str.endsWith(']')) return null;
+
+    final content = str.substring(1, str.length - 1);
+    if (content.isEmpty) return [];
+
+    return content.split(',').map((s) => int.tryParse(s.trim()) ?? 0).toList();
+  }
+
   /// Convert to JSON string
   String toJson() {
     final Map<String, Object> map = {
@@ -284,7 +422,16 @@ class ArduinoData {
       _keySensors: sensors,
       'battery': battery,
       'closedLoop': closedLoop,
+      'cascade': cascade,
+      'uptime': uptime,
     };
+
+    // Add extended PID data if available
+    if (linePid != null) map['linePid'] = linePid!;
+    if (leftVel != null) map['leftVel'] = leftVel!;
+    if (rightVel != null) map['rightVel'] = rightVel!;
+    if (leftPid != null) map['leftPid'] = leftPid!;
+    if (rightPid != null) map['rightPid'] = rightPid!;
 
     // Add mode-specific fields
     if (operationMode == 0) { // Line Following
@@ -473,100 +620,92 @@ class ArduinoData {
 
 /// Command classes for different modes
 class ModeChangeCommand {
-  final OperationMode mode;
+   final OperationMode mode;
 
-  ModeChangeCommand(this.mode);
+   ModeChangeCommand(this.mode);
 
-  Map<String, dynamic> toJson() {
-    return {'mode': mode.id};
-  }
+   String toCommand() {
+     return 'mode ${mode.id}';
+   }
 }
 
 
-class RoutePointsCommand {
-  final String routePoints; // "dist,grados,dist,grados,..."
 
-  RoutePointsCommand(this.routePoints);
-
-  Map<String, dynamic> toJson() {
-    return {'routePoints': routePoints};
-  }
-}
-
-class SpeedBaseCommand {
-  final double baseSpeed; // 0-1
-
-  SpeedBaseCommand(this.baseSpeed);
-
-  Map<String, dynamic> toJson() {
-    return {'base_speed': baseSpeed};
-  }
-}
 
 class EepromSaveCommand {
-  Map<String, dynamic> toJson() {
-    return {'eeprom': 1};
-  }
+   String toCommand() {
+     return 'save';
+   }
 }
 
 class FactoryResetCommand {
-  Map<String, dynamic> toJson() {
-    return {'factory_reset': 1};
-  }
+   String toCommand() {
+     return 'reset';
+   }
 }
 
 class TelemetryRequestCommand {
-  Map<String, dynamic> toJson() {
-    return {'tele': 2}; // Get once
-  }
+   String toCommand() {
+     return 'telemetry';
+   }
 }
 
 class TelemetryEnableCommand {
-  final bool enable;
+   final bool enable;
 
-  TelemetryEnableCommand(this.enable);
+   TelemetryEnableCommand(this.enable);
 
-  Map<String, dynamic> toJson() {
-    return {'tele': enable ? 1 : 0};
-  }
+   String toCommand() {
+     return 'debug ${enable ? 1 : 0}';
+   }
 }
 
 class CalibrateQtrCommand {
-  Map<String, dynamic> toJson() {
-    return {'qtr': 1};
-  }
+   String toCommand() {
+     return 'calibrate';
+   }
 }
 
 class PidCommand {
-  final double kp;
-  final double ki;
-  final double kd;
+   final String type; // 'line', 'left', 'right'
+   final double kp;
+   final double ki;
+   final double kd;
 
-  PidCommand({
-    required this.kp,
-    required this.ki,
-    required this.kd,
-  });
+   PidCommand({
+     required this.type,
+     required this.kp,
+     required this.ki,
+     required this.kd,
+   });
 
-  Map<String, dynamic> toJson() {
-    return {
-      'pid': [kp, ki, kd],
-    };
-  }
+   String toCommand() {
+     return 'set $type ${kp.toStringAsFixed(2)},${ki.toStringAsFixed(3)},${kd.toStringAsFixed(2)}';
+   }
 }
 
 class RcCommand {
-  final double throttle; // -1.0 to 1.0
-  final double turn; // -1.0 to 1.0
+    final int throttle; // -230 to 230
+    final int steering; // -230 to 230
 
-  RcCommand({
-    required this.throttle,
-    required this.turn,
-  });
+    RcCommand({
+      required this.throttle,
+      required this.steering,
+    });
 
-  Map<String, dynamic> toJson() {
-    return {'rc': {'throttle': throttle, 'turn': turn}};
-  }
+    String toCommand() {
+      return 'rc ${throttle},${steering}';
+    }
+}
+
+class CascadeCommand {
+    final bool enable; // true to enable cascade, false to disable
+
+    CascadeCommand(this.enable);
+
+    String toCommand() {
+      return 'cascade ${enable ? 1 : 0}';
+    }
 }
 
 /// PID Configuration for Arduino Line Follower
