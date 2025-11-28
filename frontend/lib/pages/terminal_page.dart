@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../app_state.dart';
@@ -30,6 +29,11 @@ class _TerminalPageState extends State<TerminalPage> {
   final TextEditingController _commandController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   TerminalTab _selectedTab = TerminalTab.all;
+
+  bool _isPaused = false;
+  List<TerminalMessage> _displayedAll = [];
+  List<TerminalMessage> _displayedReceived = [];
+  List<TerminalMessage> _displayedSent = [];
 
   @override
   void dispose() {
@@ -106,6 +110,27 @@ class _TerminalPageState extends State<TerminalPage> {
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(),
                       ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        onPressed: () {
+                          setState(() {
+                            _isPaused = !_isPaused;
+                            if (!_isPaused) {
+                              _displayedAll = List.from(widget.provider.rawDataBuffer.value);
+                              _displayedReceived = List.from(widget.provider.receivedDataBuffer.value);
+                              _displayedSent = List.from(widget.provider.sentCommandsBuffer.value);
+                            }
+                          });
+                        },
+                        icon: Icon(
+                          _isPaused ? Icons.play_arrow : Icons.pause,
+                          color: colorScheme.onSurfaceVariant,
+                          size: 20,
+                        ),
+                        tooltip: _isPaused ? 'Reanudar' : 'Pausar',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
                     ],
                   ),
                 ],
@@ -141,23 +166,11 @@ class _TerminalPageState extends State<TerminalPage> {
                   const SizedBox(width: 8),
                   _buildQuickCommandChip('CASCADE OFF', 'cascade 0'),
                   const SizedBox(width: 8),
-                  _buildQuickCommandChip('PID LINE', 'set line 2.0,0.05,0.75'),
+                  _buildQuickCommandChip('REALTIME ON', 'set realtime 1'),
                   const SizedBox(width: 8),
-                  _buildQuickCommandChip('PID LEFT', 'set left 5.0,0.5,0.1'),
+                  _buildQuickCommandChip('REALTIME OFF', 'set realtime 0'),
                   const SizedBox(width: 8),
-                  _buildQuickCommandChip('PID RIGHT', 'set right 5.0,0.5,0.1'),
-                  const SizedBox(width: 8),
-                  _buildQuickCommandChip('RC Forward', 'rc 200,0'),
-                  const SizedBox(width: 8),
-                  _buildQuickCommandChip('RC Left', 'rc 150,-150'),
-                  const SizedBox(width: 8),
-                  _buildQuickCommandChip('RC Right', 'rc 150,150'),
-                  const SizedBox(width: 8),
-                  _buildQuickCommandChip('RC Stop', 'rc 0,0'),
-                  const SizedBox(width: 8),
-                  _buildQuickCommandChip('DEBUG ON', 'debug 1'),
-                  const SizedBox(width: 8),
-                  _buildQuickCommandChip('DEBUG OFF', 'debug 0'),
+                  _buildQuickCommandChip('REALTIME SNAP', 'realtime'),
                   const SizedBox(width: 8),
                   _buildQuickCommandChip('TELEMETRY', 'telemetry'),
                   const SizedBox(width: 8),
@@ -312,32 +325,48 @@ class _TerminalPageState extends State<TerminalPage> {
       case TerminalTab.all:
         return ValueListenableBuilder<List<TerminalMessage>>(
           valueListenable: widget.provider.rawDataBuffer,
-          builder: (context, messages, child) => _buildMixedMessageList(messages),
+          builder: (context, messages, child) {
+            if (!_isPaused) {
+              _displayedAll = List.from(messages);
+            }
+            return _buildMixedMessageList(_displayedAll);
+          },
         );
       case TerminalTab.received:
         return ValueListenableBuilder<List<TerminalMessage>>(
           valueListenable: widget.provider.receivedDataBuffer,
-          builder: (context, messages, child) => _buildMessageList(messages, MessageType.received),
+          builder: (context, messages, child) {
+            if (!_isPaused) {
+              _displayedReceived = List.from(messages);
+            }
+            return _buildMessageList(_displayedReceived, MessageType.received);
+          },
         );
       case TerminalTab.sent:
         return ValueListenableBuilder<List<TerminalMessage>>(
           valueListenable: widget.provider.sentCommandsBuffer,
-          builder: (context, messages, child) => _buildMessageList(messages, MessageType.sent),
+          builder: (context, messages, child) {
+            if (!_isPaused) {
+              _displayedSent = List.from(messages);
+            }
+            return _buildMessageList(_displayedSent, MessageType.sent);
+          },
         );
     }
   }
 
   Widget _buildMessageList(List<TerminalMessage> messages, MessageType messageType) {
-    // Auto-scroll to bottom when new messages arrive
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-        );
-      }
-    });
+    if (!_isPaused) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+          );
+        }
+      });
+    }
 
     return ListView.builder(
       controller: _scrollController,
@@ -350,16 +379,17 @@ class _TerminalPageState extends State<TerminalPage> {
   }
 
   Widget _buildMixedMessageList(List<TerminalMessage> messages) {
-    // Auto-scroll to bottom when new messages arrive
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-        );
-      }
-    });
+    if (!_isPaused) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+          );
+        }
+      });
+    }
 
     return ListView.builder(
       controller: _scrollController,

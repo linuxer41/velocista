@@ -173,34 +173,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // Handlers de Bluetooth
-  void _handleDataReceived(dynamic data) {
-    // Solo manejar TelemetryData (nuevo formato)
-    if (data is TelemetryData) {
-      // Convertir TelemetryData a ArduinoData para compatibilidad con UI
-      final arduinoData = ArduinoData(
-        operationMode: data.mode,
-        modeName: data.operationMode.displayName,
-        leftEncoderSpeed: data.left.vel,
-        rightEncoderSpeed: data.right.vel,
-        leftEncoderCount: 0, // Not available in new telemetry
-        rightEncoderCount: 0, // Not available in new telemetry
-        totalDistance: data.distance,
-        sensors: data.qtr,
-        battery: data.battery,
-        closedLoop: true, // Assume closed loop for telemetry
-        cascade: true, // Assume cascade for telemetry
-        uptime: 0, // Not available
-        position: data.setPoint, // set_point is the position reference
-        error: data.error,
-        correction: data.correction,
-        pid: data.pid,
-        baseSpeed: data.baseSpeed,
-      );
-      currentData.value = arduinoData;
-      notifyListeners();
-    }
-  }
 
 
   void _handleBluetoothError(String error) {
@@ -255,27 +227,14 @@ class AppState extends ChangeNotifier {
       return;
     }
 
-    // Parse data for UI updates (type:2 or legacy formats)
+    // Parse data for UI updates (type:2, type:4, or legacy formats)
     try {
-      // Try to parse as ArduinoMessage wrapper (JSON format)
-      final message = ArduinoMessage.fromJson(line);
-      if (message != null) {
-        if (message.isTelemetry) {
-          final telemetryData = TelemetryData.fromPayload(message.payload);
-          if (telemetryData != null) {
-            _handleDataReceived(telemetryData);
-          }
-        }
-        return;
-      }
-
-      // Try to parse as ArduinoData (pipe-separated, typed, or JSON format)
+      // Try to parse as ArduinoData (handles all formats: typed messages, pipe-separated, JSON)
       final arduinoData = ArduinoData.fromJson(line);
       if (arduinoData != null) {
         currentData.value = arduinoData;
         notifyListeners();
       }
-
     } catch (e) {
       if (e.toString().contains('JsonUnsupportedObjectError') ||
           e.toString().contains('FormatException')) {

@@ -19,6 +19,7 @@ class _ConnectionBottomSheetState extends State<ConnectionBottomSheet> {
   static const int _connectionTimeoutSeconds = 10;
   int _remainingTime = _connectionTimeoutSeconds;
   Timer? _countdownTimer;
+  bool _isConnectingAttempt = false;
   AppState? _provider;
 
   @override
@@ -29,6 +30,10 @@ class _ConnectionBottomSheetState extends State<ConnectionBottomSheet> {
       _provider = AppInheritedWidget.of(context);
       if (_provider != null) {
         _provider!.isConnected.addListener(_handleConnectionStatusChange);
+        // Automatically start device discovery when sheet is mounted only if no devices discovered yet
+        if (!_provider!.isConnected.value && !_provider!.isDiscovering.value && _provider!.discoveredDevices.value.isEmpty) {
+          _provider!.startDiscovery();
+        }
       }
     });
   }
@@ -47,6 +52,7 @@ class _ConnectionBottomSheetState extends State<ConnectionBottomSheet> {
         _provider!.isConnected.value &&
         _connectingDevice != null) {
       // Connection succeeded, cancel timeout and close the dialog
+      _isConnectingAttempt = false;
       _connectionTimeoutTimer?.cancel();
       _countdownTimer?.cancel();
       setState(() {
@@ -57,6 +63,7 @@ class _ConnectionBottomSheetState extends State<ConnectionBottomSheet> {
         !_provider!.isConnected.value &&
         _connectingDevice != null) {
       // Connection failed, reset loading state
+      _isConnectingAttempt = false;
       setState(() {
         _connectingDevice = null;
         _remainingTime = _connectionTimeoutSeconds;
@@ -100,10 +107,11 @@ class _ConnectionBottomSheetState extends State<ConnectionBottomSheet> {
       _connectingDevice = device;
       _remainingTime = _connectionTimeoutSeconds;
     });
+    _isConnectingAttempt = true;
 
     // Start countdown timer for UI
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (mounted && _connectingDevice != null && _remainingTime > 0) {
+      if (mounted && _connectingDevice != null && _remainingTime > 0 && _isConnectingAttempt) {
         setState(() {
           _remainingTime--;
         });
@@ -115,6 +123,7 @@ class _ConnectionBottomSheetState extends State<ConnectionBottomSheet> {
         Timer(const Duration(seconds: _connectionTimeoutSeconds), () {
       if (mounted && _connectingDevice != null) {
         // Timeout reached, cancel connection
+        _isConnectingAttempt = false;
         provider.disconnect();
         setState(() {
           _connectingDevice = null;
@@ -141,6 +150,7 @@ class _ConnectionBottomSheetState extends State<ConnectionBottomSheet> {
       // Connection attempt completed, timeout will be handled by listener
     } catch (e) {
       // Connection failed immediately, cancel timeout and show error
+      _isConnectingAttempt = false;
       _connectionTimeoutTimer?.cancel();
       _countdownTimer?.cancel();
       setState(() {
@@ -199,11 +209,6 @@ class _ConnectionBottomSheetState extends State<ConnectionBottomSheet> {
                 : _buildConnectionContent(
                     provider, context, theme, colorScheme),
           ),
-          // Loading overlay
-          if (provider?.isDiscovering.value == true)
-            Positioned.fill(
-              child: _buildLoadingOverlay(theme, colorScheme),
-            ),
         ],
       ),
     );
@@ -252,6 +257,27 @@ class _ConnectionBottomSheetState extends State<ConnectionBottomSheet> {
     );
   }
 
+  Widget _buildCenteredLoader(ThemeData theme, ColorScheme colorScheme) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(Colors.orange),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Buscando dispositivos...',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: colorScheme.onSurface,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildConnectionContent(AppState provider, BuildContext context,
       ThemeData theme, ColorScheme colorScheme) {
     return Padding(
@@ -273,33 +299,15 @@ class _ConnectionBottomSheetState extends State<ConnectionBottomSheet> {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  ValueListenableBuilder<bool>(
-                    valueListenable: provider.isDiscovering,
-                    builder: (context, isDiscovering, child) {
-                      if (isDiscovering) {
-                        // Show loading spinner in header during discovery
-                        return const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor:
-                                AlwaysStoppedAnimation<Color>(Colors.orange),
-                          ),
-                        );
-                      } else {
-                        return IconButton(
-                          icon: Icon(
-                            Icons.refresh,
-                            color: colorScheme.primary,
-                            size: 20,
-                          ),
-                          onPressed: provider.isConnected.value
-                              ? null
-                              : provider.startDiscovery,
-                        );
-                      }
-                    },
+                  IconButton(
+                    icon: Icon(
+                      Icons.refresh,
+                      color: colorScheme.primary,
+                      size: 20,
+                    ),
+                    onPressed: (provider.isConnected.value || provider.isDiscovering.value)
+                        ? null
+                        : provider.startDiscovery,
                   ),
                   const SizedBox(width: 4),
                   IconButton(
@@ -312,7 +320,16 @@ class _ConnectionBottomSheetState extends State<ConnectionBottomSheet> {
           ),
           const SizedBox(height: 8),
           Expanded(
-            child: _buildDeviceList(provider, theme, colorScheme),
+            child: ValueListenableBuilder<bool>(
+              valueListenable: provider.isDiscovering,
+              builder: (context, isDiscovering, child) {
+                if (isDiscovering) {
+                  return _buildCenteredLoader(theme, colorScheme);
+                } else {
+                  return _buildDeviceList(provider, theme, colorScheme);
+                }
+              },
+            ),
           ),
         ],
       ),
@@ -483,20 +500,21 @@ class _ConnectionBottomSheetState extends State<ConnectionBottomSheet> {
     return Container(
       width: double.infinity,
       height: double.infinity,
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(16),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
             Icons.bluetooth_searching,
-            size: 64,
+            size: 32,
             color: colorScheme.primary,
           ),
           const SizedBox(height: 24),
           Text(
             'No se encontraron dispositivos',
-            style: theme.textTheme.headlineSmall?.copyWith(
+            style: theme.textTheme.bodyMedium?.copyWith(
               fontWeight: FontWeight.bold,
+              // size: 20,
               color: colorScheme.primary,
             ),
             textAlign: TextAlign.center,
@@ -509,7 +527,7 @@ class _ConnectionBottomSheetState extends State<ConnectionBottomSheet> {
             ),
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 16),
           _buildTroubleshootingSteps(theme, colorScheme),
         ],
       ),

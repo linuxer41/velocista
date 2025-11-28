@@ -17,17 +17,41 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  final TextEditingController _pController = TextEditingController(text: '0.5');
-  final TextEditingController _iController = TextEditingController(text: '0.1');
-  final TextEditingController _dController = TextEditingController(text: '0.2');
+  // Line PID controllers
+  final TextEditingController _linePController = TextEditingController(text: '2.0');
+  final TextEditingController _lineIController = TextEditingController(text: '0.05');
+  final TextEditingController _lineDController = TextEditingController(text: '0.75');
+
+  // Left motor PID controllers
+  final TextEditingController _leftPController = TextEditingController(text: '5.0');
+  final TextEditingController _leftIController = TextEditingController(text: '0.5');
+  final TextEditingController _leftDController = TextEditingController(text: '0.1');
+
+  // Right motor PID controllers
+  final TextEditingController _rightPController = TextEditingController(text: '5.0');
+  final TextEditingController _rightIController = TextEditingController(text: '0.5');
+  final TextEditingController _rightDController = TextEditingController(text: '0.1');
+
+  // Base speed and RPM controllers
+  final TextEditingController _baseSpeedController = TextEditingController(text: '200');
+  final TextEditingController _baseRpmController = TextEditingController(text: '120.0');
+
   double _maxSpeed = 80.0;
   double _maxAcceleration = 65.0;
 
   @override
   void dispose() {
-    _pController.dispose();
-    _iController.dispose();
-    _dController.dispose();
+    _linePController.dispose();
+    _lineIController.dispose();
+    _lineDController.dispose();
+    _leftPController.dispose();
+    _leftIController.dispose();
+    _leftDController.dispose();
+    _rightPController.dispose();
+    _rightIController.dispose();
+    _rightDController.dispose();
+    _baseSpeedController.dispose();
+    _baseRpmController.dispose();
     super.dispose();
   }
 
@@ -179,26 +203,141 @@ class _SettingsPageState extends State<SettingsPage> {
                             ),
                             child: Column(
                               children: [
+                                // Line PID
+                                Text(
+                                  'line pid',
+                                  style: TextStyle(
+                                    color: colorScheme.onSurface.withOpacity(0.7),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    fontFamily: 'Space Grotesk',
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
                                 Row(
                                   children: [
                                     Expanded(
                                       child: _buildCompactParameterInput(
                                         'P',
-                                        _pController,
+                                        _linePController,
                                       ),
                                     ),
                                     const SizedBox(width: 8),
                                     Expanded(
                                       child: _buildCompactParameterInput(
                                         'I',
-                                        _iController,
+                                        _lineIController,
                                       ),
                                     ),
                                     const SizedBox(width: 8),
                                     Expanded(
                                       child: _buildCompactParameterInput(
                                         'D',
-                                        _dController,
+                                        _lineDController,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 16),
+
+                                // Left Motor PID
+                                Text(
+                                  'left pid',
+                                  style: TextStyle(
+                                    color: colorScheme.onSurface.withOpacity(0.7),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    fontFamily: 'Space Grotesk',
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: _buildCompactParameterInput(
+                                        'P',
+                                        _leftPController,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: _buildCompactParameterInput(
+                                        'I',
+                                        _leftIController,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: _buildCompactParameterInput(
+                                        'D',
+                                        _leftDController,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 16),
+
+                                // Right Motor PID
+                                Text(
+                                  'right pid',
+                                  style: TextStyle(
+                                    color: colorScheme.onSurface.withOpacity(0.7),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    fontFamily: 'Space Grotesk',
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: _buildCompactParameterInput(
+                                        'P',
+                                        _rightPController,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: _buildCompactParameterInput(
+                                        'I',
+                                        _rightIController,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: _buildCompactParameterInput(
+                                        'D',
+                                        _rightDController,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 16),
+
+                                // Base Speed and RPM
+                                Text(
+                                  'Velocidad Base',
+                                  style: TextStyle(
+                                    color: colorScheme.onSurface.withOpacity(0.7),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    fontFamily: 'Space Grotesk',
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: _buildCompactParameterInput(
+                                        'Velocidad',
+                                        _baseSpeedController,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: _buildCompactParameterInput(
+                                        'RPM',
+                                        _baseRpmController,
                                       ),
                                     ),
                                   ],
@@ -513,9 +652,45 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   void _saveSettings() {
-    // Save settings command
-    final command = EepromSaveCommand();
-    widget.appState.sendCommand(command.toCommand());
+    // Send PID commands
+    final linePidCommand = PidCommand(
+      type: 'line',
+      kp: double.tryParse(_linePController.text) ?? 2.0,
+      ki: double.tryParse(_lineIController.text) ?? 0.05,
+      kd: double.tryParse(_lineDController.text) ?? 0.75,
+    );
+    widget.appState.sendCommand(linePidCommand.toCommand());
+
+    final leftPidCommand = PidCommand(
+      type: 'left',
+      kp: double.tryParse(_leftPController.text) ?? 5.0,
+      ki: double.tryParse(_leftIController.text) ?? 0.5,
+      kd: double.tryParse(_leftDController.text) ?? 0.1,
+    );
+    widget.appState.sendCommand(leftPidCommand.toCommand());
+
+    final rightPidCommand = PidCommand(
+      type: 'right',
+      kp: double.tryParse(_rightPController.text) ?? 5.0,
+      ki: double.tryParse(_rightIController.text) ?? 0.5,
+      kd: double.tryParse(_rightDController.text) ?? 0.1,
+    );
+    widget.appState.sendCommand(rightPidCommand.toCommand());
+
+    // Send base speed and RPM commands
+    final baseSpeedCommand = BaseSpeedCommand(
+      double.tryParse(_baseSpeedController.text) ?? 200.0,
+    );
+    widget.appState.sendCommand(baseSpeedCommand.toCommand());
+
+    final baseRpmCommand = BaseRpmCommand(
+      double.tryParse(_baseRpmController.text) ?? 120.0,
+    );
+    widget.appState.sendCommand(baseRpmCommand.toCommand());
+
+    // Save settings to EEPROM
+    final saveCommand = EepromSaveCommand();
+    widget.appState.sendCommand(saveCommand.toCommand());
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(

@@ -46,14 +46,21 @@ rc throttle,steering - Control remoto (ej: rc 200,50)
 
 ### Debug y Telemetría
 ```
-debug 0/1           - Desactiva/activa salida continua de debug
-telemetry           - Envía datos de debug una sola vez
+set realtime 0/1    - Desactiva/activa salida continua de realtime
+telemetry           - Envía datos de telemetry completos una sola vez
+realtime            - Envía datos de realtime una sola vez
 help                - Muestra lista de comandos disponibles
 ```
 
 ## Formato de Salida Debug
 
-La salida de debug se envía cada 500ms cuando está activada:
+La salida de realtime se envía cada 100ms cuando está activada:
+
+```
+type:4|LINE:[429.30,-225.00]|LEFT:[120.00,166,1234]|RIGHT:[120.00,53,5678]|QTR:[687,292,0,0,0,0]|UPTIME:5000
+```
+
+La salida de telemetry completa se envía con el comando `telemetry`:
 
 ```
 type:2|LINE_PID:[2.00,0.05,0.75,429.30,-225.00,150.00,50.00,5.25]|LVEL:[120.00,232.50,166,1234]|RVEL:[120.00,7.50,53,5678]|LEFT_PID:[5.00,0.50,0.10,232.50,166.00,112.50,25.00,2.10]|RIGHT_PID:[5.00,0.50,0.10,7.50,53.00,-7.50,15.00,1.85]|QTR:[687,292,0,0,0,0]|CASCADE:1|MODE:0|BATT:7.85|LOOP_US:45|UPTIME:5000
@@ -63,6 +70,18 @@ Los mensajes de sistema (comandos, estados) usan prefijo `type:1|` (mínimos par
 
 ```
 type:1|Calibrating... Move robot over line.
+```
+
+Los datos de telemetry completa usan prefijo `type:2|`:
+
+```
+type:2|LINE_PID:[...]|...
+```
+
+Los datos de realtime usan prefijo `type:4|`:
+
+```
+type:4|LINE:[429.30,-225.00]|LEFT:[120.00,166,1234]|RIGHT:[120.00,53,5678]|QTR:[687,292,0,0,0,0]|UPTIME:5000
 ```
 
 Los mensajes de confirmación de comandos usan prefijo `type:3|`:
@@ -127,11 +146,12 @@ console.log(new TextDecoder().decode(value));
 
 ### Tipos de Mensajes Seriales
 
-El robot envía 3 tipos de mensajes por serial:
+El robot envía 4 tipos de mensajes por serial:
 
 1. **type:1|mensaje** - Mensajes de sistema (respuestas a comandos)
-2. **type:2|datos** - Datos de telemetría en tiempo real
+2. **type:2|datos** - Datos de telemetry completos
 3. **type:3|ack:comando** - Confirmación de comando procesado
+4. **type:4|datos** - Datos de realtime (línea, motores, sensores)
 
 ### Parsing de Datos
 ```javascript
@@ -141,13 +161,17 @@ function parseSerialMessage(line) {
     const message = line.substring(7);
     handleSystemMessage(message);
   } else if (line.startsWith('type:2|')) {
-    // Datos de debug - parsear arrays
-    const data = parseDebugData(line.substring(7));
+    // Datos de telemetry completos - parsear arrays
+    const data = parseTelemetryData(line.substring(7));
     updateUI(data);
   } else if (line.startsWith('type:3|')) {
     // Confirmación de comando
     const ack = line.substring(7);
     confirmCommand(ack);
+  } else if (line.startsWith('type:4|')) {
+    // Datos de realtime
+    const data = parseRealtimeData(line.substring(7));
+    updateRealtimeUI(data);
   }
 }
 
@@ -215,7 +239,8 @@ function parseDebugData(debugString) {
 ### PID no converge
 - Aumentar KP para respuesta más rápida
 - Ajustar KD para reducir oscilaciones
-- Usar `telemetry` para monitorear
+- Usar `telemetry` para monitorear PID completo
+- Usar `realtime 1` para monitoreo continuo de RPM y sensores
 
 ### Sensores no calibrados
 - Ejecutar `calibrate`
@@ -230,8 +255,9 @@ pio run  # PlatformIO
 ```
 
 ### Testing
-- Usar `debug on` para monitoreo continuo
-- `telemetry` para snapshots
+- Usar `set realtime 1` para monitoreo continuo de datos realtime
+- `telemetry` para snapshots completos
+- `realtime` para snapshot de datos realtime
 - `reset` para estado conocido
 
 ### Logs

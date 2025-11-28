@@ -5,6 +5,8 @@ import '../arduino_data.dart';
 import '../connection_bottom_sheet.dart';
 import '../widgets/pid_control.dart';
 import '../widgets/remote_control.dart';
+import '../widgets/left_pid_control.dart';
+import '../widgets/right_pid_control.dart';
 import 'settings_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -58,8 +60,8 @@ class _HomePageState extends State<HomePage> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      isDismissible: false, // Cannot be dismissed by tapping outside
-      enableDrag: false, // Cannot be dragged down
+      isDismissible: true, // Cannot be dismissed by tapping outside
+      enableDrag: true, // Cannot be dragged down
       builder: (context) => const ConnectionBottomSheet(),
     );
   }
@@ -70,10 +72,301 @@ class _HomePageState extends State<HomePage> {
 
     switch (mode) {
       case OperationMode.lineFollowing:
-        return PidControl(appState: appState);
+        return _buildPidTabs(appState);
       case OperationMode.remoteControl:
         return RemoteControl(appState: appState);
     }
+  }
+
+  Widget _buildPidTabs(AppState appState) {
+    return DefaultTabController(
+      length: 3,
+      child: Column(
+        children: [
+          _buildBaseSpeedTab(appState),
+          TabBar(
+            tabs: const [
+              Tab(text: 'PID Línea'),
+              Tab(text: 'PID Izquierdo'),
+              Tab(text: 'PID Derecho'),
+            ],
+            labelStyle: const TextStyle(fontSize: 12, fontFamily: 'Space Grotesk'),
+            indicatorColor: Theme.of(context).colorScheme.primary,
+            labelColor: Theme.of(context).colorScheme.primary,
+            unselectedLabelColor: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+          SizedBox(
+            height: 200, // Fixed height for the tab content
+            child: TabBarView(
+              children: [
+                _buildLinePidTab(appState),
+                LeftPidControl(appState: appState),
+                RightPidControl(appState: appState),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBaseSpeedTab(AppState appState) {
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Configuración Velocidad Base',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Theme.of(context).colorScheme.onSurface,
+              fontFamily: 'Space Grotesk',
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _buildBaseSpeedInput('Base Speed', '200', () {
+                  // Send base speed command
+                  final baseSpeedCommand = BaseSpeedCommand(200.0);
+                  appState.sendCommand(baseSpeedCommand.toCommand());
+                }),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildBaseSpeedInput('Base RPM', '120.0', () {
+                  // Send base RPM command
+                  final baseRpmCommand = BaseRpmCommand(120.0);
+                  appState.sendCommand(baseRpmCommand.toCommand());
+                }),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBaseSpeedInput(String label, String defaultValue, VoidCallback onSend) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            Expanded(
+              child: SizedBox(
+                height: 40,
+                child: TextField(
+                  keyboardType: TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    hintText: defaultValue,
+                    hintStyle: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.5),
+                    ),
+                    filled: true,
+                    fillColor: Theme.of(context).colorScheme.surface,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(6),
+                      borderSide: BorderSide(
+                        color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                      ),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                  ),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+            SizedBox(
+              width: 60,
+              height: 40,
+              child: ElevatedButton(
+                onPressed: onSend,
+                child: const Text('Enviar', style: TextStyle(fontSize: 10)),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLinePidTab(AppState appState) {
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Line PID',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Theme.of(context).colorScheme.onSurface,
+              fontFamily: 'Space Grotesk',
+            ),
+          ),
+          const SizedBox(height: 8),
+
+          // PID Parameters
+          Row(
+            children: [
+              Expanded(
+                child: _buildPidInput('Kp', '2.0'),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildPidInput('Ki', '0.05'),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildPidInput('Kd', '0.75'),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 8),
+
+          // Action Button
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () {
+                // Send line PID command
+                final pidCommand = PidCommand(
+                  type: 'line',
+                  kp: 2.0,
+                  ki: 0.05,
+                  kd: 0.75,
+                );
+                appState.sendCommand(pidCommand.toCommand());
+              },
+              child: const Text('Actualizar PID Línea', style: TextStyle(fontSize: 12)),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Theme.of(context).colorScheme.onPrimary,
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 8),
+
+          // Current Values Display
+          ValueListenableBuilder<ArduinoData?>(
+            valueListenable: appState.currentData,
+            builder: (context, data, child) {
+              if (data == null || data.linePid == null) return const SizedBox.shrink();
+
+              return Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Estado PID Línea',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Posición: ${data.linePid![3].toStringAsFixed(1)}',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPidInput(String label, String defaultValue) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w500,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 2),
+        SizedBox(
+          height: 32,
+          child: TextField(
+            keyboardType: TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              hintText: defaultValue,
+              hintStyle: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.5),
+              ),
+              filled: true,
+              fillColor: Theme.of(context).colorScheme.surface,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(6),
+                borderSide: BorderSide(
+                  color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                ),
+              ),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            ),
+            style: TextStyle(
+              fontSize: 12,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   @override
@@ -242,107 +535,112 @@ class _HomePageState extends State<HomePage> {
                           Expanded(
                             child: Align(
                               alignment: Alignment.centerRight,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: isConnected
-                                      ? Theme.of(context)
-                                          .colorScheme
-                                          .primary
-                                          .withOpacity(0.2)
-                                      : Theme.of(context)
-                                          .colorScheme
-                                          .primary
-                                          .withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(6),
-                                  border: isConnected
-                                      ? Border.all(
-                                          color: Theme.of(context)
+                              child: ValueListenableBuilder<bool>(
+                                valueListenable: appState.isConnected,
+                                builder: (context, isConnected, child) {
+                                  return Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: isConnected
+                                          ? Theme.of(context)
                                               .colorScheme
-                                              .primary,
-                                          width: 1,
-                                        )
-                                      : null,
-                                ),
-                                child: InkWell(
-                                  onTap: _showConnectionModal,
-                                  borderRadius: BorderRadius.circular(6),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        isConnected
-                                            ? Icons.bluetooth_connected
-                                            : Icons.bluetooth,
-                                        size: 16,
-                                        color: isConnected
-                                            ? Theme.of(context)
-                                                .colorScheme
-                                                .primary
-                                            : Theme.of(context)
-                                                .colorScheme
-                                                .onSurface,
+                                              .primary
+                                              .withOpacity(0.2)
+                                          : Theme.of(context)
+                                              .colorScheme
+                                              .primary
+                                              .withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: isConnected
+                                          ? Border.all(
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .primary,
+                                              width: 1,
+                                            )
+                                          : null,
+                                    ),
+                                    child: InkWell(
+                                      onTap: _showConnectionModal,
+                                      borderRadius: BorderRadius.circular(6),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            isConnected
+                                                ? Icons.bluetooth_connected
+                                                : Icons.bluetooth,
+                                            size: 16,
+                                            color: isConnected
+                                                ? Theme.of(context)
+                                                    .colorScheme
+                                                    .primary
+                                                : Theme.of(context)
+                                                    .colorScheme
+                                                    .onSurface,
+                                          ),
+                                          if (isConnected) ...[
+                                            const SizedBox(width: 4),
+                                            Flexible(
+                                              child: Column(
+                                                mainAxisSize: MainAxisSize.min,
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    appState.connectedDevice.value
+                                                            ?.name ??
+                                                        'Dispositivo',
+                                                    style: TextStyle(
+                                                      fontSize: 8,
+                                                      fontWeight: FontWeight.w600,
+                                                      color: Theme.of(context)
+                                                          .colorScheme
+                                                          .primary,
+                                                      fontFamily: 'Space Grotesk',
+                                                    ),
+                                                    overflow: TextOverflow.ellipsis,
+                                                    maxLines: 1,
+                                                  ),
+                                                  Text(
+                                                    appState.connectedDevice.value
+                                                            ?.address ??
+                                                        '',
+                                                    style: TextStyle(
+                                                      fontSize: 6,
+                                                      fontWeight: FontWeight.w400,
+                                                      color: Theme.of(context)
+                                                          .colorScheme
+                                                          .primary
+                                                          .withOpacity(0.8),
+                                                      fontFamily: 'monospace',
+                                                    ),
+                                                    overflow: TextOverflow.ellipsis,
+                                                    maxLines: 1,
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ] else ...[
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              'Conectar',
+                                              style: TextStyle(
+                                                fontSize: 9,
+                                                fontWeight: FontWeight.w500,
+                                                color: Theme.of(context)
+                                                    .colorScheme
+                                                    .onSurface,
+                                                fontFamily: 'Space Grotesk',
+                                              ),
+                                            ),
+                                          ],
+                                        ],
                                       ),
-                                      if (isConnected) ...[
-                                        const SizedBox(width: 4),
-                                        Flexible(
-                                          child: Column(
-                                            mainAxisSize: MainAxisSize.min,
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                appState.connectedDevice.value
-                                                        ?.name ??
-                                                    'Dispositivo',
-                                                style: TextStyle(
-                                                  fontSize: 8,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: Theme.of(context)
-                                                      .colorScheme
-                                                      .primary,
-                                                  fontFamily: 'Space Grotesk',
-                                                ),
-                                                overflow: TextOverflow.ellipsis,
-                                                maxLines: 1,
-                                              ),
-                                              Text(
-                                                appState.connectedDevice.value
-                                                        ?.address ??
-                                                    '',
-                                                style: TextStyle(
-                                                  fontSize: 6,
-                                                  fontWeight: FontWeight.w400,
-                                                  color: Theme.of(context)
-                                                      .colorScheme
-                                                      .primary
-                                                      .withOpacity(0.8),
-                                                  fontFamily: 'monospace',
-                                                ),
-                                                overflow: TextOverflow.ellipsis,
-                                                maxLines: 1,
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ] else ...[
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          'Conectar',
-                                          style: TextStyle(
-                                            fontSize: 9,
-                                            fontWeight: FontWeight.w500,
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .onSurface,
-                                            fontFamily: 'Space Grotesk',
-                                          ),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ),
+                                    ),
+                                  );
+                                },
                               ),
                             ),
                           ),
@@ -356,18 +654,16 @@ class _HomePageState extends State<HomePage> {
                 ValueListenableBuilder<ArduinoData?>(
                   valueListenable: appState.currentData,
                   builder: (context, data, child) {
-                    final leftSpeed = data != null
-                        ? (data.leftEncoderSpeed * 0.036)
-                        : 0.0; // cm/s to km/h
-                    final rightSpeed =
-                        data != null ? (data.rightEncoderSpeed * 0.036) : 0.0;
-                    final averageSpeed =
-                        (leftSpeed + rightSpeed) / 2; // Average speed
-                    final leftRpm = data != null
-                        ? (data.leftEncoderSpeed / 0.1047)
-                        : 0.0; // cm/s back to RPM
-                    final rightRpm =
-                        data != null ? (data.rightEncoderSpeed / 0.1047) : 0.0;
+                    // Use realtime data (type:4) for live displays
+                    final leftRpm = data != null && data.leftVel != null && data.leftVel!.length >= 1
+                        ? data.leftVel![0] // RPM from realtime data
+                        : 0.0;
+                    final rightRpm = data != null && data.rightVel != null && data.rightVel!.length >= 1
+                        ? data.rightVel![0] // RPM from realtime data
+                        : 0.0;
+                    final leftSpeed = leftRpm * 0.036; // RPM to km/h
+                    final rightSpeed = rightRpm * 0.036; // RPM to km/h
+                    final averageSpeed = (leftSpeed + rightSpeed) / 2; // Average speed
 
                     return Column(
                       children: [
@@ -419,7 +715,7 @@ class _HomePageState extends State<HomePage> {
                                           CrossAxisAlignment.center,
                                       children: [
                                         Text(
-                                          'Recorrido',
+                                          'Distancia',
                                           style: TextStyle(
                                             fontSize: 9,
                                             color: Theme.of(context)
@@ -458,7 +754,7 @@ class _HomePageState extends State<HomePage> {
                                           ),
                                         ),
                                         Text(
-                                          '2.1 m/s²', // TODO: Calculate from speed change
+                                          '2.1 m/s²', // TODO: Calcular desde cambio de velocidad
                                           style: TextStyle(
                                             fontSize: 12,
                                             fontWeight: FontWeight.w700,
@@ -502,7 +798,7 @@ class _HomePageState extends State<HomePage> {
                             child: Column(
                               children: [
                                 Text(
-                                  'Sensores QTR-QA',
+                                  'Sensores QTR',
                                   style: TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.w500,
@@ -519,7 +815,7 @@ class _HomePageState extends State<HomePage> {
                                     final telemetryIndex = isActive ? index - 1 : -1; // Map to telemetry array (0-5)
 
                                     final sensorValue = isActive && data != null && telemetryIndex < data.sensors.length
-                                        ? data.sensors[telemetryIndex]
+                                        ? data.sensors[telemetryIndex] // Use realtime QTR data
                                         : 0;
                                     final percentage =
                                         (sensorValue / 1023.0).clamp(0.0, 1.0);
@@ -598,12 +894,13 @@ class _HomePageState extends State<HomePage> {
                           child: ValueListenableBuilder<ArduinoData?>(
                             valueListenable: appState.currentData,
                             builder: (context, data, child) {
-                              final pidValues = data != null && data.pid != null && data.pid!.length >= 3
-                                  ? data.pid!
-                                  : [0.0, 0.0, 0.0];
+                              // Use realtime data for live displays
+                              final lineData = data != null && data.linePid != null && data.linePid!.length >= 8
+                                  ? data.linePid!
+                                  : [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+                              final error = lineData[5]; // error from realtime LINE_PID
+                              final correction = lineData[4]; // output from realtime LINE_PID
                               final baseSpeed = data != null ? data.baseSpeed ?? 0.0 : 0.0;
-                              final error = data != null ? data.error ?? 0.0 : 0.0;
-                              final correction = data != null ? data.correction ?? 0.0 : 0.0;
 
                               return Column(
                                 children: [
@@ -612,7 +909,7 @@ class _HomePageState extends State<HomePage> {
                                         MainAxisAlignment.spaceEvenly,
                                     children: [
                                       Text(
-                                        'PID: P=${pidValues[0].toStringAsFixed(2)} I=${pidValues[1].toStringAsFixed(3)} D=${pidValues[2].toStringAsFixed(2)}',
+                                        'PID: P=${lineData[0].toStringAsFixed(2)} I=${lineData[1].toStringAsFixed(3)} D=${lineData[2].toStringAsFixed(2)}',
                                         style: TextStyle(
                                           fontSize: 10,
                                           fontWeight: FontWeight.w500,
@@ -676,16 +973,17 @@ class _HomePageState extends State<HomePage> {
                           child: ValueListenableBuilder<ArduinoData?>(
                             valueListenable: appState.currentData,
                             builder: (context, data, child) {
-                              final leftEncoder =
-                                  data != null ? data.leftEncoderSpeed : 0.0;
-                              final rightEncoder =
-                                  data != null ? data.rightEncoderSpeed : 0.0;
+                              // Use realtime data for live encoder readings
+                              final leftRpm = data != null && data.leftVel != null && data.leftVel!.length >= 1
+                                  ? data.leftVel![0] : 0.0; // RPM from realtime LEFT
+                              final rightRpm = data != null && data.rightVel != null && data.rightVel!.length >= 1
+                                  ? data.rightVel![0] : 0.0; // RPM from realtime RIGHT
                               return Row(
                                 mainAxisAlignment:
                                     MainAxisAlignment.spaceEvenly,
                                 children: [
                                   Text(
-                                    'Encoder Izq: ${leftEncoder.toStringAsFixed(1)}',
+                                    'Motor Izq: ${leftRpm.toStringAsFixed(1)} RPM',
                                     style: TextStyle(
                                       fontSize: 10,
                                       fontWeight: FontWeight.w500,
@@ -696,7 +994,7 @@ class _HomePageState extends State<HomePage> {
                                     ),
                                   ),
                                   Text(
-                                    'Encoder Der: ${rightEncoder.toStringAsFixed(1)}',
+                                    'Motor Der: ${rightRpm.toStringAsFixed(1)} RPM',
                                     style: TextStyle(
                                       fontSize: 10,
                                       fontWeight: FontWeight.w500,

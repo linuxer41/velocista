@@ -58,9 +58,8 @@ class ArduinoData {
    final int rightEncoderCount; // Total right encoder pulses
    final double totalDistance; // Total distance traveled (cm)
    final List<int> sensors; // QTR sensor values (0 in non-lineal modes)
-   final double battery; // Battery percentage
-   final bool closedLoop; // Closed loop control enabled
    final bool cascade; // Cascade control enabled
+   final double battery; // Battery percentage
    final int uptime; // Time since startup in ms
 
    // Line Following specific data
@@ -102,7 +101,6 @@ class ArduinoData {
     required this.totalDistance,
     required this.sensors,
     this.battery = 0.0,
-    this.closedLoop = true,
     this.cascade = true,
     this.uptime = 0,
     this.position,
@@ -126,103 +124,19 @@ class ArduinoData {
     this.rightPid,
   });
 
-  /// Parse data from Arduino (supports JSON, pipe-separated, and typed message formats)
+  /// Parse data from Arduino (supports typed messages and pipe-separated formats)
   static ArduinoData? fromJson(String dataString) {
     final trimmed = dataString.trim();
 
-    // Handle typed messages (type:1|, type:2|, type:3|)
+    // Handle typed messages (type:1|, type:2|, type:3|, type:4|)
     if (trimmed.startsWith('type:')) {
       return _fromTypedMessageFormat(trimmed);
     }
 
-    // Detect format: if starts with '{', it's JSON, else pipe-separated
-    if (trimmed.startsWith('{')) {
-      return _fromJsonFormat(trimmed);
-    } else {
-      return _fromPipeFormat(trimmed);
-    }
+    // Default to pipe-separated format
+    return _fromPipeFormat(trimmed);
   }
 
-  /// Parse JSON format
-  static ArduinoData _fromJsonFormat(String jsonString) {
-    final map = jsonDecode(jsonString);
-
-    // Check if it's the new telemetry payload
-    if (map.containsKey('type') && map['type'] == 'telemetry') {
-      final payload = map['payload'] as Map<String, dynamic>;
-      return ArduinoData(
-        operationMode: payload['mode'] ?? 0,
-        modeName: OperationMode.fromId(payload['mode'] ?? 0).displayName,
-        leftEncoderSpeed: (payload['left']?['vel'] as num?)?.toDouble() ?? 0.0,
-        rightEncoderSpeed: (payload['right']?['vel'] as num?)?.toDouble() ?? 0.0,
-        leftEncoderCount: 0, // Not available in new telemetry
-        rightEncoderCount: 0, // Not available in new telemetry
-        totalDistance: (payload['distance'] as num?)?.toDouble() ?? 0.0,
-        sensors: (payload['qtr'] as List<dynamic>?)?.map((e) => (e as num).toInt()).toList() ?? [],
-        battery: (payload['battery'] as num?)?.toDouble() ?? 0.0,
-        closedLoop: true, // Assume closed loop for telemetry
-        position: (payload['set_point'] as num?)?.toDouble(),
-        error: (payload['error'] as num?)?.toDouble(),
-        correction: (payload['correction'] as num?)?.toDouble(),
-        pid: (payload['pid'] as List<dynamic>?)?.map((e) => (e as num).toDouble()).toList(),
-        baseSpeed: (payload['base_speed'] as num?)?.toDouble(),
-      );
-    }
-
-    // Fallback to old format parsing
-    return ArduinoData(
-      operationMode: map['mode'] ?? map[_keyOperationMode] ?? 0,
-      modeName: map['modeName'] ?? map[_keyModeName] ?? 'Unknown',
-      leftEncoderSpeed: _parseDoubleValue(map['motors']?['left']?['speed_cm_s'] ?? map[_keyLeftEncoderSpeed]),
-      rightEncoderSpeed: _parseDoubleValue(map['motors']?['right']?['speed_cm_s'] ?? map[_keyRightEncoderSpeed]),
-      leftEncoderCount: map['sensors']?['encoders']?['left'] ?? map[_keyLeftEncoderCount] ?? 0,
-      rightEncoderCount: map['sensors']?['encoders']?['right'] ?? map[_keyRightEncoderCount] ?? 0,
-      totalDistance: _parseDoubleValue(map['distance']?['total_cm'] ?? map[_keyTotalDistance]),
-      sensors: _parseSensorsData(map['sensors']?['qtr'] ?? map[_keySensors]),
-      battery: _parseDoubleValue(map['battery'] ?? 0.0),
-      closedLoop: true, // Default to closed loop
-
-      // Line Following specific fields
-      position: (map[_keyPosition] is num)
-          ? (map[_keyPosition] as num).toDouble()
-          : double.tryParse('${map[_keyPosition]}'),
-      error: (map[_keyError] is num)
-          ? (map[_keyError] as num).toDouble()
-          : double.tryParse('${map[_keyError]}'),
-      correction: (map[_keyCorrection] is num)
-          ? (map[_keyCorrection] as num).toDouble()
-          : double.tryParse('${map[_keyCorrection]}'),
-      leftSpeedCmd: (map[_keyLeftSpeedCmd] is num)
-          ? (map[_keyLeftSpeedCmd] as num).toDouble()
-          : double.tryParse('${map[_keyLeftSpeedCmd]}'),
-      rightSpeedCmd: (map[_keyRightSpeedCmd] is num)
-          ? (map[_keyRightSpeedCmd] as num).toDouble()
-          : double.tryParse('${map[_keyRightSpeedCmd]}'),
-
-      // Autopilot specific fields
-      throttle: (map[_keyThrottle] is num)
-          ? (map[_keyThrottle] as num).toDouble()
-          : double.tryParse('${map[_keyThrottle]}'),
-      brake: (map[_keyBrake] is num)
-          ? (map[_keyBrake] as num).toDouble()
-          : double.tryParse('${map[_keyBrake]}'),
-      turn: (map[_keyTurn] is num)
-          ? (map[_keyTurn] as num).toDouble()
-          : double.tryParse('${map[_keyTurn]}'),
-      direction: map[_keyDirection] as int?,
-
-      // Manual specific fields
-      leftSpeed: (map[_keyLeftSpeed] is num)
-          ? (map[_keyLeftSpeed] as num).toDouble()
-          : double.tryParse('${map[_keyLeftSpeed]}'),
-      rightSpeed: (map[_keyRightSpeed] is num)
-          ? (map[_keyRightSpeed] as num).toDouble()
-          : double.tryParse('${map[_keyRightSpeed]}'),
-      maxSpeed: (map[_keyMaxSpeed] is num)
-          ? (map[_keyMaxSpeed] as num).toDouble()
-          : double.tryParse('${map[_keyMaxSpeed]}'),
-    );
-  }
 
   /// Parse pipe-separated format (new Arduino format)
   static ArduinoData _fromPipeFormat(String pipeString) {
@@ -282,7 +196,7 @@ class ArduinoData {
       totalDistance: 0.0, // Not provided, calculate from RPM if needed
       sensors: sensors,
       battery: 0.0, // Not provided
-      closedLoop: closedLoop,
+      cascade: true,
       position: pos,
       correction: pidCorrection,
       leftSpeedCmd: lTargetRpm,
@@ -292,12 +206,97 @@ class ArduinoData {
     );
   }
 
-  /// Parse typed message format (type:1|, type:2|, type:3|)
+  /// Parse realtime data from type:4 messages (simplified data)
+  static ArduinoData _parseRealtimeData(String realtimeString) {
+    final dataMap = <String, dynamic>{};
+
+    // Split by '|' and parse key:value pairs
+    final pairs = realtimeString.split('|');
+    for (final pair in pairs) {
+      final colonIndex = pair.indexOf(':');
+      if (colonIndex > 0) {
+        final key = pair.substring(0, colonIndex).trim();
+        final value = pair.substring(colonIndex + 1).trim();
+        dataMap[key] = value;
+      }
+    }
+
+    // Parse LINE array: [position, correction]
+    List<double> lineData = [];
+    final lineStr = dataMap['LINE'] ?? '[]';
+    if (lineStr.startsWith('[') && lineStr.endsWith(']')) {
+      final arrayContent = lineStr.substring(1, lineStr.length - 1);
+      lineData = arrayContent.split(',').map((s) => double.tryParse(s.trim()) ?? 0.0).toList();
+    }
+
+    // Parse LEFT array: [rpm, pwm, encoder_count]
+    List<double> leftData = [];
+    final leftStr = dataMap['LEFT'] ?? '[]';
+    if (leftStr.startsWith('[') && leftStr.endsWith(']')) {
+      final arrayContent = leftStr.substring(1, leftStr.length - 1);
+      leftData = arrayContent.split(',').map((s) => double.tryParse(s.trim()) ?? 0.0).toList();
+    }
+
+    // Parse RIGHT array: [rpm, pwm, encoder_count]
+    List<double> rightData = [];
+    final rightStr = dataMap['RIGHT'] ?? '[]';
+    if (rightStr.startsWith('[') && rightStr.endsWith(']')) {
+      final arrayContent = rightStr.substring(1, rightStr.length - 1);
+      rightData = arrayContent.split(',').map((s) => double.tryParse(s.trim()) ?? 0.0).toList();
+    }
+
+    // Parse QTR sensors
+    List<int> sensors = [];
+    final qtrStr = dataMap['QTR'] ?? '[]';
+    if (qtrStr.startsWith('[') && qtrStr.endsWith(']')) {
+      final arrayContent = qtrStr.substring(1, qtrStr.length - 1);
+      sensors = arrayContent.split(',').map((s) => int.tryParse(s.trim()) ?? 0).toList();
+    }
+
+    // Parse uptime
+    final uptime = int.tryParse(dataMap['UPTIME'] ?? '0') ?? 0;
+
+    // Extract values
+    final position = lineData.isNotEmpty ? lineData[0] : 0.0;
+    final correction = lineData.length > 1 ? lineData[1] : 0.0;
+    final leftRpm = leftData.isNotEmpty ? leftData[0] : 0.0;
+    final leftPwm = leftData.length > 1 ? leftData[1] : 0.0;
+    final leftEncoderCount = leftData.length > 2 ? leftData[2] : 0.0;
+    final rightRpm = rightData.isNotEmpty ? rightData[0] : 0.0;
+    final rightPwm = rightData.length > 1 ? rightData[1] : 0.0;
+    final rightEncoderCount = rightData.length > 2 ? rightData[2] : 0.0;
+
+    return ArduinoData(
+      operationMode: 1, // Default to line following for realtime
+      modeName: 'LINE FOLLOWING',
+      leftEncoderSpeed: leftRpm, // RPM as speed
+      rightEncoderSpeed: rightRpm,
+      leftEncoderCount: leftEncoderCount.toInt(),
+      rightEncoderCount: rightEncoderCount.toInt(),
+      totalDistance: 0.0, // Not provided in realtime
+      sensors: sensors,
+      battery: 0.0, // Not provided in realtime
+      cascade: true, // Assume cascade
+      uptime: uptime,
+      position: position,
+      correction: correction,
+      leftSpeed: leftPwm / 255.0, // PWM to normalized
+      rightSpeed: rightPwm / 255.0,
+    );
+  }
+
+  /// Parse typed message format (type:1|, type:2|, type:3|, type:4|)
   static ArduinoData? _fromTypedMessageFormat(String messageString) {
     if (messageString.startsWith('type:2|')) {
-      // Debug/telemetry data
+      // Telemetry data (complete)
       final dataPart = messageString.substring(7); // Remove 'type:2|'
-      return _parseDebugData(dataPart);
+      // return _parseTelemetryData(dataPart);
+      return null; // now use realtime
+    } else if (messageString.startsWith('type:4|')) {
+      // Realtime data (simplified)
+      final dataPart = messageString.substring(7); // Remove 'type:4|'
+      print("Realtime data: $dataPart");
+      return _parseRealtimeData(dataPart);
     } else if (messageString.startsWith('type:1|')) {
       // System message - not ArduinoData, return null
       return null;
@@ -308,12 +307,12 @@ class ArduinoData {
     return null;
   }
 
-  /// Parse debug data from type:2 messages
-  static ArduinoData _parseDebugData(String debugString) {
+  /// Parse telemetry data from type:2 messages (complete data)
+  static ArduinoData _parseTelemetryData(String telemetryString) {
     final dataMap = <String, dynamic>{};
 
     // Split by '|' and parse key:value pairs
-    final pairs = debugString.split('|');
+    final pairs = telemetryString.split('|');
     for (final pair in pairs) {
       final colonIndex = pair.indexOf(':');
       if (colonIndex > 0) {
@@ -334,6 +333,8 @@ class ArduinoData {
     // Parse simple values
     final cascade = (int.tryParse(dataMap['CASCADE'] ?? '1') ?? 1) == 1;
     final mode = int.tryParse(dataMap['MODE'] ?? '0') ?? 0;
+    final battery = double.tryParse(dataMap['BATT'] ?? '0.0') ?? 0.0;
+    final loopUs = int.tryParse(dataMap['LOOP_US'] ?? '0') ?? 0;
     final uptime = int.tryParse(dataMap['UPTIME'] ?? '0') ?? 0;
 
     // Extract values from arrays
@@ -341,36 +342,38 @@ class ArduinoData {
     double leftEncoderSpeed = 0.0, rightEncoderSpeed = 0.0;
     int leftEncoderCount = 0, rightEncoderCount = 0;
 
-    if (linePid != null && linePid.length >= 5) {
+    if (linePid != null && linePid.length >= 8) {
+      // LINE_PID: [KP,KI,KD,posicion_linea,output,error,integral,derivada]
       position = linePid[3]; // posicion_linea
       correction = linePid[4]; // output
-      if (linePid.length >= 6) error = linePid[5]; // error
+      error = linePid[5]; // error
     }
 
     if (leftVel != null && leftVel.length >= 4) {
+      // LVEL: [RPM_actual,RPM_objetivo,PWM,encoder_count]
       leftEncoderSpeed = leftVel[0]; // RPM_actual
       leftSpeedCmd = leftVel[1]; // RPM_objetivo
       leftEncoderCount = leftVel[3].toInt(); // encoder_count
     }
 
     if (rightVel != null && rightVel.length >= 4) {
+      // RVEL: [RPM_actual,RPM_objetivo,PWM,encoder_count]
       rightEncoderSpeed = rightVel[0]; // RPM_actual
       rightSpeedCmd = rightVel[1]; // RPM_objetivo
       rightEncoderCount = rightVel[3].toInt(); // encoder_count
     }
 
     return ArduinoData(
-      operationMode: mode,
+      operationMode: mode == 0 ? 1 : 2, // 0=LINE_FOLLOWING, 1=REMOTE_CONTROL
       modeName: mode == 0 ? 'LINE FOLLOWING' : 'REMOTE CONTROL',
       leftEncoderSpeed: leftEncoderSpeed,
       rightEncoderSpeed: rightEncoderSpeed,
       leftEncoderCount: leftEncoderCount,
       rightEncoderCount: rightEncoderCount,
-      totalDistance: 0.0, // Not provided in new format
+      totalDistance: 0.0, // Not provided in telemetry
       sensors: qtr ?? [],
-      battery: 0.0, // Not provided
-      closedLoop: true, // Assume closed loop
-      cascade: cascade,
+      battery: battery,
+      cascade: true,
       uptime: uptime,
       position: position,
       error: error,
@@ -421,7 +424,6 @@ class ArduinoData {
       _keyTotalDistance: totalDistance,
       _keySensors: sensors,
       'battery': battery,
-      'closedLoop': closedLoop,
       'cascade': cascade,
       'uptime': uptime,
     };
@@ -650,13 +652,19 @@ class TelemetryRequestCommand {
    }
 }
 
-class TelemetryEnableCommand {
+class RealtimeEnableCommand {
    final bool enable;
 
-   TelemetryEnableCommand(this.enable);
+   RealtimeEnableCommand(this.enable);
 
    String toCommand() {
-     return 'debug ${enable ? 1 : 0}';
+     return 'set realtime ${enable ? 1 : 0}';
+   }
+}
+
+class RealtimeRequestCommand {
+   String toCommand() {
+     return 'realtime';
    }
 }
 
@@ -699,12 +707,32 @@ class RcCommand {
 }
 
 class CascadeCommand {
-    final bool enable; // true to enable cascade, false to disable
+     final bool enable; // true to enable cascade, false to disable
 
-    CascadeCommand(this.enable);
+     CascadeCommand(this.enable);
+
+     String toCommand() {
+       return 'cascade ${enable ? 1 : 0}';
+     }
+ }
+
+class BaseSpeedCommand {
+    final double value;
+
+    BaseSpeedCommand(this.value);
 
     String toCommand() {
-      return 'cascade ${enable ? 1 : 0}';
+      return 'set base speed ${value.toStringAsFixed(0)}';
+    }
+}
+
+class BaseRpmCommand {
+    final double value;
+
+    BaseRpmCommand(this.value);
+
+    String toCommand() {
+      return 'set base rpm ${value.toStringAsFixed(1)}';
     }
 }
 
@@ -770,219 +798,6 @@ class ArduinoPIDConfig {
   }
 }
 
-/// Base message wrapper for all Arduino communications
-class ArduinoMessage {
-  final String type;
-  final Map<String, dynamic> payload;
-
-  ArduinoMessage({
-    required this.type,
-    required this.payload,
-  });
-
-  static ArduinoMessage? fromJson(String jsonString) {
-    try {
-      final map = jsonDecode(jsonString);
-      if (map.containsKey('type') && map.containsKey('payload')) {
-        return ArduinoMessage(
-          type: map['type'] as String,
-          payload: map['payload'] as Map<String, dynamic>,
-        );
-      }
-      return null;
-    } catch (e) {
-      return null;
-    }
-  }
-
-  bool get isTelemetry => type == 'telemetry';
-  bool get isStatus => type == 'status';
-  bool get isCmd => type == 'cmd';
-
-  @override
-  String toString() {
-    return 'ArduinoMessage{type: $type, payload: $payload}';
-  }
-}
-
-/// Telemetry data from Arduino
-class TelemetryData {
-  final int timestamp;
-  final int mode;
-  final double velocity;
-  final double acceleration;
-  final double distance;
-  final MotorData left;
-  final MotorData right;
-  final double battery;
-  final List<int> qtr;
-  final List<double> pid;
-  final double setPoint;
-  final double baseSpeed;
-  final double error;
-  final double correction;
-
-  TelemetryData({
-    required this.timestamp,
-    required this.mode,
-    required this.velocity,
-    required this.acceleration,
-    required this.distance,
-    required this.left,
-    required this.right,
-    required this.battery,
-    required this.qtr,
-    required this.pid,
-    required this.setPoint,
-    required this.baseSpeed,
-    required this.error,
-    required this.correction,
-  });
-
-  static TelemetryData? fromPayload(Map<String, dynamic> payload) {
-    try {
-      return TelemetryData(
-        timestamp: payload['timestamp'] ?? 0,
-        mode: payload['mode'] ?? 0,
-        velocity: (payload['velocity'] as num?)?.toDouble() ?? 0.0,
-        acceleration: (payload['acceleration'] as num?)?.toDouble() ?? 0.0,
-        distance: (payload['distance'] as num?)?.toDouble() ?? 0.0,
-        left: MotorData.fromJson(payload['left'] as Map<String, dynamic>? ?? {}),
-        right: MotorData.fromJson(payload['right'] as Map<String, dynamic>? ?? {}),
-        battery: (payload['battery'] as num?)?.toDouble() ?? 0.0,
-        qtr: (payload['qtr'] as List<dynamic>?)?.map((e) => (e as num).toInt()).toList() ?? [],
-        pid: (payload['pid'] as List<dynamic>?)?.map((e) => (e as num).toDouble()).toList() ?? [0.0, 0.0, 0.0],
-        setPoint: (payload['set_point'] as num?)?.toDouble() ?? 0.0,
-        baseSpeed: (payload['base_speed'] as num?)?.toDouble() ?? 0.0,
-        error: (payload['error'] as num?)?.toDouble() ?? 0.0,
-        correction: (payload['correction'] as num?)?.toDouble() ?? 0.0,
-      );
-    } catch (e) {
-      return null;
-    }
-  }
-
-  OperationMode get operationMode => OperationMode.fromId(mode);
-  bool get isLineFollowingMode => mode == 0;
-  bool get isRemoteControlMode => mode == 1;
-  bool get isServoMode => mode == 2;
-
-  @override
-  String toString() {
-    return jsonEncode({
-      'type': 'telemetry',
-      'payload': {
-        'timestamp': timestamp,
-        'mode': mode,
-        'velocity': velocity,
-        'acceleration': acceleration,
-        'distance': distance,
-        'left': left.toJson(),
-        'right': right.toJson(),
-        'battery': battery,
-        'qtr': qtr,
-        'pid': pid,
-        'set_point': setPoint,
-        'base_speed': baseSpeed,
-        'error': error,
-        'correction': correction,
-      }
-    });
-  }
-}
-
-/// Motor data structure
-class MotorData {
-  final double vel;
-  final double acc;
-  final double rpm;
-  final double distance;
-  final int pwm;
-
-  MotorData({
-    required this.vel,
-    required this.acc,
-    required this.rpm,
-    required this.distance,
-    required this.pwm,
-  });
-
-  static MotorData fromJson(Map<String, dynamic> json) {
-    return MotorData(
-      vel: (json['vel'] as num?)?.toDouble() ?? 0.0,
-      acc: (json['acc'] as num?)?.toDouble() ?? 0.0,
-      rpm: (json['rpm'] as num?)?.toDouble() ?? 0.0,
-      distance: (json['distance'] as num?)?.toDouble() ?? 0.0,
-      pwm: (json['pwm'] as num?)?.toInt() ?? 0,
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'vel': vel,
-      'acc': acc,
-      'rpm': rpm,
-      'distance': distance,
-      'pwm': pwm,
-    };
-  }
-}
-
-/// Status messages from Arduino
-class StatusMessage {
-  final String status;
-
-  StatusMessage(this.status);
-
-  static StatusMessage? fromPayload(Map<String, dynamic> payload) {
-    try {
-      if (payload.containsKey('status') && payload['status'] is String) {
-        return StatusMessage(payload['status']);
-      }
-      return null;
-    } catch (e) {
-      return null;
-    }
-  }
-
-  @override
-  String toString() {
-    return jsonEncode({
-      'type': 'status',
-      'payload': {
-        'status': status,
-      }
-    });
-  }
-}
-
-/// Command messages from Arduino
-class CmdMessage {
-  final String buffer;
-
-  CmdMessage(this.buffer);
-
-  static CmdMessage? fromPayload(Map<String, dynamic> payload) {
-    try {
-      if (payload.containsKey('buffer') && payload['buffer'] is String) {
-        return CmdMessage(payload['buffer']);
-      }
-      return null;
-    } catch (e) {
-      return null;
-    }
-  }
-
-  @override
-  String toString() {
-    return jsonEncode({
-      'type': 'cmd',
-      'payload': {
-        'buffer': buffer,
-      }
-    });
-  }
-}
 
 // Backward compatibility alias
 typedef ArduinoLineFollowerData = ArduinoData;

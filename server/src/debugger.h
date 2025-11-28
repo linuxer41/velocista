@@ -47,7 +47,7 @@ public:
   Debugger() {}
 
   // Mensaje de sistema (comandos, estados, etc.)
-  void systemMessage(String msg) {
+  void systemMessage(const char* msg) {
     Serial.print("type:1|");
     Serial.println(msg);
   }
@@ -111,8 +111,33 @@ public:
     Serial.println(data.uptime);
   }
 
+  // Datos de debug realtime (telemetría reducida)
+  void realtimeData(DebugData& data) {
+    Serial.print("type:4|");
+    Serial.print("LINE:[");
+    Serial.print(data.linePos, 2); Serial.print(",");
+    Serial.print(data.lineError, 2); Serial.print("]");
+    Serial.print("|LEFT:[");
+    Serial.print(data.lRpm, 2); Serial.print(",");
+    Serial.print(data.lSpeed); Serial.print(",");
+    Serial.print(data.encL); Serial.print("]");
+    Serial.print("|RIGHT:[");
+    Serial.print(data.rRpm, 2); Serial.print(",");
+    Serial.print(data.rSpeed); Serial.print(",");
+    Serial.print(data.encR); Serial.print("]");
+    Serial.print("|QTR:[");
+    Serial.print(data.sensors[0]); Serial.print(",");
+    Serial.print(data.sensors[1]); Serial.print(",");
+    Serial.print(data.sensors[2]); Serial.print(",");
+    Serial.print(data.sensors[3]); Serial.print(",");
+    Serial.print(data.sensors[4]); Serial.print(",");
+    Serial.print(data.sensors[5]); Serial.print("]");
+    Serial.print("|UPTIME:");
+    Serial.println(data.uptime);
+  }
+
   // Confirmación de comando procesado
-  void ackMessage(String cmd) {
+  void ackMessage(const char* cmd) {
     Serial.print("type:3|ack:");
     Serial.println(cmd);
   }

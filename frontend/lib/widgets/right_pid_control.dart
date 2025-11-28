@@ -2,16 +2,16 @@ import 'package:flutter/material.dart';
 import '../app_state.dart';
 import '../arduino_data.dart';
 
-class PidControl extends StatefulWidget {
+class RightPidControl extends StatefulWidget {
   final AppState appState;
 
-  const PidControl({super.key, required this.appState});
+  const RightPidControl({super.key, required this.appState});
 
   @override
-  State<PidControl> createState() => _PidControlState();
+  State<RightPidControl> createState() => _RightPidControlState();
 }
 
-class _PidControlState extends State<PidControl> {
+class _RightPidControlState extends State<RightPidControl> {
   late TextEditingController _kpController;
   late TextEditingController _kiController;
   late TextEditingController _kdController;
@@ -19,10 +19,10 @@ class _PidControlState extends State<PidControl> {
   @override
   void initState() {
     super.initState();
-    // Initialize with default values
-    _kpController = TextEditingController(text: '2.0');
-    _kiController = TextEditingController(text: '0.05');
-    _kdController = TextEditingController(text: '0.75');
+    // Initialize with default values for right motor
+    _kpController = TextEditingController(text: '5.0');
+    _kiController = TextEditingController(text: '0.5');
+    _kdController = TextEditingController(text: '0.1');
 
     // Listen to telemetry data changes
     widget.appState.currentData.addListener(_updateFromTelemetry);
@@ -40,38 +40,32 @@ class _PidControlState extends State<PidControl> {
 
   void _updateFromTelemetry() {
     final data = widget.appState.currentData.value;
-    if (data != null && data.linePid != null && data.linePid!.length >= 3) {
-      // Update controllers with telemetry line PID values
-      _kpController.text = data.linePid![0].toStringAsFixed(2);
-      _kiController.text = data.linePid![1].toStringAsFixed(3);
-      _kdController.text = data.linePid![2].toStringAsFixed(2);
+    if (data != null && data.rightPid != null && data.rightPid!.length >= 3) {
+      // Update controllers with telemetry right PID values
+      _kpController.text = data.rightPid![0].toStringAsFixed(2);
+      _kiController.text = data.rightPid![1].toStringAsFixed(3);
+      _kdController.text = data.rightPid![2].toStringAsFixed(2);
     } else {
       // No telemetry data, show defaults
-      _kpController.text = '2.0';
-      _kiController.text = '0.05';
-      _kdController.text = '0.75';
+      _kpController.text = '5.0';
+      _kiController.text = '0.5';
+      _kdController.text = '0.1';
     }
   }
 
-
   void _updatePIDConfig() {
-    final kp = double.tryParse(_kpController.text) ?? 2.0;
-    final ki = double.tryParse(_kiController.text) ?? 0.05;
-    final kd = double.tryParse(_kdController.text) ?? 0.75;
+    final kp = double.tryParse(_kpController.text) ?? 5.0;
+    final ki = double.tryParse(_kiController.text) ?? 0.5;
+    final kd = double.tryParse(_kdController.text) ?? 0.1;
 
-    // Send PID command to Arduino (line following PID)
+    // Send right motor PID command to Arduino
     final pidCommand = PidCommand(
-      type: 'line',
+      type: 'right',
       kp: kp,
       ki: ki,
       kd: kd,
     );
     widget.appState.sendCommand(pidCommand.toCommand());
-  }
-
-  void _calibrateSensors() {
-    final command = CalibrateQtrCommand();
-    widget.appState.sendCommand(command.toCommand());
   }
 
   @override
@@ -86,7 +80,7 @@ class _PidControlState extends State<PidControl> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'PID Config',
+            'Right Motor PID',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
@@ -103,7 +97,7 @@ class _PidControlState extends State<PidControl> {
                 child: _buildParameterField(
                   label: 'Kp',
                   controller: _kpController,
-                  hint: '2.0',
+                  hint: '5.0',
                 ),
               ),
               const SizedBox(width: 8),
@@ -111,7 +105,7 @@ class _PidControlState extends State<PidControl> {
                 child: _buildParameterField(
                   label: 'Ki',
                   controller: _kiController,
-                  hint: '0.05',
+                  hint: '0.5',
                 ),
               ),
               const SizedBox(width: 8),
@@ -119,7 +113,7 @@ class _PidControlState extends State<PidControl> {
                 child: _buildParameterField(
                   label: 'Kd',
                   controller: _kdController,
-                  hint: '0.75',
+                  hint: '0.1',
                 ),
               ),
             ],
@@ -127,32 +121,18 @@ class _PidControlState extends State<PidControl> {
 
           const SizedBox(height: 8),
 
-          // Action Buttons
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: _updatePIDConfig,
-                  child: const Text('Enviar', style: TextStyle(fontSize: 12)),
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    backgroundColor: Theme.of(context).colorScheme.primary,
-                    foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                  ),
-                ),
+          // Action Button
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _updatePIDConfig,
+              child: const Text('Update Right PID', style: TextStyle(fontSize: 12)),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Theme.of(context).colorScheme.onPrimary,
               ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: _calibrateSensors,
-                  child: const Text('Calibrar', style: TextStyle(fontSize: 12)),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    side: BorderSide(color: Theme.of(context).colorScheme.primary),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
 
           const SizedBox(height: 8),
@@ -161,7 +141,7 @@ class _PidControlState extends State<PidControl> {
           ValueListenableBuilder<ArduinoData?>(
             valueListenable: widget.appState.currentData,
             builder: (context, data, child) {
-              if (data == null || data.linePid == null) return const SizedBox.shrink();
+              if (data == null || data.rightPid == null) return const SizedBox.shrink();
 
               return Container(
                 padding: const EdgeInsets.all(6),
@@ -176,7 +156,7 @@ class _PidControlState extends State<PidControl> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Line PID Status',
+                      'Right Motor Status',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
@@ -185,7 +165,7 @@ class _PidControlState extends State<PidControl> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Position: ${data.linePid![3].toStringAsFixed(1)}',
+                      'RPM Target: ${data.rightPid![3].toStringAsFixed(1)}',
                       style: TextStyle(
                         fontSize: 10,
                         color: Theme.of(context).colorScheme.onSurfaceVariant,

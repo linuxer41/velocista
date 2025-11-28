@@ -99,8 +99,8 @@ const uint16_t LOOP_SPEED_MS = 5;    // 200 Hz para PID de velocidad
 // Velocidad base
 const float BASE_RPM = 120.0f; // RPM base para control de velocidad
 
-// Debug
-const unsigned long DEBUG_INTERVAL_MS = 100; // Intervalo de envío de debug en ms
+// Realtime
+const unsigned long REALTIME_INTERVAL_MS = 100; // Intervalo de envío de realtime en ms
 
 // =============================================================================
 // VALORES POR DEFECTO
