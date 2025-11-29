@@ -624,15 +624,40 @@ class _HomePageState extends State<HomePage> {
                                             ),
                                           ] else ...[
                                             const SizedBox(width: 4),
-                                            Text(
-                                              'Conectar',
-                                              style: TextStyle(
-                                                fontSize: 9,
-                                                fontWeight: FontWeight.w500,
-                                                color: Theme.of(context)
-                                                    .colorScheme
-                                                    .onSurface,
-                                                fontFamily: 'Space Grotesk',
+                                            Flexible(
+                                              child: Column(
+                                                mainAxisSize: MainAxisSize.min,
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    'Desconectado',
+                                                    style: TextStyle(
+                                                      fontSize: 8,
+                                                      fontWeight: FontWeight.w600,
+                                                      color: Theme.of(context)
+                                                          .colorScheme
+                                                          .onSurface,
+                                                      fontFamily: 'Space Grotesk',
+                                                    ),
+                                                    overflow: TextOverflow.ellipsis,
+                                                    maxLines: 1,
+                                                  ),
+                                                  Text(
+                                                    'Conectar aquí',
+                                                    style: TextStyle(
+                                                      fontSize: 6,
+                                                      fontWeight: FontWeight.w400,
+                                                      color: Theme.of(context)
+                                                          .colorScheme
+                                                          .onSurface
+                                                          .withOpacity(0.8),
+                                                      fontFamily: 'Space Grotesk',
+                                                    ),
+                                                    overflow: TextOverflow.ellipsis,
+                                                    maxLines: 1,
+                                                  ),
+                                                ],
                                               ),
                                             ),
                                           ],
@@ -976,14 +1001,18 @@ class _HomePageState extends State<HomePage> {
                               // Use realtime data for live encoder readings
                               final leftRpm = data != null && data.leftVel != null && data.leftVel!.length >= 1
                                   ? data.leftVel![0] : 0.0; // RPM from realtime LEFT
+                              final leftTargetRpm = data != null && data.leftVel != null && data.leftVel!.length >= 2
+                                  ? data.leftVel![1] : 0.0; // Target RPM from realtime LEFT
                               final rightRpm = data != null && data.rightVel != null && data.rightVel!.length >= 1
                                   ? data.rightVel![0] : 0.0; // RPM from realtime RIGHT
+                              final rightTargetRpm = data != null && data.rightVel != null && data.rightVel!.length >= 2
+                                  ? data.rightVel![1] : 0.0; // Target RPM from realtime RIGHT
                               return Row(
                                 mainAxisAlignment:
                                     MainAxisAlignment.spaceEvenly,
                                 children: [
                                   Text(
-                                    'Motor Izq: ${leftRpm.toStringAsFixed(1)} RPM',
+                                    'Motor Izq: ${leftRpm.toStringAsFixed(1)} / ${leftTargetRpm.toStringAsFixed(1)} RPM',
                                     style: TextStyle(
                                       fontSize: 10,
                                       fontWeight: FontWeight.w500,
@@ -994,7 +1023,7 @@ class _HomePageState extends State<HomePage> {
                                     ),
                                   ),
                                   Text(
-                                    'Motor Der: ${rightRpm.toStringAsFixed(1)} RPM',
+                                    'Motor Der: ${rightRpm.toStringAsFixed(1)} / ${rightTargetRpm.toStringAsFixed(1)} RPM',
                                     style: TextStyle(
                                       fontSize: 10,
                                       fontWeight: FontWeight.w500,

@@ -28,8 +28,8 @@ save               - Guarda configuración actual en EEPROM
 
 ### Control de Modo
 ```
-mode 1/2             - Cambia a modo seguimiento de línea (1) o control remoto (2)
-cascade 0/1          - Desactiva/activa control en cascada (solo en modo línea)
+set mode 0/1         - Cambia a modo seguimiento de línea (0) o control remoto (1)
+set cascade 0/1      - Desactiva/activa control en cascada (solo en modo línea)
 ```
 
 ### Ajuste de PID
@@ -57,7 +57,7 @@ help                - Muestra lista de comandos disponibles
 La salida de realtime se envía cada 100ms cuando está activada:
 
 ```
-type:4|LINE:[429.30,-225.00]|LEFT:[120.00,166,1234]|RIGHT:[120.00,53,5678]|QTR:[687,292,0,0,0,0]|UPTIME:5000
+type:4|LINE:[429.30,-225.00]|LEFT:[120.00,232.50,166,1234]|RIGHT:[120.00,7.50,53,5678]|QTR:[687,292,0,0,0,0]|MODE:0|CASCADE:1|UPTIME:5000
 ```
 
 La salida de telemetry completa se envía con el comando `telemetry`:
@@ -81,7 +81,7 @@ type:2|LINE_PID:[...]|...
 Los datos de realtime usan prefijo `type:4|`:
 
 ```
-type:4|LINE:[429.30,-225.00]|LEFT:[120.00,166,1234]|RIGHT:[120.00,53,5678]|QTR:[687,292,0,0,0,0]|UPTIME:5000
+type:4|LINE:[429.30,-225.00]|LEFT:[120.00,232.50,166,1234]|RIGHT:[120.00,7.50,53,5678]|QTR:[687,292,0,0,0,0]|MODE:0|CASCADE:1|UPTIME:5000
 ```
 
 Los mensajes de confirmación de comandos usan prefijo `type:3|`:
@@ -99,6 +99,14 @@ type:3|ack:mode line
 - **MODE**: Modo actual (0=LINE_FOLLOWING, 1=REMOTE_CONTROL)
 - **BATT**: Voltaje de batería en V
 - **LOOP_US**: Tiempo de ejecución del último ciclo PID en microsegundos
+- **UPTIME**: Tiempo desde inicio en ms
+
+### Campos de Realtime
+- **LINE**: [posicion_linea,error] de la línea
+- **LEFT/RIGHT**: [RPM_actual,RPM_objetivo,PWM,encoder_count] izquierdo/derecho
+- **QTR**: Valores crudos de los 6 sensores QTR
+- **MODE**: Modo actual (0=LINE_FOLLOWING, 1=REMOTE_CONTROL)
+- **CASCADE**: Control en cascada (1=activado, 0=desactivado)
 - **UPTIME**: Tiempo desde inicio en ms
 
 ## Configuración Inicial
@@ -136,7 +144,7 @@ await port.open({ baudRate: 9600 });
 
 // Enviar comando
 const writer = port.writable.getWriter();
-await writer.write(new TextEncoder().encode("mode remote\n"));
+await writer.write(new TextEncoder().encode("set mode 1\n"));
 
 // Leer respuesta
 const reader = port.readable.getReader();
@@ -190,8 +198,8 @@ function parseDebugData(debugString) {
 }
 
 // Ejemplo:
-// Input: "type:2|LINE_PID:[2.00,0.05,0.75,429.30,-225.00,150.00,50.00,5.25]|LVEL:[120.00,232.50,166,1234]|..."
-// Output: { LINE_PID: [2, 0.05, 0.75, 429.3, -225, 150, 50, 5.25], LVEL: [120, 232.5, 166, 1234], ... }
+// Input: "type:4|LINE:[429.30,-225.00]|LEFT:[120.00,232.50,166,1234]|RIGHT:[120.00,7.50,53,5678]|QTR:[687,292,0,0,0,0]|MODE:0|CASCADE:1|UPTIME:5000"
+// Output: { LINE: [429.3, -225], LEFT: [120, 232.5, 166, 1234], RIGHT: [120, 7.5, 53, 5678], QTR: [687, 292, 0, 0, 0, 0], MODE: 0, CASCADE: 1, UPTIME: 5000 }
 ```
 
 ### Recomendaciones para UI
@@ -204,11 +212,13 @@ function parseDebugData(debugString) {
 
 ### Comandos Recomendados para UI
 1. **Conexión**: Verificar puerto serial disponible
-2. **Modo**: Selector LINE/REMOTE
-3. **PID Tuning**: Sliders para KP/KI/KD con envío automático
-4. **Telemetría**: Gráfico en tiempo real de posición, RPM, sensores
-5. **Control Remoto**: Joystick virtual para enviar comandos `rc throttle,steering`
-6. **Calibración**: Botón para iniciar calibración con progreso
+2. **Modo**: Selector LINE/REMOTE con comandos `set mode 0` / `set mode 1`
+3. **Cascada**: Toggle para control cascada con `set cascade 0/1`
+4. **PID Tuning**: Sliders para KP/KI/KD con envío automático (`set line kp,ki,kd`, `set left kp,ki,kd`, `set right kp,ki,kd`)
+5. **Telemetría**: Gráfico en tiempo real de posición, RPM, sensores (`set realtime 1`)
+6. **Control Remoto**: Joystick virtual para enviar comandos `rc throttle,steering`
+7. **Calibración**: Botón para iniciar calibración con progreso (`calibrate`)
+8. **Configuración**: Guardar/cargar configuración (`save`, `reset`)
 
 ## Consideraciones Técnicas
 
@@ -256,9 +266,14 @@ pio run  # PlatformIO
 
 ### Testing
 - Usar `set realtime 1` para monitoreo continuo de datos realtime
-- `telemetry` para snapshots completos
-- `realtime` para snapshot de datos realtime
-- `reset` para estado conocido
+- `telemetry` para snapshots completos de telemetry
+- `realtime` para snapshot único de datos realtime
+- `set mode 0/1` para cambiar modos de operación
+- `set cascade 0/1` para activar/desactivar control cascada
+- `set line/left/right kp,ki,kd` para ajustar PID
+- `rc throttle,steering` para control remoto
+- `save` para guardar configuración en EEPROM
+- `reset` para restaurar valores por defecto
 
 ### Logs
 Todos los comandos y respuestas se loguean en serial para debugging de interfaz.

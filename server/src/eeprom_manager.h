@@ -42,6 +42,9 @@ public:
       config.rcDeadzone = RC_DEADZONE;
       config.rcMaxThrottle = RC_MAX_THROTTLE;
       config.rcMaxSteering = RC_MAX_STEERING;
+      config.cascadeMode = DEFAULT_CASCADE;
+      config.operationMode = DEFAULT_OPERATION_MODE;
+      config.baseRPM = DEFAULT_BASE_RPM;
       for (int i = 0; i < NUM_SENSORS; i++) {
         config.sensorMin[i] = 0;
         config.sensorMax[i] = 1023;

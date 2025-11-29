@@ -158,13 +158,13 @@ class _TerminalPageState extends State<TerminalPage> {
               child: ListView(
                 scrollDirection: Axis.horizontal,
                 children: [
-                  _buildQuickCommandChip('LINE FOLLOW', 'mode 1'),
+                  _buildQuickCommandChip('LINE FOLLOW', 'set mode 0'),
                   const SizedBox(width: 8),
-                  _buildQuickCommandChip('REMOTE CTRL', 'mode 2'),
+                  _buildQuickCommandChip('REMOTE CTRL', 'set mode 1'),
                   const SizedBox(width: 8),
-                  _buildQuickCommandChip('CASCADE ON', 'cascade 1'),
+                  _buildQuickCommandChip('CASCADE ON', 'set cascade 1'),
                   const SizedBox(width: 8),
-                  _buildQuickCommandChip('CASCADE OFF', 'cascade 0'),
+                  _buildQuickCommandChip('CASCADE OFF', 'set cascade 0'),
                   const SizedBox(width: 8),
                   _buildQuickCommandChip('REALTIME ON', 'set realtime 1'),
                   const SizedBox(width: 8),

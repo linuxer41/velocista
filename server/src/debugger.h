@@ -119,10 +119,12 @@ public:
     Serial.print(data.lineError, 2); Serial.print("]");
     Serial.print("|LEFT:[");
     Serial.print(data.lRpm, 2); Serial.print(",");
+    Serial.print(data.lTargetRpm, 2); Serial.print(",");
     Serial.print(data.lSpeed); Serial.print(",");
     Serial.print(data.encL); Serial.print("]");
     Serial.print("|RIGHT:[");
     Serial.print(data.rRpm, 2); Serial.print(",");
+    Serial.print(data.rTargetRpm, 2); Serial.print(",");
     Serial.print(data.rSpeed); Serial.print(",");
     Serial.print(data.encR); Serial.print("]");
     Serial.print("|QTR:[");
@@ -132,6 +134,10 @@ public:
     Serial.print(data.sensors[3]); Serial.print(",");
     Serial.print(data.sensors[4]); Serial.print(",");
     Serial.print(data.sensors[5]); Serial.print("]");
+    Serial.print("|MODE:");
+    Serial.print((int)data.mode);
+    Serial.print("|CASCADE:");
+    Serial.print(data.cascade ? "1" : "0");
     Serial.print("|UPTIME:");
     Serial.println(data.uptime);
   }

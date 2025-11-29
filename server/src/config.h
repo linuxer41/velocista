@@ -40,6 +40,15 @@ const int SENSOR_PINS[NUM_SENSORS] = {A0, A1, A2, A3, A4, A5};
 #define MODE_LED_PIN      13  // LED integrado para indicar modo
 
 // =============================================================================
+// ENUMERACIONES
+// =============================================================================
+
+enum OperationMode {
+  MODE_LINE_FOLLOWING,   // Seguir línea
+  MODE_REMOTE_CONTROL    // Control remoto
+};
+
+// =============================================================================
 // ESTRUCTURA CONFIGURACIÓN EEPROM
 // =============================================================================
 
@@ -64,6 +73,9 @@ struct RobotConfig {
    int16_t rcDeadzone;                   // Zona muerta control remoto
    int16_t rcMaxThrottle;                // Throttle máximo control remoto
    int16_t rcMaxSteering;                // Steering máximo control remoto
+   bool cascadeMode;                     // Modo cascada activado/desactivado
+   OperationMode operationMode;          // Modo de operación actual
+   float baseRPM;                        // RPM base para control de velocidad
    uint32_t checksum;                    // Checksum para verificación
 };
 
@@ -121,14 +133,12 @@ const float DEFAULT_RIGHT_KI = 0.5;
 const float DEFAULT_RIGHT_KD = 0.1;
 
 const int16_t DEFAULT_BASE_SPEED = 200;
+const bool DEFAULT_CASCADE = true;
+#define DEFAULT_OPERATION_MODE MODE_LINE_FOLLOWING
+const float DEFAULT_BASE_RPM = 120.0f;
 
 // =============================================================================
 // ENUMERACIONES
 // =============================================================================
-
-enum OperationMode {
-  MODE_LINE_FOLLOWING,   // Seguir línea
-  MODE_REMOTE_CONTROL    // Control remoto
-};
 
 #endif

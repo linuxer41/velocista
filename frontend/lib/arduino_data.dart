@@ -3,8 +3,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 enum OperationMode {
-     lineFollowing(1, 'SEGUIDOR DE LÍNEA', Icons.route, 'SEGUID'),
-     remoteControl(2, 'CONTROL REMOTO', Icons.gamepad, 'CONTROL');
+     lineFollowing(0, 'SEGUIDOR DE LÍNEA', Icons.route, 'SEGUID'),
+     remoteControl(1, 'CONTROL REMOTO', Icons.gamepad, 'CONTROL');
 
   const OperationMode(this.id, this.displayName, this.icon, this.shortName);
   final int id;
@@ -221,7 +221,13 @@ class ArduinoData {
       }
     }
 
-    // Parse LINE array: [position, correction]
+    // Parse MODE
+    final mode = int.tryParse(dataMap['MODE'] ?? '0') ?? 0;
+
+    // Parse CASCADE
+    final cascade = (int.tryParse(dataMap['CASCADE'] ?? '1') ?? 1) == 1;
+
+    // Parse LINE array: [position, error]
     List<double> lineData = [];
     final lineStr = dataMap['LINE'] ?? '[]';
     if (lineStr.startsWith('[') && lineStr.endsWith(']')) {
@@ -229,7 +235,7 @@ class ArduinoData {
       lineData = arrayContent.split(',').map((s) => double.tryParse(s.trim()) ?? 0.0).toList();
     }
 
-    // Parse LEFT array: [rpm, pwm, encoder_count]
+    // Parse LEFT array: [RPM_actual, RPM_objetivo, PWM, encoder_count]
     List<double> leftData = [];
     final leftStr = dataMap['LEFT'] ?? '[]';
     if (leftStr.startsWith('[') && leftStr.endsWith(']')) {
@@ -237,7 +243,7 @@ class ArduinoData {
       leftData = arrayContent.split(',').map((s) => double.tryParse(s.trim()) ?? 0.0).toList();
     }
 
-    // Parse RIGHT array: [rpm, pwm, encoder_count]
+    // Parse RIGHT array: [RPM_actual, RPM_objetivo, PWM, encoder_count]
     List<double> rightData = [];
     final rightStr = dataMap['RIGHT'] ?? '[]';
     if (rightStr.startsWith('[') && rightStr.endsWith(']')) {
@@ -258,17 +264,19 @@ class ArduinoData {
 
     // Extract values
     final position = lineData.isNotEmpty ? lineData[0] : 0.0;
-    final correction = lineData.length > 1 ? lineData[1] : 0.0;
+    final error = lineData.length > 1 ? lineData[1] : 0.0;
     final leftRpm = leftData.isNotEmpty ? leftData[0] : 0.0;
-    final leftPwm = leftData.length > 1 ? leftData[1] : 0.0;
-    final leftEncoderCount = leftData.length > 2 ? leftData[2] : 0.0;
+    final leftTargetRpm = leftData.length > 1 ? leftData[1] : 0.0;
+    final leftPwm = leftData.length > 2 ? leftData[2] : 0.0;
+    final leftEncoderCount = leftData.length > 3 ? leftData[3] : 0.0;
     final rightRpm = rightData.isNotEmpty ? rightData[0] : 0.0;
-    final rightPwm = rightData.length > 1 ? rightData[1] : 0.0;
-    final rightEncoderCount = rightData.length > 2 ? rightData[2] : 0.0;
+    final rightTargetRpm = rightData.length > 1 ? rightData[1] : 0.0;
+    final rightPwm = rightData.length > 2 ? rightData[2] : 0.0;
+    final rightEncoderCount = rightData.length > 3 ? rightData[3] : 0.0;
 
     return ArduinoData(
-      operationMode: 1, // Default to line following for realtime
-      modeName: 'LINE FOLLOWING',
+      operationMode: mode == 0 ? 1 : 2, // 0=LINE_FOLLOWING, 1=REMOTE_CONTROL
+      modeName: mode == 0 ? 'LINE FOLLOWING' : 'REMOTE CONTROL',
       leftEncoderSpeed: leftRpm, // RPM as speed
       rightEncoderSpeed: rightRpm,
       leftEncoderCount: leftEncoderCount.toInt(),
@@ -276,12 +284,15 @@ class ArduinoData {
       totalDistance: 0.0, // Not provided in realtime
       sensors: sensors,
       battery: 0.0, // Not provided in realtime
-      cascade: true, // Assume cascade
+      cascade: cascade,
       uptime: uptime,
       position: position,
-      correction: correction,
+      error: error,
+      correction: null, // Not provided in realtime
       leftSpeed: leftPwm / 255.0, // PWM to normalized
       rightSpeed: rightPwm / 255.0,
+      leftVel: [leftRpm, leftTargetRpm, leftPwm, leftEncoderCount],
+      rightVel: [rightRpm, rightTargetRpm, rightPwm, rightEncoderCount],
     );
   }
 
@@ -622,13 +633,13 @@ class ArduinoData {
 
 /// Command classes for different modes
 class ModeChangeCommand {
-   final OperationMode mode;
+    final OperationMode mode;
 
-   ModeChangeCommand(this.mode);
+    ModeChangeCommand(this.mode);
 
-   String toCommand() {
-     return 'mode ${mode.id}';
-   }
+    String toCommand() {
+      return 'set mode ${mode.id}';
+    }
 }
 
 
@@ -707,14 +718,14 @@ class RcCommand {
 }
 
 class CascadeCommand {
-     final bool enable; // true to enable cascade, false to disable
+      final bool enable; // true to enable cascade, false to disable
 
-     CascadeCommand(this.enable);
+      CascadeCommand(this.enable);
 
-     String toCommand() {
-       return 'cascade ${enable ? 1 : 0}';
-     }
- }
+      String toCommand() {
+        return 'set cascade ${enable ? 1 : 0}';
+      }
+  }
 
 class BaseSpeedCommand {
     final double value;
