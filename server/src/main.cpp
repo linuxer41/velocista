@@ -22,7 +22,7 @@ Debugger debugger;
 // VARIABLES GLOBALES
 // ==========================
 OperationMode currentMode;
-bool realtimeEnabled = true;
+bool realtimeEnabled = false;
 float lastPidOutput = 0;
 unsigned long lastRealtimeTime = 0;
 unsigned long lastLineTime = 0;
@@ -58,11 +58,18 @@ void rightEncoderISR() {
   rightMotor.updateEncoder();
 }
 
+String readSerialLine() {
+  String s = Serial.readStringUntil('\n');
+  s.trim();
+  s.toLowerCase();
+  return s;
+}
 // ==========================
 // SETUP
 // ==========================
 void setup() {
   Serial.begin(115200);
+  Serial.setTimeout(10000);  // 10 second timeout for commands
   while (!Serial);
 
   leftMotor.init();
@@ -160,149 +167,133 @@ void loop() {
 
   // Serial Commands
   if (Serial.available()) {
-    String command = Serial.readStringUntil('\n');
-    command.trim();
+    String command = readSerialLine();
+    bool success = false;
+    Serial.println("command: " + command);
+    if (command.length() == 0) return;          // línea vacía
 
-    if (command.equalsIgnoreCase("calibrate")) {
+    if (command == "calibrate") {
       leftMotor.setSpeed(0);
       rightMotor.setSpeed(0);
       qtr.calibrate();
-      debugger.ackMessage(command.c_str());
-    } else if (command.startsWith("set realtime ")) {
-      int val = command.substring(13).toInt();
-      realtimeEnabled = (val == 1);
-      debugger.ackMessage(command.c_str());
-    } else if (command.startsWith("set mode ")) {
-      int val = command.substring(9).toInt();
-      if (val == 0) currentMode = MODE_LINE_FOLLOWING;
-      else if (val == 1) {
-        currentMode = MODE_REMOTE_CONTROL;
-        throttle = 0;
-        steering = 0;
-        leftMotor.setSpeed(0);
-        rightMotor.setSpeed(0);
-      }
-      config.operationMode = currentMode;
-      debugger.ackMessage(command.c_str());
-    } else if (command.startsWith("set cascade ")) {
-      int val = command.substring(12).toInt();
-      config.cascadeMode = (val == 1);
-      debugger.ackMessage(command.c_str());
-    } else if (command.startsWith("set line ")) {
-      String params = command.substring(9);
-      int comma1 = params.indexOf(',');
-      int comma2 = params.indexOf(',', comma1 + 1);
-      if (comma1 > 0 && comma2 > comma1) {
-        float kp = params.substring(0, comma1).toFloat();
-        float ki = params.substring(comma1 + 1, comma2).toFloat();
-        float kd = params.substring(comma2 + 1).toFloat();
-        config.lineKp = kp;
-        config.lineKi = ki;
-        config.lineKd = kd;
-        linePid.setGains(kp, ki, kd);
-        debugger.ackMessage(command.c_str());
-      } else {
-        debugger.systemMessage("Formato: set line kp,ki,kd");
-      }
-    } else if (command.startsWith("set left ")) {
-      String params = command.substring(9);
-      int comma1 = params.indexOf(',');
-      int comma2 = params.indexOf(',', comma1 + 1);
-      if (comma1 > 0 && comma2 > comma1) {
-        float kp = params.substring(0, comma1).toFloat();
-        float ki = params.substring(comma1 + 1, comma2).toFloat();
-        float kd = params.substring(comma2 + 1).toFloat();
-        config.leftKp = kp;
-        config.leftKi = ki;
-        config.leftKd = kd;
-        leftPid.setGains(kp, ki, kd);
-        debugger.ackMessage(command.c_str());
-      } else {
-        debugger.systemMessage("Formato: set left kp,ki,kd");
-      }
-    } else if (command.startsWith("set right ")) {
-      String params = command.substring(10);
-      int comma1 = params.indexOf(',');
-      int comma2 = params.indexOf(',', comma1 + 1);
-      if (comma1 > 0 && comma2 > comma1) {
-        float kp = params.substring(0, comma1).toFloat();
-        float ki = params.substring(comma1 + 1, comma2).toFloat();
-        float kd = params.substring(comma2 + 1).toFloat();
-        config.rightKp = kp;
-        config.rightKi = ki;
-        config.rightKd = kd;
-        rightPid.setGains(kp, ki, kd);
-        debugger.ackMessage(command.c_str());
-      } else {
-        debugger.systemMessage("Formato: set right kp,ki,kd");
-      }
-    } else if (command.startsWith("rc ")) {
-      String params = command.substring(3);
-      int comma = params.indexOf(',');
-      if (comma > 0) {
-        int t = params.substring(0, comma).toInt();
-        int s = params.substring(comma + 1).toInt();
-        throttle = constrain(t, -MAX_SPEED, MAX_SPEED);
-        steering = constrain(s, -MAX_SPEED, MAX_SPEED);
-        debugger.ackMessage(command.c_str());
-      } else {
-        debugger.systemMessage("Formato: rc throttle,steering");
-      }
-    } else if (command.equalsIgnoreCase("save")) {
+      success = true;
+
+    } else if (command == "save") {
       saveConfig();
-      debugger.ackMessage(command.c_str());
-    } else if (command.equalsIgnoreCase("telemetry")) {
+      success = true;
+
+    } else if (command == "telemetry") {
       printDebugInfo();
-      debugger.ackMessage(command.c_str());
-    } else if (command.equalsIgnoreCase("realtime")) {
+      success = true;
+
+    } else if (command == "realtime") {
       printRealtimeInfo();
-      debugger.ackMessage(command.c_str());
-    } else if (command.equalsIgnoreCase("reset")) {
+      success = true;
+
+    } else if (command == "reset") {
+      // restaurar valores por defecto
       config.lineKp = DEFAULT_LINE_KP;
       config.lineKi = DEFAULT_LINE_KI;
       config.lineKd = DEFAULT_LINE_KD;
-      config.leftKp = DEFAULT_LEFT_KP;
-      config.leftKi = DEFAULT_LEFT_KI;
-      config.leftKd = DEFAULT_LEFT_KD;
+      config.leftKp  = DEFAULT_LEFT_KP;
+      config.leftKi  = DEFAULT_LEFT_KI;
+      config.leftKd  = DEFAULT_LEFT_KD;
       config.rightKp = DEFAULT_RIGHT_KP;
       config.rightKi = DEFAULT_RIGHT_KI;
       config.rightKd = DEFAULT_RIGHT_KD;
-      config.baseSpeed = DEFAULT_BASE_SPEED;
-      config.wheelDiameter = WHEEL_DIAMETER_MM;
-      config.wheelDistance = WHEEL_DISTANCE_MM;
-      config.rcDeadzone = RC_DEADZONE;
-      config.rcMaxThrottle = RC_MAX_THROTTLE;
-      config.rcMaxSteering = RC_MAX_STEERING;
-      config.cascadeMode = DEFAULT_CASCADE;
-      config.operationMode = DEFAULT_OPERATION_MODE;
-      config.baseRPM = DEFAULT_BASE_RPM;
-      for (int i = 0; i < NUM_SENSORS; i++) {
-        config.sensorMin[i] = 0;
-        config.sensorMax[i] = 1023;
-      }
-      config.checksum = 1234567891;
+      config.baseSpeed      = DEFAULT_BASE_SPEED;
+      config.baseRPM        = DEFAULT_BASE_RPM;
+      config.cascadeMode    = DEFAULT_CASCADE;
+      config.operationMode  = DEFAULT_OPERATION_MODE;
+      config.checksum       = 1234567891;
       saveConfig();
       linePid.setGains(config.lineKp, config.lineKi, config.lineKd);
       leftPid.setGains(config.leftKp, config.leftKi, config.leftKd);
       rightPid.setGains(config.rightKp, config.rightKi, config.rightKd);
-      debugger.ackMessage(command.c_str());
-    } else if (command.equalsIgnoreCase("help")) {
-      debugger.systemMessage("Comandos disponibles:");
-      debugger.systemMessage("calibrate - Calibrar sensores");
-      debugger.systemMessage("set realtime 0/1 - Desactivar/activar realtime");
-      debugger.systemMessage("telemetry - Enviar datos telemetry completos una vez");
-      debugger.systemMessage("realtime - Enviar datos realtime una vez");
-      debugger.systemMessage("set mode 0/1 - Cambiar modo (0=line, 1=remote)");
-      debugger.systemMessage("set cascade 0/1 - Control en cascada (0=off, 1=on)");
-      debugger.systemMessage("set line kp,ki,kd - Ajustar PID linea (ej: set line 2.0,0.05,0.75)");
-      debugger.systemMessage("set left kp,ki,kd - Ajustar PID motor izquierdo");
-      debugger.systemMessage("set right kp,ki,kd - Ajustar PID motor derecho");
-      debugger.systemMessage("rc throttle,steering - Control remoto (ej: rc 200,50)");
-      debugger.systemMessage("save - Guardar configuracion");
-      debugger.systemMessage("reset - Restaurar valores por defecto y resetear EEPROM");
-      debugger.systemMessage("help - Mostrar esta ayuda");
-    } else {
-      debugger.systemMessage("Comando desconocido. Envia 'help' para lista de comandos.");
+      success = true;
+
+    } else if (command == "help") {
+      debugger.systemMessage("Comandos: calibrate, save, telemetry, realtime, reset, help");
+      debugger.systemMessage("set realtime 0/1  |  set mode 0/1  |  set cascade 0/1");
+      debugger.systemMessage("set line kp,ki,kd  |  set left kp,ki,kd  |  set right kp,ki,kd");
+      debugger.systemMessage("rc throttle,steering");
+
+    // ---------- comandos con parámetros ------------------------------
+    } else if (command.startsWith("set realtime ")) {
+      if (command.length() < 14) { debugger.systemMessage("Falta argumento"); return; }
+      realtimeEnabled = (command.substring(13).toInt() == 1);
+      success = true;
+
+    } else if (command.startsWith("set mode ")) {
+      if (command.length() < 10) { debugger.systemMessage("Falta argumento"); return; }
+      int m = command.substring(9).toInt();
+      currentMode = (m == 1) ? MODE_REMOTE_CONTROL : MODE_LINE_FOLLOWING;
+      config.operationMode = currentMode;
+      if (currentMode == MODE_REMOTE_CONTROL) {
+        throttle = 0; steering = 0;
+        leftMotor.setSpeed(0); rightMotor.setSpeed(0);
+      }
+      success = true;
+
+    } else if (command.startsWith("set cascade ")) {
+      if (command.length() < 13) { debugger.systemMessage("Falta argumento"); return; }
+      config.cascadeMode = (command.substring(12).toInt() == 1);
+      success = true;
+
+    } else if (command.startsWith("set line ")) {
+      int coma1 = command.indexOf(',', 9);
+      int coma2 = command.indexOf(',', coma1 + 1);
+      if (coma1 == -1 || coma2 == -1) {
+        debugger.systemMessage("Formato: set line kp,ki,kd"); return;
+      }
+      float kp = command.substring(9, coma1).toFloat();
+      float ki = command.substring(coma1 + 1, coma2).toFloat();
+      float kd = command.substring(coma2 + 1).toFloat();
+      config.lineKp = kp; config.lineKi = ki; config.lineKd = kd;
+      linePid.setGains(kp, ki, kd);
+      success = true;
+
+    } else if (command.startsWith("set left ")) {
+      int coma1 = command.indexOf(',', 9);
+      int coma2 = command.indexOf(',', coma1 + 1);
+      if (coma1 == -1 || coma2 == -1) {
+        debugger.systemMessage("Formato: set left kp,ki,kd"); return;
+      }
+      float kp = command.substring(9, coma1).toFloat();
+      float ki = command.substring(coma1 + 1, coma2).toFloat();
+      float kd = command.substring(coma2 + 1).toFloat();
+      config.leftKp = kp; config.leftKi = ki; config.leftKd = kd;
+      leftPid.setGains(kp, ki, kd);
+      success = true;
+
+    } else if (command.startsWith("set right ")) {
+      int coma1 = command.indexOf(',', 10);
+      int coma2 = command.indexOf(',', coma1 + 1);
+      if (coma1 == -1 || coma2 == -1) {
+        debugger.systemMessage("Formato: set right kp,ki,kd"); return;
+      }
+      float kp = command.substring(10, coma1).toFloat();
+      float ki = command.substring(coma1 + 1, coma2).toFloat();
+      float kd = command.substring(coma2 + 1).toFloat();
+      config.rightKp = kp; config.rightKi = ki; config.rightKd = kd;
+      rightPid.setGains(kp, ki, kd);
+      success = true;
+
+    } else if (command.startsWith("rc ")) {
+      int coma = command.indexOf(',', 3);
+      if (coma == -1) {
+        debugger.systemMessage("Formato: rc throttle,steering"); return;
+      }
+      int t = command.substring(3, coma).toInt();
+      int s = command.substring(coma + 1).toInt();
+      throttle  = constrain(t, -MAX_SPEED, MAX_SPEED);
+      steering  = constrain(s, -MAX_SPEED, MAX_SPEED);
+      success = true;
+
+    }
+
+    if (success) { debugger.ackMessage( (" " + command).c_str() ); } else {
+      debugger.systemMessage("Comando desconocido. Envía 'help'");
     }
   }
 }
