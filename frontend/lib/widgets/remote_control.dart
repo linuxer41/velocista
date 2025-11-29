@@ -15,6 +15,7 @@ class RemoteControl extends StatefulWidget {
 class _RemoteControlState extends State<RemoteControl> {
   double _throttle = 0.0;
   double _turn = 0.0;
+  bool _relationEnabled = false; // Local state for relation toggle
 
   void _onJoystickChanged(StickDragDetails details) {
     setState(() {
@@ -191,6 +192,48 @@ class _RemoteControlState extends State<RemoteControl> {
                 elevation: 2,
                 shadowColor: Colors.red.withOpacity(0.3),
               ),
+            ),
+          ),
+
+          const SizedBox(height: 6),
+
+          // Relation Toggle
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Relación',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+                Transform.scale(
+                  scale: 0.8,
+                  child: Switch(
+                    value: _relationEnabled,
+                    onChanged: (value) {
+                      setState(() {
+                        _relationEnabled = value;
+                      });
+                      final relationCommand = RelationCommand(value);
+                      widget.appState.sendCommand(relationCommand.toCommand());
+                    },
+                    activeColor: Theme.of(context).colorScheme.primary,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+              ],
             ),
           ),
 

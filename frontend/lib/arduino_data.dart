@@ -3,22 +3,23 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 enum OperationMode {
-     lineFollowing(0, 'SEGUIDOR DE LÍNEA', Icons.route, 'SEGUID'),
-     remoteControl(1, 'CONTROL REMOTO', Icons.gamepad, 'CONTROL');
+      idle(0, 'IDLE', Icons.pause_circle, 'IDLE'),
+      lineFollowing(1, 'LINE FOLLOWING', Icons.route, 'LINE'),
+      remoteControl(2, 'REMOTE CONTROL', Icons.gamepad, 'REMOTE');
 
-  const OperationMode(this.id, this.displayName, this.icon, this.shortName);
-  final int id;
-  final String displayName;
-  final IconData icon;
-  final String shortName;
+   const OperationMode(this.id, this.displayName, this.icon, this.shortName);
+   final int id;
+   final String displayName;
+   final IconData icon;
+   final String shortName;
 
-  static OperationMode fromId(int id) {
-    return OperationMode.values.firstWhere(
-      (mode) => mode.id == id,
-      orElse: () => OperationMode.lineFollowing,
-    );
-  }
-}
+   static OperationMode fromId(int id) {
+     return OperationMode.values.firstWhere(
+       (mode) => mode.id == id,
+       orElse: () => OperationMode.idle,
+     );
+   }
+ }
 
 class ArduinoData {
    // Common JSON keys constants
@@ -207,7 +208,7 @@ class ArduinoData {
   }
 
   /// Parse realtime data from type:4 messages (simplified data)
-  static ArduinoData _parseRealtimeData(String realtimeString) {
+  static ArduinoData? _parseRealtimeData(String realtimeString) {
     final dataMap = <String, dynamic>{};
 
     // Split by '|' and parse key:value pairs
@@ -220,6 +221,8 @@ class ArduinoData {
         dataMap[key] = value;
       }
     }
+
+    // Parse key-value pairs
 
     // Parse MODE
     final mode = int.tryParse(dataMap['MODE'] ?? '0') ?? 0;
@@ -274,15 +277,15 @@ class ArduinoData {
     final rightPwm = rightData.length > 2 ? rightData[2] : 0.0;
     final rightEncoderCount = rightData.length > 3 ? rightData[3] : 0.0;
 
-    return ArduinoData(
-      operationMode: mode == 0 ? 1 : 2, // 0=LINE_FOLLOWING, 1=REMOTE_CONTROL
-      modeName: mode == 0 ? 'LINE FOLLOWING' : 'REMOTE CONTROL',
+    final result = ArduinoData(
+      operationMode: mode, // 0=IDLE, 1=LINE_FOLLOWING, 2=REMOTE_CONTROL
+      modeName: mode == 0 ? 'IDLE' : (mode == 1 ? 'LINE FOLLOWING' : 'REMOTE CONTROL'),
       leftEncoderSpeed: leftRpm, // RPM as speed
       rightEncoderSpeed: rightRpm,
       leftEncoderCount: leftEncoderCount.toInt(),
       rightEncoderCount: rightEncoderCount.toInt(),
       totalDistance: 0.0, // Not provided in realtime
-      sensors: sensors,
+      sensors: sensors ?? [],
       battery: 0.0, // Not provided in realtime
       cascade: cascade,
       uptime: uptime,
@@ -294,6 +297,8 @@ class ArduinoData {
       leftVel: [leftRpm, leftTargetRpm, leftPwm, leftEncoderCount],
       rightVel: [rightRpm, rightTargetRpm, rightPwm, rightEncoderCount],
     );
+
+    return result;
   }
 
   /// Parse typed message format (type:1|, type:2|, type:3|, type:4|)
@@ -306,7 +311,6 @@ class ArduinoData {
     } else if (messageString.startsWith('type:4|')) {
       // Realtime data (simplified)
       final dataPart = messageString.substring(7); // Remove 'type:4|'
-      print("Realtime data: $dataPart");
       return _parseRealtimeData(dataPart);
     } else if (messageString.startsWith('type:1|')) {
       // System message - not ArduinoData, return null
@@ -375,8 +379,8 @@ class ArduinoData {
     }
 
     return ArduinoData(
-      operationMode: mode == 0 ? 1 : 2, // 0=LINE_FOLLOWING, 1=REMOTE_CONTROL
-      modeName: mode == 0 ? 'LINE FOLLOWING' : 'REMOTE CONTROL',
+      operationMode: mode, // 0=IDLE, 1=LINE_FOLLOWING, 2=REMOTE_CONTROL
+      modeName: mode == 0 ? 'IDLE' : (mode == 1 ? 'LINE FOLLOWING' : 'REMOTE CONTROL'),
       leftEncoderSpeed: leftEncoderSpeed,
       rightEncoderSpeed: rightEncoderSpeed,
       leftEncoderCount: leftEncoderCount,
@@ -744,6 +748,16 @@ class BaseRpmCommand {
 
     String toCommand() {
       return 'set base rpm ${value.toStringAsFixed(1)}';
+    }
+}
+
+class RelationCommand {
+    final bool enable;
+
+    RelationCommand(this.enable);
+
+    String toCommand() {
+      return 'set relation ${enable ? 1 : 0}';
     }
 }
 

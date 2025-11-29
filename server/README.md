@@ -2,7 +2,7 @@
 
 ## Descripción del Proyecto
 
-Este proyecto implementa un robot seguidor de línea basado en Arduino con control PID avanzado. Incluye modos de seguimiento de línea, control remoto, y configuración ajustable vía comandos seriales.
+Este proyecto implementa un robot seguidor de línea basado en Arduino con control PID avanzado. Incluye modos de reposo (idle), seguimiento de línea, control remoto, y configuración ajustable vía comandos seriales.
 
 ## Arquitectura del Sistema
 
@@ -14,6 +14,7 @@ Este proyecto implementa un robot seguidor de línea basado en Arduino con contr
 - **Debugger**: Clase centralizada para manejo de mensajes seriales (sistema y debug)
 
 ### Modos de Operación
+- **IDLE**: Modo reposo - lee sensores pero no controla motores
 - **LINE FOLLOWING**: Sigue la línea negra usando PID cascada (configurable on/off)
 - **REMOTE CONTROL**: Control manual vía throttle/steering (siempre cascada)
 
@@ -28,7 +29,7 @@ save               - Guarda configuración actual en EEPROM
 
 ### Control de Modo
 ```
-set mode 0/1         - Cambia a modo seguimiento de línea (0) o control remoto (1)
+set mode 0/1/2       - Cambia modo: 0=idle, 1=line following, 2=remote control
 set cascade 0/1      - Desactiva/activa control en cascada (solo en modo línea)
 ```
 
@@ -37,6 +38,12 @@ set cascade 0/1      - Desactiva/activa control en cascada (solo en modo línea)
 set line kp,ki,kd   - Configura PID de línea (ej: set line 2.0,0.05,0.75)
 set left kp,ki,kd   - Configura PID motor izquierdo (ej: set left 5.0,0.5,0.1)
 set right kp,ki,kd  - Configura PID motor derecho (ej: set right 5.0,0.5,0.1)
+```
+
+### Configuración de Velocidad Base
+```
+set base speed <value>  - Configura velocidad base PWM (ej: set base speed 200)
+set base rpm <value>    - Configura RPM base (ej: set base rpm 120.0)
 ```
 
 ### Control Remoto
@@ -96,7 +103,7 @@ type:3|ack:mode line
 - **LEFT_PID/RIGHT_PID**: [KP,KI,KD,RPM_objetivo,output,error,integral,derivada] del PID de motor
 - **QTR**: Valores crudos de los 6 sensores QTR
 - **CASCADE**: Control en cascada (1=activado, 0=desactivado, solo en modo línea)
-- **MODE**: Modo actual (0=LINE_FOLLOWING, 1=REMOTE_CONTROL)
+- **MODE**: Modo actual (0=IDLE, 1=LINE_FOLLOWING, 2=REMOTE_CONTROL)
 - **BATT**: Voltaje de batería en V
 - **LOOP_US**: Tiempo de ejecución del último ciclo PID en microsegundos
 - **UPTIME**: Tiempo desde inicio en ms
@@ -105,7 +112,7 @@ type:3|ack:mode line
 - **LINE**: [posicion_linea,error] de la línea
 - **LEFT/RIGHT**: [RPM_actual,RPM_objetivo,PWM,encoder_count] izquierdo/derecho
 - **QTR**: Valores crudos de los 6 sensores QTR
-- **MODE**: Modo actual (0=LINE_FOLLOWING, 1=REMOTE_CONTROL)
+- **MODE**: Modo actual (0=IDLE, 1=LINE_FOLLOWING, 2=REMOTE_CONTROL)
 - **CASCADE**: Control en cascada (1=activado, 0=desactivado)
 - **UPTIME**: Tiempo desde inicio en ms
 
@@ -212,13 +219,14 @@ function parseDebugData(debugString) {
 
 ### Comandos Recomendados para UI
 1. **Conexión**: Verificar puerto serial disponible
-2. **Modo**: Selector LINE/REMOTE con comandos `set mode 0` / `set mode 1`
+2. **Modo**: Selector IDLE/LINE/REMOTE con comandos `set mode 0` / `set mode 1` / `set mode 2`
 3. **Cascada**: Toggle para control cascada con `set cascade 0/1`
 4. **PID Tuning**: Sliders para KP/KI/KD con envío automático (`set line kp,ki,kd`, `set left kp,ki,kd`, `set right kp,ki,kd`)
-5. **Telemetría**: Gráfico en tiempo real de posición, RPM, sensores (`set realtime 1`)
-6. **Control Remoto**: Joystick virtual para enviar comandos `rc throttle,steering`
-7. **Calibración**: Botón para iniciar calibración con progreso (`calibrate`)
-8. **Configuración**: Guardar/cargar configuración (`save`, `reset`)
+5. **Velocidad Base**: Sliders para base speed y base RPM (`set base speed <value>`, `set base rpm <value>`)
+6. **Telemetría**: Gráfico en tiempo real de posición, RPM, sensores (`set realtime 1`)
+7. **Control Remoto**: Joystick virtual para enviar comandos `rc throttle,steering`
+8. **Calibración**: Botón para iniciar calibración con progreso (`calibrate`)
+9. **Configuración**: Guardar/cargar configuración (`save`, `reset`)
 
 ## Consideraciones Técnicas
 
@@ -268,9 +276,10 @@ pio run  # PlatformIO
 - Usar `set realtime 1` para monitoreo continuo de datos realtime
 - `telemetry` para snapshots completos de telemetry
 - `realtime` para snapshot único de datos realtime
-- `set mode 0/1` para cambiar modos de operación
+- `set mode 0/1/2` para cambiar modos: 0=idle, 1=line, 2=remote
 - `set cascade 0/1` para activar/desactivar control cascada
 - `set line/left/right kp,ki,kd` para ajustar PID
+- `set base speed <value>` y `set base rpm <value>` para configurar velocidad base
 - `rc throttle,steering` para control remoto
 - `save` para guardar configuración en EEPROM
 - `reset` para restaurar valores por defecto

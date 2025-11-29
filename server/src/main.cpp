@@ -35,6 +35,10 @@ float rightTargetRPM = 0;
 int throttle = 0;
 int steering = 0;
 
+// LED indication
+unsigned long lastLedTime = 0;
+bool ledState = false;
+
 // ==========================
 // FUNCIONES AUXILIARES
 // ==========================
@@ -77,6 +81,8 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(ENCODER_LEFT_A), leftEncoderISR, RISING);
   attachInterrupt(digitalPinToInterrupt(ENCODER_RIGHT_A), rightEncoderISR, RISING);
   qtr.init();
+  pinMode(MODE_LED_PIN, OUTPUT);
+  digitalWrite(MODE_LED_PIN, LOW);  // Start with LED off (idle mode)
 
   // Cargar configuración (EEPROMManager ya carga valores por defecto si inválidos)
 
@@ -89,10 +95,10 @@ void setup() {
 
   qtr.setCalibration(config.sensorMin, config.sensorMax);
 
-  debugger.systemMessage("Calibrating... Move robot over line.");
+
   qtr.calibrate();
 
-  debugger.systemMessage("Robot iniciado. Modo: LINEA");
+  debugger.systemMessage("Robot iniciado. Modo: IDLE");
   lastLineTime = millis();
   lastSpeedTime = millis();
 }
@@ -156,27 +162,52 @@ void loop() {
       rightMotor.setSpeed(rightSpeed);
     }
 
+    if (currentMode == MODE_IDLE) {
+      leftMotor.setSpeed(0);
+      rightMotor.setSpeed(0);
+    }
+
     loopTime = micros() - loopStartTime;
-  }
+   }
 
-  // Realtime Print (Non-blocking)
-  if (realtimeEnabled && (millis() - lastRealtimeTime > REALTIME_INTERVAL_MS)) {
-    printRealtimeInfo();
-    lastRealtimeTime = millis();
-  }
+   // Realtime Print (Non-blocking)
+   if (realtimeEnabled && (millis() - lastRealtimeTime > REALTIME_INTERVAL_MS)) {
+     printRealtimeInfo();
+     lastRealtimeTime = millis();
+   }
 
-  // Serial Commands
+   // LED Mode Indication
+   if (currentMode == MODE_LINE_FOLLOWING) {
+     if (currentMillis - lastLedTime >= 100) {
+       ledState = !ledState;
+       digitalWrite(MODE_LED_PIN, ledState);
+       lastLedTime = currentMillis;
+     }
+   } else if (currentMode == MODE_REMOTE_CONTROL) {
+     if (currentMillis - lastLedTime >= 500) {
+       ledState = !ledState;
+       digitalWrite(MODE_LED_PIN, ledState);
+       lastLedTime = currentMillis;
+     }
+   } else {  // MODE_IDLE
+     digitalWrite(MODE_LED_PIN, LOW);
+   }
+
+   // Serial Commands
   if (Serial.available()) {
     String command = readSerialLine();
     bool success = false;
-    Serial.println("command: " + command);
     if (command.length() == 0) return;          // línea vacía
 
     if (command == "calibrate") {
       leftMotor.setSpeed(0);
       rightMotor.setSpeed(0);
+      digitalWrite(MODE_LED_PIN, HIGH);  // LED on during calibration
+      debugger.systemMessage("Calibrando...");
       qtr.calibrate();
+      digitalWrite(MODE_LED_PIN, LOW);   // LED off after calibration
       success = true;
+      debugger.systemMessage("Calibración completada.");
 
     } else if (command == "save") {
       saveConfig();
@@ -214,8 +245,9 @@ void loop() {
 
     } else if (command == "help") {
       debugger.systemMessage("Comandos: calibrate, save, telemetry, realtime, reset, help");
-      debugger.systemMessage("set realtime 0/1  |  set mode 0/1  |  set cascade 0/1");
+      debugger.systemMessage("set realtime 0/1  |  set mode 0/1/2  |  set cascade 0/1");
       debugger.systemMessage("set line kp,ki,kd  |  set left kp,ki,kd  |  set right kp,ki,kd");
+      debugger.systemMessage("set base speed <value>  |  set base rpm <value>");
       debugger.systemMessage("rc throttle,steering");
 
     // ---------- comandos con parámetros ------------------------------
@@ -227,10 +259,15 @@ void loop() {
     } else if (command.startsWith("set mode ")) {
       if (command.length() < 10) { debugger.systemMessage("Falta argumento"); return; }
       int m = command.substring(9).toInt();
-      currentMode = (m == 1) ? MODE_REMOTE_CONTROL : MODE_LINE_FOLLOWING;
+      if (m == 0) currentMode = MODE_IDLE;
+      else if (m == 1) currentMode = MODE_LINE_FOLLOWING;
+      else if (m == 2) currentMode = MODE_REMOTE_CONTROL;
+      else { debugger.systemMessage("Modo inválido: 0=idle, 1=line, 2=remote"); return; }
       config.operationMode = currentMode;
       if (currentMode == MODE_REMOTE_CONTROL) {
         throttle = 0; steering = 0;
+        leftMotor.setSpeed(0); rightMotor.setSpeed(0);
+      } else if (currentMode == MODE_IDLE) {
         leftMotor.setSpeed(0); rightMotor.setSpeed(0);
       }
       success = true;
@@ -267,19 +304,31 @@ void loop() {
       success = true;
 
     } else if (command.startsWith("set right ")) {
-      int coma1 = command.indexOf(',', 10);
-      int coma2 = command.indexOf(',', coma1 + 1);
-      if (coma1 == -1 || coma2 == -1) {
-        debugger.systemMessage("Formato: set right kp,ki,kd"); return;
-      }
-      float kp = command.substring(10, coma1).toFloat();
-      float ki = command.substring(coma1 + 1, coma2).toFloat();
-      float kd = command.substring(coma2 + 1).toFloat();
-      config.rightKp = kp; config.rightKi = ki; config.rightKd = kd;
-      rightPid.setGains(kp, ki, kd);
-      success = true;
+       int coma1 = command.indexOf(',', 10);
+       int coma2 = command.indexOf(',', coma1 + 1);
+       if (coma1 == -1 || coma2 == -1) {
+         debugger.systemMessage("Formato: set right kp,ki,kd"); return;
+       }
+       float kp = command.substring(10, coma1).toFloat();
+       float ki = command.substring(coma1 + 1, coma2).toFloat();
+       float kd = command.substring(coma2 + 1).toFloat();
+       config.rightKp = kp; config.rightKi = ki; config.rightKd = kd;
+       rightPid.setGains(kp, ki, kd);
+       success = true;
 
-    } else if (command.startsWith("rc ")) {
+     } else if (command.startsWith("set base speed ")) {
+       if (command.length() < 15) { debugger.systemMessage("Falta argumento"); return; }
+       int speed = command.substring(14).toInt();
+       config.baseSpeed = speed;
+       success = true;
+
+     } else if (command.startsWith("set base rpm ")) {
+       if (command.length() < 13) { debugger.systemMessage("Falta argumento"); return; }
+       float rpm = command.substring(12).toFloat();
+       config.baseRPM = rpm;
+       success = true;
+
+     } else if (command.startsWith("rc ")) {
       int coma = command.indexOf(',', 3);
       if (coma == -1) {
         debugger.systemMessage("Formato: rc throttle,steering"); return;
@@ -361,6 +410,7 @@ void printDebugInfo() {
 // ==========================
 void printRealtimeInfo() {
   DebugData data;
+  qtr.read();  // Read sensors even in non-line-follower modes
   int* sensors = qtr.getSensorValues();
   memcpy(data.sensors, sensors, sizeof(data.sensors));
 

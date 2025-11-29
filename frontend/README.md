@@ -1,466 +1,288 @@
-# Aplicación de Control Bluetooth para Seguidor de Línea
+# Line Follower Robot - Control Documentation
 
-Una aplicación Flutter completa para monitorear y controlar robots seguidores de línea Arduino Nano mediante comunicación Bluetooth.
+## Descripción del Proyecto
 
-## Resumen
+Este proyecto implementa un robot seguidor de línea basado en Arduino con control PID avanzado. Incluye modos de reposo (idle), seguimiento de línea, control remoto, y configuración ajustable vía comandos seriales.
 
-Esta aplicación transforma el sistema original de control TCP basado en PIR/LDR en un **trazador y visualizador** completo para un carro velocista con encoders de motor, soportando sensores QTR de 6 y 8 unidades.
+## Arquitectura del Sistema
 
-## Características
+### Componentes Principales
+- **Sensores**: 6 sensores infrarrojos QTR para detección de línea
+- **Motores**: 2 motores DC con encoders para retroalimentación RPM
+- **Control**: PID cascada (línea + velocidad) con lazos separados (100Hz línea, 200Hz velocidad)
+- **Comunicación**: Serial (9600 baud) para comandos y telemetría
+- **Debugger**: Clase centralizada para manejo de mensajes seriales (sistema y debug)
 
-### 🔗 Comunicación (Plataforma-Dependiente)
-- **Android/iOS**: Comunicación Bluetooth Classic vía módulo HC-09
-- **Windows**: Comunicación Serial directa (USB/COM)
-- **Descubrimiento de Dispositivos**: Bluetooth discovery en móviles, selección de puerto COM en Windows
-- **Datos en Tiempo Real**: Recibir telemetría cada 1000ms (configurable)
-- **Control Bidireccional**: Enviar comandos JSON y recibir respuestas
-- **Reconexión Automática**: Reconexión automática al desconectarse (ambas plataformas)
+### Modos de Operación
+- **IDLE**: Modo reposo - lee sensores pero no controla motores
+- **LINE FOLLOWING**: Sigue la línea negra usando PID cascada (configurable on/off)
+- **REMOTE CONTROL**: Control manual vía throttle/steering (siempre cascada)
 
-### 📊 Visualización de Datos en Tiempo Real
-- **Estado del Sistema**: Posición, error, detección de línea, velocidades, distancia
-- **Visualización Sensores QTR**: Malla visual mostrando todos los valores de sensores (6 o 8 sensores)
-- **Control de Motores**: Comandos de motor en tiempo real y retroalimentación de encoders
-- **Estadísticas**: Métricas de rendimiento y calidad de seguimiento
-- **Historial de Datos**: Almacenar y mostrar lecturas recientes de sensores
+## Comandos Seriales
 
-### 🎛️ Interfaz de Configuración PID
-- **Ajuste en Tiempo Real**: Ajustar parámetros Kp, Ki, Kd en vivo
-- **Control de Setpoint**: Configurar objetivos de posición de línea
-- **Gestión de Velocidades**: Establecer velocidades base de motores
-- **Configuraciones Predefinidas**: Configuración rápida para 6 o 8 sensores
-- **Perfiles de Parámetros**: Guardar y cargar diferentes perfiles de ajuste
-
-### 📱 Terminal de Comunicación
-- **Monitoreo en Tiempo Real**: Visualización en vivo de comunicación (Bluetooth/Serial)
-- **Historial de Mensajes**: Rastrear todos los comandos enviados y datos recibidos
-- **Información de Depuración**: Estado de conexión y mensajes de error
-- **Registro de Comandos**: Log de mensajes basado en marcas de tiempo
-- **Selección de Puerto**: Para Windows, permite elegir puerto COM específico
-
-### 🎮 Modos de Operación
-
-#### Modo 0: LINE_FOLLOW (Seguidor de Línea)
-- Control PID automático para seguimiento de línea
-- Usa sensores QTR para calcular posición
-- Ajusta velocidad de motores basado en error
-
-#### Modo 1: REMOTE_CONTROL (Control Remoto Unificado)
-- **Dirección + Aceleración**: Control vectorial (0-360° + 0-1)
-- **Autopilot**: Control estilo coche (throttle/turn: -1.0 a +1.0)
-- **Manual**: Control directo de ruedas (left/right: -1.0 a +1.0)
-
-#### Modo 2: SERVO_DIST (Distancia con Giro)
-- Avanza distancia específica con giro opcional
-- Regresa automáticamente al punto de origen
-- Finaliza con mensaje de estado
-
-#### Modo 3: POINT_LIST (Lista de Puntos)
-- Ejecuta secuencia de distancias y giros
-- Formato: "distancia,grados,distancia,grados,..."
-- Giro positivo = derecha (diferencial)
-
-### 🔧 Soporte para Sensores QTR de 6 y 8
-- **Conteo Dinámico de Sensores**: Detecta automáticamente 6 o 8 sensores
-- **Cálculo de Posición**: Promedio ponderado apropiado para ambas configuraciones
-- **Mapeo de Pines**: Asignaciones correctas de pines Arduino (A0-A5 para 6 sensores, A0-A7 para 8 sensores)
-- **Ajuste de Setpoint**: Cálculo automático de setpoint basado en cantidad de sensores
-
-## Requisitos de Hardware
-
-### Componentes Arduino Nano
-- **Microcontrolador**: Arduino Nano (ATmega328P)
-- **Sensores**: Array QTR-8A (6 sensores en pines A0-A5 o 8 sensores en A0-A7)
-- **Motores**: 2 motores DC con controlador DRV8833
-- **Encoders**: Encoders ópticos o magnéticos para retroalimentación de velocidad
-- **Bluetooth**: Módulo HC-09 conectado a serial hardware (D0/D1)
-
-### Configuración de Pines
-
-#### 6 Sensores QTR (Configuración Actual)
+### Configuración y Calibración
 ```
-Sensor QTR 2 → A0 (pin 14)
-Sensor QTR 3 → A1 (pin 15)
-Sensor QTR 4 → A2 (pin 16)
-Sensor QTR 5 → A3 (pin 17)
-Sensor QTR 6 → A4 (pin 18)
-Sensor QTR 7 → A5 (pin 19)
-Control QTR IR → D13
+calibrate          - Calibra los sensores de línea
+reset              - Restaura valores por defecto y resetea EEPROM
+save               - Guarda configuración actual en EEPROM
 ```
 
-#### 8 Sensores QTR (Actualización Futura)
+### Control de Modo
 ```
-Sensor QTR 1 → A0 (pin 14)
-Sensor QTR 2 → A1 (pin 15)
-Sensor QTR 3 → A2 (pin 16)
-Sensor QTR 4 → A3 (pin 17)
-Sensor QTR 5 → A4 (pin 18)
-Sensor QTR 6 → A5 (pin 19)
-Sensor QTR 7 → A6 (pin 20)
-Sensor QTR 8 → A7 (pin 21)
-Control QTR IR → D13
+set mode 0/1/2       - Cambia modo: 0=idle, 1=line following, 2=remote control
+set cascade 0/1      - Desactiva/activa control en cascada (solo en modo línea)
 ```
 
-#### Control de Motor (DRV8833)
+### Ajuste de PID
 ```
-Motor Izquierdo:
-  IN1 → D5
-  IN2 → D6
-
-Motor Derecho:
-  IN1 → D9
-  IN2 → D10
+set line kp,ki,kd   - Configura PID de línea (ej: set line 2.0,0.05,0.75)
+set left kp,ki,kd   - Configura PID motor izquierdo (ej: set left 5.0,0.5,0.1)
+set right kp,ki,kd  - Configura PID motor derecho (ej: set right 5.0,0.5,0.1)
 ```
 
-#### Encoders
+### Configuración de Velocidad Base
 ```
-Encoder Izquierdo:
-  A → D2 (INT0)
-  B → D4
-
-Encoder Derecho:
-  A → D7 (PinChange)
-  B → D8
+set base speed <value>  - Configura velocidad base PWM (ej: set base speed 200)
+set base rpm <value>    - Configura RPM base (ej: set base rpm 120.0)
 ```
 
-#### Bluetooth HC-09
+### Control Remoto
 ```
-HC-09 VCC → 5V
-HC-09 GND → GND
-HC-09 TX → Arduino RX (D0)
-HC-09 RX → Arduino TX (D1)
+rc throttle,steering - Control remoto (ej: rc 200,50)
 ```
 
-## Formato de Datos JSON
+### Debug y Telemetría
+```
+set realtime 0/1    - Desactiva/activa salida continua de realtime
+telemetry           - Envía datos de telemetry completos una sola vez
+realtime            - Envía datos de realtime una sola vez
+help                - Muestra lista de comandos disponibles
+```
 
-### Arduino → Aplicación Telemetría
-```json
-{
-  "type": "telemetry",
-  "payload": {
-    "mode": 1,
-    "speed": 9.87,
-    "distance": 833.46,
-    "battery": 12.1,
-    "sensors": [1023,1023,1023,1023,1012,516],
-    "pid": [0.01, 0.01, 0.01],
-    "left_rpm": 39.7,
-    "right_rpm": 0,
-    "left_encoder": 23,
-    "right_encoder": 0,
-    "position": 2500,
-    "error": 0,
-    "correction": 0
+## Formato de Salida Debug
+
+La salida de realtime se envía cada 100ms cuando está activada:
+
+```
+type:4|LINE:[429.30,-225.00]|LEFT:[120.00,232.50,166,1234]|RIGHT:[120.00,7.50,53,5678]|QTR:[687,292,0,0,0,0]|MODE:0|CASCADE:1|UPTIME:5000
+```
+
+La salida de telemetry completa se envía con el comando `telemetry`:
+
+```
+type:2|LINE_PID:[2.00,0.05,0.75,429.30,-225.00,150.00,50.00,5.25]|LVEL:[120.00,232.50,166,1234]|RVEL:[120.00,7.50,53,5678]|LEFT_PID:[5.00,0.50,0.10,232.50,166.00,112.50,25.00,2.10]|RIGHT_PID:[5.00,0.50,0.10,7.50,53.00,-7.50,15.00,1.85]|QTR:[687,292,0,0,0,0]|CASCADE:1|MODE:0|BATT:7.85|LOOP_US:45|UPTIME:5000
+```
+
+Los mensajes de sistema (comandos, estados) usan prefijo `type:1|` (mínimos para no sobrecargar):
+
+```
+type:1|Calibrating... Move robot over line.
+```
+
+Los datos de telemetry completa usan prefijo `type:2|`:
+
+```
+type:2|LINE_PID:[...]|...
+```
+
+Los datos de realtime usan prefijo `type:4|`:
+
+```
+type:4|LINE:[429.30,-225.00]|LEFT:[120.00,232.50,166,1234]|RIGHT:[120.00,7.50,53,5678]|QTR:[687,292,0,0,0,0]|MODE:0|CASCADE:1|UPTIME:5000
+```
+
+Los mensajes de confirmación de comandos usan prefijo `type:3|`:
+
+```
+type:3|ack:mode line
+```
+
+### Campos de Debug
+- **LINE_PID**: [KP,KI,KD,posicion_linea,output,error,integral,derivada] del PID de línea
+- **LVEL/RVEL**: [RPM_actual,RPM_objetivo,PWM,encoder_count] izquierdo/derecho
+- **LEFT_PID/RIGHT_PID**: [KP,KI,KD,RPM_objetivo,output,error,integral,derivada] del PID de motor
+- **QTR**: Valores crudos de los 6 sensores QTR
+- **CASCADE**: Control en cascada (1=activado, 0=desactivado, solo en modo línea)
+- **MODE**: Modo actual (0=IDLE, 1=LINE_FOLLOWING, 2=REMOTE_CONTROL)
+- **BATT**: Voltaje de batería en V
+- **LOOP_US**: Tiempo de ejecución del último ciclo PID en microsegundos
+- **UPTIME**: Tiempo desde inicio en ms
+
+### Campos de Realtime
+- **LINE**: [posicion_linea,error] de la línea
+- **LEFT/RIGHT**: [RPM_actual,RPM_objetivo,PWM,encoder_count] izquierdo/derecho
+- **QTR**: Valores crudos de los 6 sensores QTR
+- **MODE**: Modo actual (0=IDLE, 1=LINE_FOLLOWING, 2=REMOTE_CONTROL)
+- **CASCADE**: Control en cascada (1=activado, 0=desactivado)
+- **UPTIME**: Tiempo desde inicio en ms
+
+## Configuración Inicial
+
+### Valores por Defecto
+```cpp
+// PID Línea
+KP: 2.0, KI: 0.05, KD: 0.75
+
+// PID Motores
+KP: 5.0, KI: 0.5, KD: 0.1
+
+// Velocidad base: 200
+// Máxima velocidad: 230
+```
+
+### Calibración de Sensores
+1. Coloca el robot sobre la línea
+2. Envía `calibrate`
+3. Mueve el robot sobre la superficie blanca y negra
+4. La calibración toma 5 segundos
+
+## Interfaz para Desarrollador Frontend
+
+### Conexión Serial
+- **Baud Rate**: 9600
+- **Puerto**: Depende del sistema (COMx en Windows, /dev/ttyUSBx en Linux)
+- **Librería**: Web Serial API (Chrome) o Node.js serialport
+
+### Ejemplo de Comunicación
+```javascript
+// Conectar
+const port = await navigator.serial.requestPort();
+await port.open({ baudRate: 9600 });
+
+// Enviar comando
+const writer = port.writable.getWriter();
+await writer.write(new TextEncoder().encode("set mode 1\n"));
+
+// Leer respuesta
+const reader = port.readable.getReader();
+const { value } = await reader.read();
+console.log(new TextDecoder().decode(value));
+```
+
+### Tipos de Mensajes Seriales
+
+El robot envía 4 tipos de mensajes por serial:
+
+1. **type:1|mensaje** - Mensajes de sistema (respuestas a comandos)
+2. **type:2|datos** - Datos de telemetry completos
+3. **type:3|ack:comando** - Confirmación de comando procesado
+4. **type:4|datos** - Datos de realtime (línea, motores, sensores)
+
+### Parsing de Datos
+```javascript
+function parseSerialMessage(line) {
+  if (line.startsWith('type:1|')) {
+    // Mensaje de sistema
+    const message = line.substring(7);
+    handleSystemMessage(message);
+  } else if (line.startsWith('type:2|')) {
+    // Datos de telemetry completos - parsear arrays
+    const data = parseTelemetryData(line.substring(7));
+    updateUI(data);
+  } else if (line.startsWith('type:3|')) {
+    // Confirmación de comando
+    const ack = line.substring(7);
+    confirmCommand(ack);
+  } else if (line.startsWith('type:4|')) {
+    // Datos de realtime
+    const data = parseRealtimeData(line.substring(7));
+    updateRealtimeUI(data);
   }
 }
+
+function parseDebugData(debugString) {
+  const data = {};
+  debugString.split('|').forEach(field => {
+    const [key, value] = field.split(':');
+    if (value && value.startsWith('[') && value.endsWith(']')) {
+      // Parsear array
+      data[key] = value.slice(1, -1).split(',').map(Number);
+    } else {
+      data[key] = isNaN(value) ? value : Number(value);
+    }
+  });
+  return data;
+}
+
+// Ejemplo:
+// Input: "type:4|LINE:[429.30,-225.00]|LEFT:[120.00,232.50,166,1234]|RIGHT:[120.00,7.50,53,5678]|QTR:[687,292,0,0,0,0]|MODE:0|CASCADE:1|UPTIME:5000"
+// Output: { LINE: [429.3, -225], LEFT: [120, 232.5, 166, 1234], RIGHT: [120, 7.5, 53, 5678], QTR: [687, 292, 0, 0, 0, 0], MODE: 0, CASCADE: 1, UPTIME: 5000 }
 ```
 
-### Aplicación → Arduino Comandos
+### Recomendaciones para UI
+- **Gráfico de línea**: Mostrar posición de línea en tiempo real
+- **Barras de PID**: Visualizar ganancias KP/KI/KD ajustables
+- **Velocímetros**: RPM actual vs objetivo para cada motor
+- **Sensores QTR**: Barra de 6 valores para ver cobertura de línea
+- **Controles**: Joystick o sliders para throttle/steering en modo remoto
+- **Logs**: Área de texto para mensajes type:1 y confirmaciones
 
-#### Cambio de Modo
-```json
-{"mode": 0}
-```
+### Comandos Recomendados para UI
+1. **Conexión**: Verificar puerto serial disponible
+2. **Modo**: Selector IDLE/LINE/REMOTE con comandos `set mode 0` / `set mode 1` / `set mode 2`
+3. **Cascada**: Toggle para control cascada con `set cascade 0/1`
+4. **PID Tuning**: Sliders para KP/KI/KD con envío automático (`set line kp,ki,kd`, `set left kp,ki,kd`, `set right kp,ki,kd`)
+5. **Velocidad Base**: Sliders para base speed y base RPM (`set base speed <value>`, `set base rpm <value>`)
+6. **Telemetría**: Gráfico en tiempo real de posición, RPM, sensores (`set realtime 1`)
+7. **Control Remoto**: Joystick virtual para enviar comandos `rc throttle,steering`
+8. **Calibración**: Botón para iniciar calibración con progreso (`calibrate`)
+9. **Configuración**: Guardar/cargar configuración (`save`, `reset`)
 
-#### Configuración PID
-```json
-{"pid": [1.2, 0.05, 0.02]}
-```
+## Consideraciones Técnicas
 
-#### Velocidad Base
-```json
-{"speed": {"base": 0.7}}
-```
+### Control PID
+- **Cascada**: PID de línea (100Hz) establece RPM objetivo, PID de velocidad (200Hz) mantiene RPM
+- **Lazo Cerrado**: Usa encoders para retroalimentación RPM
+- **Lazo Abierto**: Control directo PWM (solo en modo línea con cascada desactivada)
+- **Modo Remoto**: Siempre cascada para control preciso de velocidad
+- **Saturación**: Salidas limitadas a ±230 PWM
 
-#### Control Remoto (Unificado)
-```json
-// Dirección + Aceleración
-{"remote_control": {"direction": 90, "acceleration": 0.5}}
+### Sensores
+- **Rango**: 0-1000 (normalizado)
+- **Posición**: Promedio ponderado de sensores
+- **Umbral**: Sin línea si valores inconsistentes
 
-// Autopilot
-{"remote_control": {"throttle": 0.5, "turn": -0.3}}
+### Motores
+- **Encoder**: 36 pulsos por revolución
+- **RPM**: Calculado cada 100ms
+- **Dirección**: PWM positivo/negativo
 
-// Manual
-{"remote_control": {"left": 0.8, "right": -0.8}}
-```
+## Troubleshooting
 
-#### Servo Distancia
-```json
-{"servoDistance": 30, "servoAngle": 45}
-```
+### Robot no responde
+- Verificar conexión serial
+- Enviar `help` para confirmar comunicación
+- Revisar alimentación de motores
 
-#### Ruta por Puntos
-```json
-{"routePoints": "20,0,10,-90,20,0"}
-```
+### PID no converge
+- Aumentar KP para respuesta más rápida
+- Ajustar KD para reducir oscilaciones
+- Usar `telemetry` para monitorear PID completo
+- Usar `realtime 1` para monitoreo continuo de RPM y sensores
 
-#### Otros Comandos
-```json
-{"eeprom": 1}           // Guardar configuración
-{"telemetry": 1}        // Solicitar telemetría única
-{"telemetry_enable": false}  // Habilitar/deshabiltar telemetría automática
-{"calibrate_qtr": 1}    // Calibrar sensores QTR
-```
+### Sensores no calibrados
+- Ejecutar `calibrate`
+- Verificar superficie de contraste
+- Revisar conexiones de sensores
 
-### Mensajes de Estado
-```json
-{"type": "status", "payload": {"status": "eeprom_saved"}}
-{"type": "status", "payload": {"status": "points_loaded"}}
-{"type": "status", "payload": {"status": "servo_distance_completed"}}
-{"type": "status", "payload": {"status": "route_completed"}}
-{"type": "status", "payload": {"status": "system_started"}}
-```
+## Desarrollo y Testing
 
-### Eco de Comandos
-```json
-{"type": "cmd", "payload": {"buffer": "{\"mode\":1}"}}
-```
-
-## Estructura de la Aplicación
-
-### Archivos Principales
-- `lib/main.dart` - Punto de entrada de la aplicación
-- `lib/line_follower_provider.dart` - Gestión de estado (ChangeNotifier)
-- `lib/line_follower_home.dart` - Interfaz principal con 4 pestañas
-- `lib/bluetooth_client.dart` - Lógica de comunicación Bluetooth
-- `lib/arduino_data.dart` - Modelos de datos y análisis
-
-### Pestañas de Interfaz
-1. **Pestaña Conectar**: Descubrimiento y conexión de dispositivos (Bluetooth en Android/iOS, Serial en Windows)
-2. **Pestaña Dashboard**: Visualización y monitoreo de datos en tiempo real
-3. **Pestaña Configuración PID**: Ajuste y configuración de parámetros
-4. **Pestaña Terminal**: Monitoreo de comunicación (Bluetooth/Serial)
-
-## Instalación y Configuración
-
-### 1. Dependencias
-La aplicación requiere estos paquetes Flutter:
-```yaml
-flutter_bluetooth_classic_serial: ^1.3.2  # Para Android/iOS
-serial_port_win32: ^0.1.0                 # Para Windows Serial
-fl_chart: ^1.1.1
-shared_preferences: ^2.5.3
-provider: ^6.1.5
-```
-
-### 2. Permisos de Android
-Agregar a `android/app/src/main/AndroidManifest.xml`:
-```xml
-<uses-permission android:name="android.permission.BLUETOOTH" />
-<uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
-<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-```
-
-### 3. Compilar y Ejecutar
+### Compilación
 ```bash
-flutter pub get
-flutter run
+pio run  # PlatformIO
 ```
 
-## Uso
+### Testing
+- Usar `set realtime 1` para monitoreo continuo de datos realtime
+- `telemetry` para snapshots completos de telemetry
+- `realtime` para snapshot único de datos realtime
+- `set mode 0/1/2` para cambiar modos: 0=idle, 1=line, 2=remote
+- `set cascade 0/1` para activar/desactivar control cascada
+- `set line/left/right kp,ki,kd` para ajustar PID
+- `set base speed <value>` y `set base rpm <value>` para configurar velocidad base
+- `rc throttle,steering` para control remoto
+- `save` para guardar configuración en EEPROM
+- `reset` para restaurar valores por defecto
 
-### 1. Conexión (Plataforma-Dependiente)
-
-#### Android/iOS - Bluetooth:
-1. Abrir la aplicación
-2. Ir a la pestaña "Conectar"
-3. Tocar "Buscar" para descubrir dispositivos Bluetooth
-4. Seleccionar dispositivo HC-09 emparejado
-5. Conexión establecida automáticamente
-
-#### Windows - Serial:
-1. Abrir la aplicación
-2. Ir a la pestaña "Conectar"
-3. Seleccionar "Modo Serial" o puerto COM disponible
-4. Elegir el puerto COM donde está conectado Arduino (ej: COM3)
-5. Conexión establecida automáticamente
-
-### 2. Monitoreo en Tiempo Real
-1. Ir a la pestaña "Dashboard"
-2. Ver estado del sistema, valores de sensores y control de motores
-3. Monitorear calidad de seguimiento y estadísticas
-4. Verificar retroalimentación de encoders y distancia recorrida
-
-### 3. Ajuste PID
-1. Ir a la pestaña "Configuración PID"
-2. Ajustar parámetros Kp, Ki, Kd usando deslizadores
-3. Modificar setpoint y velocidad base
-4. Usar configuraciones predefinidas para 6 o 8 sensores
-5. Los cambios se envían inmediatamente vía Bluetooth
-
-### 4. Monitoreo de Terminal
-1. Ir a la pestaña "Terminal"
-2. Ver log de comunicación en tiempo real (Bluetooth/Serial)
-3. Monitorear estado de conexión y recepción de datos
-4. En Windows, verificar puerto COM seleccionado
-5. Limpiar historial de terminal según sea necesario
-
-## Ejemplos de Configuración
-
-### Configuración PID 6 Sensores
-```json
-{"pid": [1.0, 0.0, 0.0]}
-{"speed": {"base": 0.8}}
-```
-
-### Configuración PID 8 Sensores
-```json
-{"pid": [1.2, 0.05, 0.1]}
-{"speed": {"base": 0.75}}
-```
-
-### Ejemplos de Sesión Interactiva
-```
->> {"mode": 0}
-<< {"type": "cmd", "payload": {"buffer": "{\"mode\":0}"}}
-<< {"type": "status", "payload": {"status": "system_started"}}
-
->> {"remote_control": {"direction": 90, "acceleration": 0.5}}
-<< {"type": "cmd", "payload": {"buffer": "{\"remote_control\":{\"direction\":90,\"acceleration\":0.5}}"}}
-
->> {"servoDistance": 25}
-<< {"type": "cmd", "payload": {"buffer": "{\"servoDistance\":25}"}}
-<< {"type": "status", "payload": {"status": "servo_distance_completed"}}
-
->> {"routePoints": "20,0,10,-90,20,0"}
-<< {"type": "cmd", "payload": {"buffer": "{\"routePoints\":\"20,0,10,-90,20,0\"}"}}
-<< {"type": "status", "payload": {"status": "route_completed"}}
-```
-
-## Integración con Código Arduino
-
-La aplicación está diseñada para trabajar con el firmware "Velocista" v1.5 que:
-- Soporta comunicación JSON bidireccional por puerto serie (9600 bps)
-- Implementa 4 modos de operación: LINE_FOLLOW, REMOTE_CONTROL, SERVO_DIST, POINT_LIST
-- Envía telemetría automática cada 1000ms (configurable)
-- Recibe comandos JSON para control en tiempo real
-- Gestiona sensores QTR-8A (6 o 8 sensores) con control IR
-- Implementa control PID para seguimiento de línea
-- Maneja encoders para medición de velocidad y distancia
-- Soporta persistencia de configuración en EEPROM
-- Incluye funciones especiales: servo-distancia, rutas por puntos, calibración
-
-### Protocolo de Comunicación
-- **Formato**: JSON de una sola línea terminado en \n
-- **Codificación**: UTF-8
-- **Tamaño máximo**: 512 bytes
-- **Claves**: camelCase descriptivo
-- **Respuestas**: Telemetría automática + estados específicos + eco de comandos
-
-## Solución de Problemas
-
-### Problemas de Conexión
-
-#### Android/iOS (Bluetooth):
-- Asegurar que Bluetooth esté habilitado en el dispositivo
-- Verificar que HC-09 esté emparejado y sea detectable
-- Verificar fuente de alimentación de Arduino
-- Confirmar baud rate correcto (9600)
-
-#### Windows (Serial):
-- Verificar que Arduino esté conectado por USB
-- Confirmar puerto COM correcto en Administrador de Dispositivos
-- Asegurar que ningún otro programa use el puerto
-- Verificar drivers USB-Serial estén instalados
-- Confirmar baud rate correcto (9600, 8,N,1)
-
-### Problemas de Sensores
-- Verificar conexiones QTR-8A
-- Verificar control LED IR en D13
-- Calibrar valores de sensores (0=línea, 1023=blanco)
-- Asegurar condiciones de iluminación apropiadas
-
-### Control de Motores
-- Verificar conexiones DRV8833
-- Verificar voltaje de fuente de alimentación
-- Probar dirección de motor manualmente
-- Verificar conexiones de encoders
-
-### Problemas de Rendimiento
-- Monitorear fuerza de señal Bluetooth
-- Verificar interferencias
-- Verificar tasa de transmisión de datos
-- Monitorear carga de procesamiento de Arduino
-
-## Mejoras Futuras
-
-1. **Análisis Avanzados**: Gráficos de rendimiento y tendencias
-2. **Mapeo de Pista**: Guardar y reproducir configuraciones de pista
-3. **Múltiples Robots**: Soporte para múltiples unidades Arduino
-4. **Sincronización en la Nube**: Guardar configuraciones en almacenamiento en la nube
-5. **Asistencia IA**: Optimización PID basada en ML
-6. **Exportar Datos**: Funcionalidad de exportación de datos CSV/JSON
-7. **Temas Personalizados**: Opciones de personalización de UI
-8. **Control por Voz**: Comandos de voz para operación manos libres
-
-## Licencia
-
-Este proyecto está bajo la Licencia MIT - ver el archivo LICENSE para detalles.
-
-## Contribución
-
-1. Fork del repositorio
-2. Crear rama de características (`git checkout -b feature/AmazingFeature`)
-3. Confirmar cambios (`git commit -m 'Add some AmazingFeature'`)
-4. Push a rama (`git push origin feature/AmazingFeature`)
-5. Abrir un Pull Request
-
-## Soporte
-
-Para soporte y preguntas:
-- Crear un issue en GitHub
-- Verificar la sección de solución de problemas
-- Revisar documentación de código Arduino
-- Contactar al equipo de desarrollo
-
----
-
-**Versión**: 2.1.0 (Actualizado para API Velocista v1.5)
-**Última Actualización**: Noviembre 2024
-**Versión Flutter**: 3.5.2+
-**Plataforma Objetivo**: Android, iOS, Windows
-**Biblioteca Bluetooth**: flutter_bluetooth_classic_serial ^1.3.2 (Android/iOS)
-**Biblioteca Serial**: serial_port_win32 ^0.1.0 (Windows)
-**Firmware Compatible**: Velocista v1.5 (telemetría extendida)
-
-## 🔄 Migración a flutter_bluetooth_classic_serial
-
-El proyecto ha sido migrado exitosamente de `flutter_bluetooth_serial` a `flutter_bluetooth_classic_serial` para mejorar la estabilidad y compatibilidad con la plataforma.
-
-### Beneficios de la Migración:
-- ✅ **Mejor Arquitectura**: API más nueva y estable
-- ✅ **Rendimiento Mejorado**: Optimizado para comunicación Bluetooth Classic
-- ✅ **Manejo de Errores Mejorado**: Mejor gestión de estado de conexión
-- ✅ **API Simplificada**: Métodos simplificados para descubrimiento y conexión de dispositivos
-- ✅ **A Prueba de Futuro**: Paquete mejor mantenido y actualizado
-
-### Detalles de Migración:
-- **De**: `flutter_bluetooth_serial: ^0.4.0`
-- **A**: `flutter_bluetooth_classic_serial: ^1.3.2`
-- **Cambios de API**: Importaciones y métodos de conexión actualizados
-- **Compatibilidad hacia Atrás**: Todo el análisis de datos permanece idéntico
-
-### Ejemplo de Código (Nueva API):
-```dart
-import 'package:flutter_bluetooth_classic_serial/flutter_bluetooth_classic.dart';
-
-FlutterBluetoothClassic bluetooth = FlutterBluetoothClassic();
-
-// Verificar estado de Bluetooth
-bool isSupported = await bluetooth.isBluetoothSupported();
-bool isEnabled = await bluetooth.isBluetoothEnabled();
-
-// Obtener dispositivos emparejados
-List<BluetoothDevice> devices = await bluetooth.getPairedDevices();
-
-// Conectar a dispositivo
-bool connected = await bluetooth.connect(device.address);
-
-// Escuchar datos
-bluetooth.onDataReceived.listen((data) {
-  print('Recibido: ${data.asString()}');
-});
-
-// Enviar mensaje
-await bluetooth.sendString('{"command": "getStatus"}');
-```
+### Logs
+Todos los comandos y respuestas se loguean en serial para debugging de interfaz.

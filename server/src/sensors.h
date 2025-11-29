@@ -86,13 +86,6 @@ public:
       delay(10);
     }
     digitalWrite(SENSOR_POWER_PIN, LOW);
-    // Ensure valid ranges
-    for (int i = 0; i < NUM_SENSORS; i++) {
-      if (sensorMin[i] >= sensorMax[i]) {
-        sensorMin[i] = 0;
-        sensorMax[i] = 1023;
-      }
-    }
     // Save to config
     for (int i = 0; i < NUM_SENSORS; i++) {
       config.sensorMin[i] = sensorMin[i];

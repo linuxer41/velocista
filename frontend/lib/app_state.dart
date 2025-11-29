@@ -40,7 +40,7 @@ class AppState extends ChangeNotifier {
 
   // Modo de operación actual
   final ValueNotifier<OperationMode> currentMode =
-      ValueNotifier(OperationMode.remoteControl);
+      ValueNotifier(OperationMode.idle);
 
   // Tema de la aplicación
   final ValueNotifier<bool> isDarkMode = ValueNotifier(false);
@@ -52,6 +52,9 @@ class AppState extends ChangeNotifier {
   final ValueNotifier<List<TerminalMessage>> rawDataBuffer = ValueNotifier([]);
   final ValueNotifier<List<TerminalMessage>> sentCommandsBuffer = ValueNotifier([]);
   final ValueNotifier<List<TerminalMessage>> receivedDataBuffer = ValueNotifier([]);
+
+  // ACK notifications
+  final ValueNotifier<String?> lastAck = ValueNotifier(null);
 
   AppState() {
     _initializeSerialClient();
@@ -224,6 +227,7 @@ class AppState extends ChangeNotifier {
       // Command acknowledgment - just log, no ArduinoData update
       final ack = line.substring(7);
       print('Command ack: $ack');
+      lastAck.value = ack; // Notify listeners
       return;
     }
 

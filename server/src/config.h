@@ -44,6 +44,7 @@ const int SENSOR_PINS[NUM_SENSORS] = {A0, A1, A2, A3, A4, A5};
 // =============================================================================
 
 enum OperationMode {
+  MODE_IDLE,             // Idle - read sensors only
   MODE_LINE_FOLLOWING,   // Seguir línea
   MODE_REMOTE_CONTROL    // Control remoto
 };
@@ -134,7 +135,7 @@ const float DEFAULT_RIGHT_KD = 0.1;
 
 const int16_t DEFAULT_BASE_SPEED = 200;
 const bool DEFAULT_CASCADE = true;
-#define DEFAULT_OPERATION_MODE MODE_LINE_FOLLOWING
+#define DEFAULT_OPERATION_MODE MODE_IDLE
 const float DEFAULT_BASE_RPM = 120.0f;
 
 // =============================================================================

@@ -7,7 +7,9 @@ import '../widgets/pid_control.dart';
 import '../widgets/remote_control.dart';
 import '../widgets/left_pid_control.dart';
 import '../widgets/right_pid_control.dart';
+import '../widgets/status_bar.dart';
 import 'settings_page.dart';
+import 'package:intl/intl.dart';
 
 class HomePage extends StatefulWidget {
   final ThemeProvider themeProvider;
@@ -19,6 +21,8 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  bool _isRealtimeEnabled = true; // Local state for realtime toggle
+
   @override
   void initState() {
     super.initState();
@@ -27,6 +31,7 @@ class _HomePageState extends State<HomePage> {
       final appState = AppInheritedWidget.of(context);
       if (appState != null) {
         appState.isConnected.addListener(_onConnectionChanged);
+        appState.lastAck.addListener(_onAckReceived);
         _checkConnectionAndShowModal();
       }
     });
@@ -37,8 +42,26 @@ class _HomePageState extends State<HomePage> {
     final appState = AppInheritedWidget.of(context);
     if (appState != null) {
       appState.isConnected.removeListener(_onConnectionChanged);
+      appState.lastAck.removeListener(_onAckReceived);
     }
     super.dispose();
+  }
+
+  void _onAckReceived() {
+    final appState = AppInheritedWidget.of(context);
+    if (appState != null && appState.lastAck.value != null) {
+      // Only show snackbar for commands that start with "set"
+      if (appState.lastAck.value!.startsWith('set')) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Guardado: ${appState.lastAck.value}'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+      // Reset to avoid repeated snackbars
+      appState.lastAck.value = null;
+    }
   }
 
   void _onConnectionChanged() {
@@ -60,9 +83,19 @@ class _HomePageState extends State<HomePage> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      isDismissible: true, // Cannot be dismissed by tapping outside
-      enableDrag: true, // Cannot be dragged down
-      builder: (context) => const ConnectionBottomSheet(),
+      isDismissible: false, // Cannot be dismissed by tapping outside
+      enableDrag: false, // Cannot be dragged down
+      builder: (context) => ConnectionBottomSheet(
+        onShowMessage: (message, {Color? backgroundColor, Duration? duration}) {
+          ScaffoldMessenger.of(this.context).showSnackBar(
+            SnackBar(
+              content: Text(message),
+              backgroundColor: backgroundColor ?? Colors.blue,
+              duration: duration ?? const Duration(seconds: 3),
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -71,11 +104,115 @@ class _HomePageState extends State<HomePage> {
     if (appState == null) return const SizedBox.shrink();
 
     switch (mode) {
+      case OperationMode.idle:
+        return _buildIdleControls(appState);
       case OperationMode.lineFollowing:
         return _buildPidTabs(appState);
       case OperationMode.remoteControl:
         return RemoteControl(appState: appState);
     }
+  }
+
+  Widget _buildIdleControls(AppState appState) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Modo IDLE - Monitoreo de Sensores',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: Theme.of(context).colorScheme.onSurface,
+              fontFamily: 'Space Grotesk',
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'En este modo, el robot lee los sensores pero no controla los motores.',
+            style: TextStyle(
+              fontSize: 12,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    final calibrateCommand = CalibrateQtrCommand();
+                    appState.sendCommand(calibrateCommand.toCommand());
+                  },
+                  icon: const Icon(Icons.tune, size: 16),
+                  label: const Text('Calibrar Sensores', style: TextStyle(fontSize: 12)),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    final telemetryCommand = TelemetryRequestCommand();
+                    appState.sendCommand(telemetryCommand.toCommand());
+                  },
+                  icon: const Icon(Icons.sync, size: 16),
+                  label: const Text('Obtener Telemetría', style: TextStyle(fontSize: 12)),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    backgroundColor: Theme.of(context).colorScheme.secondary,
+                    foregroundColor: Theme.of(context).colorScheme.onSecondary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    appState.changeOperationMode(OperationMode.lineFollowing);
+                  },
+                  icon: const Icon(Icons.route, size: 16),
+                  label: const Text('Modo Seguidor', style: TextStyle(fontSize: 12)),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    backgroundColor: Theme.of(context).colorScheme.tertiary,
+                    foregroundColor: Theme.of(context).colorScheme.onTertiary,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    appState.changeOperationMode(OperationMode.remoteControl);
+                  },
+                  icon: const Icon(Icons.gamepad, size: 16),
+                  label: const Text('Control Remoto', style: TextStyle(fontSize: 12)),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    backgroundColor: Theme.of(context).colorScheme.surfaceVariant,
+                    foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildPidTabs(AppState appState) {
@@ -133,7 +270,7 @@ class _HomePageState extends State<HomePage> {
           Row(
             children: [
               Expanded(
-                child: _buildBaseSpeedInput('Base Speed', '200', () {
+                child: _buildBaseSpeedInput('Velocidad Base', '200', () {
                   // Send base speed command
                   final baseSpeedCommand = BaseSpeedCommand(200.0);
                   appState.sendCommand(baseSpeedCommand.toCommand());
@@ -141,11 +278,120 @@ class _HomePageState extends State<HomePage> {
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: _buildBaseSpeedInput('Base RPM', '120.0', () {
+                child: _buildBaseSpeedInput('RPM Base', '120.0', () {
                   // Send base RPM command
                   final baseRpmCommand = BaseRpmCommand(120.0);
                   appState.sendCommand(baseRpmCommand.toCommand());
                 }),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // Control toggles and sync button
+          Row(
+            children: [
+              // Cascade Control Toggle
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Cascada',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w500,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    Transform.scale(
+                      scale: 0.8,
+                      child: ValueListenableBuilder<ArduinoData?>(
+                        valueListenable: appState.currentData,
+                        builder: (context, data, child) {
+                          final isCascadeEnabled = data?.cascade ?? true;
+                          return Switch(
+                            value: isCascadeEnabled,
+                            onChanged: (value) {
+                              final cascadeCommand = CascadeCommand(value);
+                              appState.sendCommand(cascadeCommand.toCommand());
+                            },
+                            activeColor: Theme.of(context).colorScheme.primary,
+                            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Realtime Control Toggle
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Realtime',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w500,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    Transform.scale(
+                      scale: 0.8,
+                      child: Switch(
+                        value: _isRealtimeEnabled,
+                        onChanged: (value) {
+                          setState(() {
+                            _isRealtimeEnabled = value;
+                          });
+                          final realtimeCommand = RealtimeEnableCommand(value);
+                          appState.sendCommand(realtimeCommand.toCommand());
+                        },
+                        activeColor: Theme.of(context).colorScheme.secondary,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Sync with Telemetry Icon Button
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Sync',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w500,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primaryContainer,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: IconButton(
+                        onPressed: () {
+                          final telemetryCommand = TelemetryRequestCommand();
+                          appState.sendCommand(telemetryCommand.toCommand());
+                        },
+                        icon: Icon(
+                          Icons.sync,
+                          color: Theme.of(context).colorScheme.onPrimaryContainer,
+                          size: 16,
+                        ),
+                        tooltip: 'Sincronizar con Telemetry',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -381,299 +627,8 @@ class _HomePageState extends State<HomePage> {
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Column(
               children: [
-                // Status Bar (battery, terminal, connection) - moved above tabs
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                  child: ValueListenableBuilder<ArduinoData?>(
-                    valueListenable: appState!.currentData,
-                    builder: (context, data, child) {
-                      final battery = data != null ? data.battery : 88.0;
-                      final isConnected = appState.isConnected.value;
-
-                      return Row(
-                        children: [
-                          // Battery icon with percentage overlaid
-                          SizedBox(
-                            width: 28,
-                            height: 28,
-                            child: Stack(
-                              alignment: Alignment.center,
-                              children: [
-                                Icon(
-                                  Icons.battery_6_bar,
-                                  color:
-                                      Theme.of(context).colorScheme.onSurface,
-                                  size: 28,
-                                ),
-                                Positioned(
-                                  bottom: 1,
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                        '${battery.toStringAsFixed(0)}',
-                                        style: TextStyle(
-                                          fontSize: 7,
-                                          fontWeight: FontWeight.w600,
-                                          color: Colors.white,
-                                          fontFamily: 'Space Grotesk',
-                                          shadows: [
-                                            Shadow(
-                                              offset: Offset(1, 1),
-                                              blurRadius: 2,
-                                              color: Colors.black,
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      Text(
-                                        '%',
-                                        style: TextStyle(
-                                          fontSize: 5,
-                                          fontWeight: FontWeight.w600,
-                                          color: Colors.white,
-                                          fontFamily: 'Space Grotesk',
-                                          shadows: [
-                                            Shadow(
-                                              offset: Offset(1, 1),
-                                              blurRadius: 2,
-                                              color: Colors.black,
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          // Terminal icon
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .primary
-                                  .withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: IconButton(
-                                onPressed: () {
-                                  Navigator.pushNamed(context, '/terminal');
-                                },
-                                icon: Icon(
-                                  Icons.terminal,
-                                  color:
-                                      Theme.of(context).colorScheme.onSurface,
-                                  size: 20,
-                                ),
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          // Mode selector
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .primary
-                                  .withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: ValueListenableBuilder<OperationMode>(
-                                valueListenable: appState.currentMode,
-                                builder: (context, currentMode, child) {
-                                  return PopupMenuButton<OperationMode>(
-                                    onSelected: (OperationMode mode) async {
-                                      await appState.changeOperationMode(mode);
-                                    },
-                                    itemBuilder: (BuildContext context) =>
-                                        OperationMode.values
-                                            .map((OperationMode mode) {
-                                      return PopupMenuItem<OperationMode>(
-                                        value: mode,
-                                        child: Row(
-                                          children: [
-                                            Icon(mode.icon, size: 20),
-                                            const SizedBox(width: 8),
-                                            Text(mode.displayName,
-                                                style: const TextStyle(
-                                                    fontSize: 12)),
-                                          ],
-                                        ),
-                                      );
-                                    }).toList(),
-                                    child: Icon(
-                                      currentMode.icon,
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .onSurface,
-                                      size: 20,
-                                    ),
-                                    padding: EdgeInsets.zero,
-                                    constraints: const BoxConstraints(),
-                                  );
-                                },
-                              ),
-                            ),
-                          ),
-                          // Connection button/status on the right
-                          Expanded(
-                            child: Align(
-                              alignment: Alignment.centerRight,
-                              child: ValueListenableBuilder<bool>(
-                                valueListenable: appState.isConnected,
-                                builder: (context, isConnected, child) {
-                                  return Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: isConnected
-                                          ? Theme.of(context)
-                                              .colorScheme
-                                              .primary
-                                              .withOpacity(0.2)
-                                          : Theme.of(context)
-                                              .colorScheme
-                                              .primary
-                                              .withOpacity(0.1),
-                                      borderRadius: BorderRadius.circular(6),
-                                      border: isConnected
-                                          ? Border.all(
-                                              color: Theme.of(context)
-                                                  .colorScheme
-                                                  .primary,
-                                              width: 1,
-                                            )
-                                          : null,
-                                    ),
-                                    child: InkWell(
-                                      onTap: _showConnectionModal,
-                                      borderRadius: BorderRadius.circular(6),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                            isConnected
-                                                ? Icons.bluetooth_connected
-                                                : Icons.bluetooth,
-                                            size: 16,
-                                            color: isConnected
-                                                ? Theme.of(context)
-                                                    .colorScheme
-                                                    .primary
-                                                : Theme.of(context)
-                                                    .colorScheme
-                                                    .onSurface,
-                                          ),
-                                          if (isConnected) ...[
-                                            const SizedBox(width: 4),
-                                            Flexible(
-                                              child: Column(
-                                                mainAxisSize: MainAxisSize.min,
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    appState.connectedDevice.value
-                                                            ?.name ??
-                                                        'Dispositivo',
-                                                    style: TextStyle(
-                                                      fontSize: 8,
-                                                      fontWeight: FontWeight.w600,
-                                                      color: Theme.of(context)
-                                                          .colorScheme
-                                                          .primary,
-                                                      fontFamily: 'Space Grotesk',
-                                                    ),
-                                                    overflow: TextOverflow.ellipsis,
-                                                    maxLines: 1,
-                                                  ),
-                                                  Text(
-                                                    appState.connectedDevice.value
-                                                            ?.address ??
-                                                        '',
-                                                    style: TextStyle(
-                                                      fontSize: 6,
-                                                      fontWeight: FontWeight.w400,
-                                                      color: Theme.of(context)
-                                                          .colorScheme
-                                                          .primary
-                                                          .withOpacity(0.8),
-                                                      fontFamily: 'monospace',
-                                                    ),
-                                                    overflow: TextOverflow.ellipsis,
-                                                    maxLines: 1,
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ] else ...[
-                                            const SizedBox(width: 4),
-                                            Flexible(
-                                              child: Column(
-                                                mainAxisSize: MainAxisSize.min,
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    'Desconectado',
-                                                    style: TextStyle(
-                                                      fontSize: 8,
-                                                      fontWeight: FontWeight.w600,
-                                                      color: Theme.of(context)
-                                                          .colorScheme
-                                                          .onSurface,
-                                                      fontFamily: 'Space Grotesk',
-                                                    ),
-                                                    overflow: TextOverflow.ellipsis,
-                                                    maxLines: 1,
-                                                  ),
-                                                  Text(
-                                                    'Conectar aquí',
-                                                    style: TextStyle(
-                                                      fontSize: 6,
-                                                      fontWeight: FontWeight.w400,
-                                                      color: Theme.of(context)
-                                                          .colorScheme
-                                                          .onSurface
-                                                          .withOpacity(0.8),
-                                                      fontFamily: 'Space Grotesk',
-                                                    ),
-                                                    overflow: TextOverflow.ellipsis,
-                                                    maxLines: 1,
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ],
-                                        ],
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                ),
+                // Status Bar
+                StatusBar(appState: appState!, onShowConnectionModal: _showConnectionModal),
 
                 // Gauges Layout
                 ValueListenableBuilder<ArduinoData?>(
