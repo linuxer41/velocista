@@ -241,22 +241,24 @@ void loop() {
       qtr.read();
       lastLinePosition = qtr.linePosition;
 
-      // Aplicar cadena de filtros a la posición de línea para mejorar estabilidad
-      // Secuencia: Media Móvil -> Mediano -> Kalman -> Histéresis
+      // Aplicar filtros condicionalmente según configuración
       float rawPos = qtr.linePosition;
-      float maPos = applyMovingAverage(rawPos);     // Suaviza ruido de alta frecuencia
-      float medPos = applyMedian(maPos);            // Elimina valores atípicos
-      float kalPos = kalmanUpdate(kalmanLine, medPos); // Estima posición real
-      float hystPos = applyHysteresis(kalPos);      // Evita cambios bruscos
-      filteredLinePos = hystPos;
+      float currentPos = rawPos;
+
+      // Filtros de posición en secuencia (orden por importancia)
+      if (config.filterEnables[0]) currentPos = applyMedian(currentPos);        // Mediano (elimina outliers)
+      if (config.filterEnables[1]) currentPos = applyMovingAverage(currentPos); // Media Móvil (suaviza)
+      if (config.filterEnables[2]) currentPos = kalmanUpdate(kalmanLine, currentPos); // Kalman (estima)
+      if (config.filterEnables[3]) currentPos = applyHysteresis(currentPos);    // Histéresis (estabilidad)
+
+      filteredLinePos = currentPos;
+
+      // Calcular error y aplicar filtros de error
+      float error = 0 - currentPos;
+      if (config.filterEnables[4]) error = applyDeadZone(error); // Zona Muerta
+      if (config.filterEnables[5]) error = applyLowPass(error);  // Pasa Bajos
       
-      // Calcular error y aplicar filtros adicionales
-      // Secuencia: Zona Muerta -> Pasa Bajos
-      float error = 0 - hystPos;
-      float dzError = applyDeadZone(error);         // Ignora errores pequeños
-      float lpError = applyLowPass(dzError);        // Suaviza cambios rápidos
-      
-      float pidOutput = linePid.calculate(0, lpError, dtLine);
+      float pidOutput = linePid.calculate(0, error, dtLine);
       lastPidOutput = pidOutput;
 
       if (config.cascadeMode) {
@@ -379,6 +381,7 @@ void loop() {
       config.baseRPM        = DEFAULT_BASE_RPM;
       config.cascadeMode    = DEFAULT_CASCADE;
       config.telemetry = DEFAULT_TELEMETRY_ENABLED;
+      memcpy(config.filterEnables, DEFAULT_FILTER_ENABLES, sizeof(config.filterEnables));
       config.operationMode  = DEFAULT_OPERATION_MODE;
       config.checksum       = 1234567891;
       saveConfig();
@@ -392,7 +395,7 @@ void loop() {
       debugger.systemMessage("set telemetry 0/1  |  set mode 0/1/2  |  set cascade 0/1");
       debugger.systemMessage("set line kp,ki,kd  |  set left kp,ki,kd  |  set right kp,ki,kd");
       debugger.systemMessage("set base speed <value>  |  set base rpm <value>");
-      debugger.systemMessage("rc throttle,steering");
+      debugger.systemMessage("set filters 1,0,1,0,1,1  |  rc throttle,steering");
 
     // ---------- comandos con parámetros ------------------------------
     } else if (command.startsWith("set telemetry ")) {
@@ -483,6 +486,21 @@ void loop() {
       steering  = constrain(s, -MAX_SPEED, MAX_SPEED);
       success = true;
 
+     } else if (command.startsWith("set filters ")) {
+       String values = command.substring(12);
+       int idx = 0;
+       int start = 0;
+       int len = values.length();
+       for (int i = 0; i <= len && idx < 6; i++) {
+         if (i == len || values[i] == ',') {
+           if (start < i) {
+             config.filterEnables[idx++] = (values.substring(start, i).toInt() == 1);
+           }
+           start = i + 1;
+         }
+       }
+       success = true;
+
     }
 
     if (success) { debugger.ackMessage( (" " + command).c_str() ); } else {
@@ -546,14 +564,8 @@ void printDebugInfo() {
   data.encL = leftMotor.getEncoderCount();
   data.encR = rightMotor.getEncoderCount();
 
-  // Datos de filtros para debugging
-  data.kalmanEstimate = kalmanLine.estimate;
-  data.kalmanCov = kalmanLine.errorCov;
-  data.lpAlpha = LP_ALPHA;
-  data.dzThreshold = DEAD_ZONE_THRESHOLD;
-  data.hystThreshold = HYSTERESIS_THRESHOLD;
-  data.maWindow = MA_WINDOW;
-  data.medWindow = MED_WINDOW;
+  // Estados de habilitación de filtros para debugging
+  memcpy(data.filterEnables, config.filterEnables, sizeof(data.filterEnables));
 
   debugger.debugData(data);
 }
@@ -597,14 +609,8 @@ void printTelemetryInfo() {
   data.cascade = config.cascadeMode;
   data.mode = currentMode;
 
-  // Datos de filtros para debugging
-  data.kalmanEstimate = kalmanLine.estimate;
-  data.kalmanCov = kalmanLine.errorCov;
-  data.lpAlpha = LP_ALPHA;
-  data.dzThreshold = DEAD_ZONE_THRESHOLD;
-  data.hystThreshold = HYSTERESIS_THRESHOLD;
-  data.maWindow = MA_WINDOW;
-  data.medWindow = MED_WINDOW;
+  // Estados de habilitación de filtros para debugging
+  memcpy(data.filterEnables, config.filterEnables, sizeof(data.filterEnables));
 
   debugger.telemetryData(data);
 }

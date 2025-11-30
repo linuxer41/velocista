@@ -12,9 +12,11 @@ private:
   float kp, ki, kd;
   float error, lastError, integral, derivative;
   float output;
+  bool antiWindupEnabled;
+  float maxOutput, minOutput;
 
 public:
-  PID(float p, float i, float d) : kp(p), ki(i), kd(d), error(0), lastError(0), integral(0), derivative(0), output(0) {}
+  PID(float p, float i, float d) : kp(p), ki(i), kd(d), error(0), lastError(0), integral(0), derivative(0), output(0), antiWindupEnabled(true), maxOutput(225), minOutput(-225) {}
 
   void setGains(float p, float i, float d) {
     kp = p;
@@ -24,12 +26,29 @@ public:
 
   float calculate(float setpoint, float measurement, float dt) {
     error = setpoint - measurement;
-    integral += error * dt;
-    integral = constrain(integral, -1000, 1000); // Limitar integral
     derivative = (error - lastError) / dt;
 
-    output = kp * error + ki * integral + kd * derivative;
-    output = constrain(output, -225, 225); // Limitar salida PID
+    // Calcular términos
+    float pTerm = kp * error;
+    float iTerm = ki * integral;
+    float dTerm = kd * derivative;
+
+    // Anti-windup: integración condicional
+    if (antiWindupEnabled) {
+      float unsaturatedOutput = pTerm + iTerm + dTerm;
+      // Solo integrar si no está saturado en la dirección del error
+      if ((unsaturatedOutput < maxOutput || error <= 0) && (unsaturatedOutput > minOutput || error >= 0)) {
+        integral += error * dt;
+        integral = constrain(integral, -1000, 1000);
+      }
+    } else {
+      integral += error * dt;
+      integral = constrain(integral, -1000, 1000);
+    }
+
+    iTerm = ki * integral;
+    output = pTerm + iTerm + dTerm;
+    output = constrain(output, minOutput, maxOutput);
     lastError = error;
     return output;
   }

@@ -76,6 +76,7 @@ struct RobotConfig {
    int16_t rcMaxSteering;                // Steering máximo control remoto
    bool cascadeMode;                     // Modo cascada activado/desactivado
    bool telemetry;                // Habilitar/deshabilitar telemetry (0=deshabilitado, 1=habilitado)
+   bool filterEnables[6];                // Habilitar filtros individuales: [MED, MA, KAL, HYS, DZ, LP]
    OperationMode operationMode;          // Modo de operación actual
    float baseRPM;                        // RPM base para control de velocidad
    uint32_t checksum;                    // Checksum para verificación
@@ -137,6 +138,7 @@ const float DEFAULT_RIGHT_KD = 0.01;
 const int16_t DEFAULT_BASE_SPEED = 200;
 const bool DEFAULT_CASCADE = true;
 const bool DEFAULT_TELEMETRY_ENABLED = true;
+const bool DEFAULT_FILTER_ENABLES[6] = {true, true, true, true, true, true}; // [MED, MA, KAL, HYS, DZ, LP]
 #define DEFAULT_OPERATION_MODE MODE_IDLE
 const float DEFAULT_BASE_RPM = 120.0f;
 

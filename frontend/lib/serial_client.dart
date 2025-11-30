@@ -117,12 +117,17 @@ class SerialClient {
 
       // Connect to the device
       // Note: The library has inconsistent return types across platforms
-      // On Android it returns BluetoothConnection, on Windows it may return bool when failed
+      // On Android it returns BluetoothConnection, on Windows it may return bool or int when failed
       dynamic connectionResult;
       try {
         connectionResult = await _bluetooth.connect(device.address);
       } catch (e) {
         // Handle any immediate exceptions from the connect call
+        if (e.toString().contains('type \'bool\' is not a subtype of type \'int?\'')) {
+          // This is a known issue on Windows with the bluetooth_classic_multiplatform library
+          // The library internally tries to cast bool to int?, which fails
+          throw Exception('Connection failed due to platform compatibility issue. This is a known problem with the Bluetooth library on Windows. Please try again or check device pairing.');
+        }
         throw Exception('Connection failed: $e');
       }
 
@@ -142,6 +147,16 @@ class SerialClient {
           // Some library versions may set the connection internally
           // For now, assume connection failed since we can't get the object
           throw Exception('Connection initialization failed - library returned unexpected result');
+        }
+      } else if (connectionResult is int) {
+        // On Windows, the library may return an int (0 for failure, non-zero for success)
+        if (connectionResult == 0) {
+          throw Exception('Connection failed - device may not be paired or available. Please ensure the device is in pairing mode and try again.');
+        } else {
+          // Connection successful, but no connection object returned
+          print('Connect returned int $connectionResult, assuming success but no connection object');
+          // We'll assume connection is established and try to proceed
+          // This is a workaround for platform differences
         }
       } else {
         throw Exception('Connection failed - unexpected result type: ${connectionResult.runtimeType}');

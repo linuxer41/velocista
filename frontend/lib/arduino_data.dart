@@ -173,6 +173,9 @@ class DebugData extends SerialData {
   final int? freeMem;
   final int? uptime;
 
+  // Filters data
+  final List<int>? filters;
+
   DebugData({
     this.lineKPid,
     this.leftKPid,
@@ -191,6 +194,7 @@ class DebugData extends SerialData {
     this.loopUs,
     this.freeMem,
     this.uptime,
+    this.filters,
   }) : super(5);
 
   static DebugData? fromSerial(String dataString) {
@@ -227,6 +231,7 @@ class DebugData extends SerialData {
     final pid = _parseDoubleArray(dataMap['PID']);
     final speedCms = _parseDoubleArray(dataMap['SPEED_CMS']);
     final qtr = _parseIntArray(dataMap['QTR']);
+    final filters = _parseIntArray(dataMap['FILTERS']);
 
     // Parse simple values
     final mode = int.tryParse(dataMap['MODE'] ?? '');
@@ -254,6 +259,7 @@ class DebugData extends SerialData {
       loopUs: loopUs,
       freeMem: freeMem,
       uptime: uptime,
+      filters: filters,
     );
   }
 
@@ -286,6 +292,9 @@ class TelemetryData extends SerialData {
   final int? loopUs;
   final int? freeMem;
 
+  // Filters data
+  final List<int>? filters;
+
   TelemetryData({
     required this.operationMode,
     required this.modeName,
@@ -304,6 +313,7 @@ class TelemetryData extends SerialData {
     this.batt,
     this.loopUs,
     this.freeMem,
+    this.filters,
   }) : super(4);
 
   static TelemetryData? fromSerial(String dataString) {
@@ -352,6 +362,7 @@ class TelemetryData extends SerialData {
     final pid = _parseDoubleArray(dataMap['PID']);
     final speedCms = _parseDoubleArray(dataMap['SPEED_CMS']);
     final qtr = _parseIntArray(dataMap['QTR']);
+    final filters = _parseIntArray(dataMap['FILTERS']);
 
     // Parse simple values
     final batt = double.tryParse(dataMap['BATT'] ?? '0.0') ?? 0.0;
@@ -385,6 +396,7 @@ class TelemetryData extends SerialData {
       batt: batt,
       loopUs: loopUs,
       freeMem: freeMem,
+      filters: filters,
     );
   }
 
@@ -545,6 +557,20 @@ class RelationCommand {
 
   String toCommand() {
     return 'set relation ${enable ? 1 : 0}';
+  }
+}
+
+class FiltersCommand {
+  final List<int> filters; // List of 6 filter states (0 or 1)
+
+  FiltersCommand(this.filters) {
+    if (filters.length != 6) {
+      throw ArgumentError('Filters list must contain exactly 6 elements');
+    }
+  }
+
+  String toCommand() {
+    return 'set filters ${filters.join(',')}';
   }
 }
 

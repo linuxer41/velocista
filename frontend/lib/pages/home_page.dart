@@ -271,7 +271,7 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildPidTabs(AppState appState) {
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: Column(
         children: [
           _buildBaseSpeedTab(appState),
@@ -280,6 +280,7 @@ class _HomePageState extends State<HomePage> {
               Tab(text: 'PID Línea'),
               Tab(text: 'PID Izquierdo'),
               Tab(text: 'PID Derecho'),
+              Tab(text: 'Filtros'),
             ],
             labelStyle:
                 const TextStyle(fontSize: 12, fontFamily: 'Space Grotesk'),
@@ -295,6 +296,7 @@ class _HomePageState extends State<HomePage> {
                 _buildLinePidTab(appState),
                 LeftPidControl(appState: appState),
                 RightPidControl(appState: appState),
+                _buildFiltersTab(appState),
               ],
             ),
           ),
@@ -809,6 +811,95 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ],
                 ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFiltersTab(AppState appState) {
+    const filterNames = ['MED', 'MA', 'KAL', 'HYS', 'DZ', 'LP'];
+    const filterDescriptions = [
+      'Mediano',
+      'Media Móvil',
+      'Kalman',
+      'Histeresis',
+      'Zona Muerta',
+      'Pasa Bajos'
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Filtros de Seguimiento de Línea',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Theme.of(context).colorScheme.onSurface,
+              fontFamily: 'Space Grotesk',
+            ),
+          ),
+          const SizedBox(height: 8),
+          ValueListenableBuilder<List<int>?>(
+            valueListenable: appState.filters,
+            builder: (context, filters, child) {
+              if (filters == null || filters.length != 6) {
+                return const Text('Cargando filtros...');
+              }
+
+              return Column(
+                children: List.generate(6, (index) {
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                filterNames[index],
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: Theme.of(context).colorScheme.onSurface,
+                                ),
+                              ),
+                              Text(
+                                filterDescriptions[index],
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Switch(
+                          value: filters[index] == 1,
+                          onChanged: (value) {
+                            final newFilters = List<int>.from(filters);
+                            newFilters[index] = value ? 1 : 0;
+                            appState.filters.value = newFilters;
+                            final filtersCommand = FiltersCommand(newFilters);
+                            appState.sendCommand(filtersCommand.toCommand());
+                          },
+                          activeColor: Theme.of(context).colorScheme.primary,
+                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ],
+                    ),
+                  );
+                }),
               );
             },
           ),
@@ -1692,6 +1783,44 @@ class _HomePageState extends State<HomePage> {
                                                             ),
                                                           ],
                                                         ),
+                                                      ),
+                                                      const SizedBox(height: 8),
+                                                      // Filters Status
+                                                      ValueListenableBuilder<List<int>?>(
+                                                        valueListenable: appState.filters,
+                                                        builder: (context, filters, child) {
+                                                          if (filters == null || filters.length != 6) return const SizedBox.shrink();
+
+                                                          return Container(
+                                                            width: double.infinity,
+                                                            padding: const EdgeInsets.all(8),
+                                                            decoration: BoxDecoration(
+                                                              color: Theme.of(context).colorScheme.surface,
+                                                              borderRadius: BorderRadius.circular(6),
+                                                            ),
+                                                            child: Column(
+                                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                                              children: [
+                                                                Text(
+                                                                  'Filtros',
+                                                                  style: TextStyle(
+                                                                    fontSize: 11,
+                                                                    fontWeight: FontWeight.w600,
+                                                                    color: Theme.of(context).colorScheme.onSurface,
+                                                                  ),
+                                                                ),
+                                                                const SizedBox(height: 4),
+                                                                Text(
+                                                                  'MED:${filters[0]} MA:${filters[1]} KAL:${filters[2]} HYS:${filters[3]} DZ:${filters[4]} LP:${filters[5]}',
+                                                                  style: TextStyle(
+                                                                    fontSize: 9,
+                                                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                                  ),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          );
+                                                        },
                                                       ),
                                                     ],
                                                   ),
