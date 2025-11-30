@@ -34,6 +34,127 @@ float leftTargetRPM = 0;
 float rightTargetRPM = 0;
 int throttle = 0;
 int steering = 0;
+float filteredLinePos = 0;
+
+// ==========================
+// FILTROS PARA POSICIÓN DE LÍNEA
+// ==========================
+
+// Filtro de Media Móvil
+// Suaviza las lecturas de posición de línea promediando las últimas N muestras
+// Reduce el ruido de alta frecuencia y variaciones rápidas en las mediciones
+// Parámetros: Ventana de 5 muestras para balancear suavizado y respuesta
+const int MA_WINDOW = 5;
+float maBuffer[MA_WINDOW];
+int maIndex = 0;
+float maSum = 0;
+bool maFull = false;
+
+float applyMovingAverage(float newVal) {
+  maSum -= maBuffer[maIndex];
+  maBuffer[maIndex] = newVal;
+  maSum += newVal;
+  maIndex = (maIndex + 1) % MA_WINDOW;
+  if (!maFull && maIndex == 0) maFull = true;
+  return maFull ? maSum / MA_WINDOW : maSum / (maIndex == 0 ? MA_WINDOW : maIndex);
+}
+
+// Filtro de Kalman
+// Estima el estado real (posición de línea) combinando predicciones y mediciones
+// Reduce ruido considerando tanto el ruido del proceso como el de medición
+// Parámetros: q=0.01 (ruido de proceso), r=0.1 (ruido de medición)
+// Útil para sensores con ruido gaussiano y sistemas con dinámica predecible
+struct KalmanFilter {
+  float estimate;    // x - estado estimado (posición filtrada)
+  float errorCov;    // p - covarianza del error de estimación
+  float processNoise; // q - ruido del proceso (incertidumbre en el modelo)
+  float measNoise;   // r - ruido de medición (incertidumbre del sensor)
+};
+
+KalmanFilter kalmanLine = {0, 1, 0.01, 0.1};
+
+float kalmanUpdate(KalmanFilter &kf, float measurement) {
+  // Paso de predicción: aumenta la incertidumbre basada en el ruido del proceso
+  kf.errorCov += kf.processNoise;
+  
+  // Paso de actualización: corrige la estimación con la nueva medición
+  float kalmanGain = kf.errorCov / (kf.errorCov + kf.measNoise);
+  kf.estimate += kalmanGain * (measurement - kf.estimate);
+  kf.errorCov *= (1 - kalmanGain);
+  
+  return kf.estimate;
+}
+
+// Filtro Mediano
+// Elimina valores atípicos (outliers) seleccionando el valor central de una ventana ordenada
+// Muy efectivo contra ruido impulsivo o lecturas erráticas de sensores
+// Parámetros: Ventana de 5 muestras para balancear robustez y retardo
+// Ventaja: No distorsiona valores normales, solo elimina extremos
+const int MED_WINDOW = 5;
+float medBuffer[MED_WINDOW];
+int medIndex = 0;
+
+float applyMedian(float newVal) {
+  medBuffer[medIndex] = newVal;
+  medIndex = (medIndex + 1) % MED_WINDOW;
+  
+  float sorted[MED_WINDOW];
+  memcpy(sorted, medBuffer, sizeof(sorted));
+  
+  // Ordenamiento burbuja para encontrar la mediana
+  for(int i = 0; i < MED_WINDOW - 1; i++) {
+    for(int j = 0; j < MED_WINDOW - 1 - i; j++) {
+      if(sorted[j] > sorted[j + 1]) {
+        float temp = sorted[j];
+        sorted[j] = sorted[j + 1];
+        sorted[j + 1] = temp;
+      }
+    }
+  }
+  
+  return sorted[MED_WINDOW / 2];
+}
+
+// Filtro de Histéresis
+// Evita cambios rápidos y oscilatorios en la posición detectada
+// Solo actualiza el valor cuando el cambio supera un umbral significativo
+// Parámetros: Umbral de 10 unidades para filtrar ruido menor pero permitir correcciones grandes
+// Útil para prevenir "caza" del controlador cerca de la línea ideal
+float prevHystPosition = 0;
+const float HYSTERESIS_THRESHOLD = 10.0;
+
+float applyHysteresis(float newPos) {
+  if (abs(newPos - prevHystPosition) > HYSTERESIS_THRESHOLD) {
+    prevHystPosition = newPos;
+  }
+  return prevHystPosition;
+}
+
+// Zona Muerta para Error
+// Ignora errores pequeños que no requieren corrección
+// Evita que el PID reaccione a ruido menor, reduciendo oscilaciones innecesarias
+// Parámetros: Umbral de 5 unidades, ajustable según la sensibilidad deseada
+// Beneficio: Mayor estabilidad en condiciones de ruido bajo
+const float DEAD_ZONE_THRESHOLD = 5.0;
+
+float applyDeadZone(float error) {
+  if (abs(error) < DEAD_ZONE_THRESHOLD) return 0;
+  return error;
+}
+
+// Filtro Pasa Bajos para Error
+// Suaviza cambios rápidos en el error, actuando como un filtro de frecuencia baja
+// Reduce la ganancia de altas frecuencias, estabilizando el control
+// Parámetros: Alpha=0.8 (alta suavización, respuesta lenta pero estable)
+// Fórmula: y[n] = alpha * x[n] + (1-alpha) * y[n-1]
+// Mayor alpha = más peso al valor actual, menor filtrado
+float lpErrorPrev = 0;
+const float LP_ALPHA = 0.8;
+
+float applyLowPass(float newVal) {
+  lpErrorPrev = LP_ALPHA * newVal + (1 - LP_ALPHA) * lpErrorPrev;
+  return lpErrorPrev;
+}
 
 // LED indication
 unsigned long lastLedTime = 0;
@@ -97,6 +218,10 @@ void setup() {
 
   qtr.calibrate();
 
+  // Inicializar buffers de filtros
+  memset(maBuffer, 0, sizeof(maBuffer));
+  memset(medBuffer, 0, sizeof(medBuffer));
+
   debugger.systemMessage("Robot iniciado. Modo: IDLE");
   lastLineTime = millis();
   lastSpeedTime = millis();
@@ -116,7 +241,22 @@ void loop() {
       qtr.read();
       lastLinePosition = qtr.linePosition;
 
-      float pidOutput = linePid.calculate(0, qtr.linePosition, dtLine);
+      // Aplicar cadena de filtros a la posición de línea para mejorar estabilidad
+      // Secuencia: Media Móvil -> Mediano -> Kalman -> Histéresis
+      float rawPos = qtr.linePosition;
+      float maPos = applyMovingAverage(rawPos);     // Suaviza ruido de alta frecuencia
+      float medPos = applyMedian(maPos);            // Elimina valores atípicos
+      float kalPos = kalmanUpdate(kalmanLine, medPos); // Estima posición real
+      float hystPos = applyHysteresis(kalPos);      // Evita cambios bruscos
+      filteredLinePos = hystPos;
+      
+      // Calcular error y aplicar filtros adicionales
+      // Secuencia: Zona Muerta -> Pasa Bajos
+      float error = 0 - hystPos;
+      float dzError = applyDeadZone(error);         // Ignora errores pequeños
+      float lpError = applyLowPass(dzError);        // Suaviza cambios rápidos
+      
+      float pidOutput = linePid.calculate(0, lpError, dtLine);
       lastPidOutput = pidOutput;
 
       if (config.cascadeMode) {
@@ -359,7 +499,7 @@ void printDebugInfo() {
   int* sensors = qtr.getSensorValues();
   memcpy(data.sensors, sensors, sizeof(data.sensors));
 
-  data.linePos = qtr.linePosition;
+  data.linePos = filteredLinePos;
   data.cascade = config.cascadeMode;
   data.mode = currentMode;
   data.uptime = millis();
@@ -406,6 +546,15 @@ void printDebugInfo() {
   data.encL = leftMotor.getEncoderCount();
   data.encR = rightMotor.getEncoderCount();
 
+  // Datos de filtros para debugging
+  data.kalmanEstimate = kalmanLine.estimate;
+  data.kalmanCov = kalmanLine.errorCov;
+  data.lpAlpha = LP_ALPHA;
+  data.dzThreshold = DEAD_ZONE_THRESHOLD;
+  data.hystThreshold = HYSTERESIS_THRESHOLD;
+  data.maWindow = MA_WINDOW;
+  data.medWindow = MED_WINDOW;
+
   debugger.debugData(data);
 }
 
@@ -418,7 +567,7 @@ void printTelemetryInfo() {
   int* sensors = qtr.getSensorValues();
   memcpy(data.sensors, sensors, sizeof(data.sensors));
 
-  data.linePos = qtr.linePosition;
+  data.linePos = filteredLinePos;
   data.lineError = linePid.getError();
   data.linePidOut = lastPidOutput;
   data.lineIntegral = linePid.getIntegral();
@@ -447,6 +596,15 @@ void printTelemetryInfo() {
   data.freeMem = freeMemory();
   data.cascade = config.cascadeMode;
   data.mode = currentMode;
+
+  // Datos de filtros para debugging
+  data.kalmanEstimate = kalmanLine.estimate;
+  data.kalmanCov = kalmanLine.errorCov;
+  data.lpAlpha = LP_ALPHA;
+  data.dzThreshold = DEAD_ZONE_THRESHOLD;
+  data.hystThreshold = HYSTERESIS_THRESHOLD;
+  data.maWindow = MA_WINDOW;
+  data.medWindow = MED_WINDOW;
 
   debugger.telemetryData(data);
 }

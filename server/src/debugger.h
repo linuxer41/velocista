@@ -54,6 +54,15 @@ struct DebugData {
   unsigned long loopTime;
   int freeMem;
   long encL, encR;
+
+  // Filtros de línea
+  float kalmanEstimate;
+  float kalmanCov;
+  float lpAlpha;
+  float dzThreshold;
+  float hystThreshold;
+  int maWindow;
+  int medWindow;
 };
 
 class Debugger {
@@ -135,10 +144,26 @@ public:
     Serial.print(data.sensors[3]); Serial.print(",");
     Serial.print(data.sensors[4]); Serial.print(",");
     Serial.print(data.sensors[5]); Serial.print("]");
+    Serial.print("|FILTERS:[");
+    Serial.print(data.kalmanEstimate, 2); Serial.print(",");
+    Serial.print(data.kalmanCov, 3); Serial.print(",");
+    Serial.print(data.lpAlpha, 2); Serial.print(",");
+    Serial.print(data.dzThreshold, 1); Serial.print(",");
+    Serial.print(data.hystThreshold, 1); Serial.print(",");
+    Serial.print(data.maWindow); Serial.print(",");
+    Serial.print(data.medWindow); Serial.print("]");
     Serial.print("|BATT:");
     Serial.print(data.battery, 2);
     Serial.print("|LOOP_US:");
     Serial.print(data.loopTime);
+    Serial.print("|FILTERS:[");
+    Serial.print(data.kalmanEstimate, 2); Serial.print(",");
+    Serial.print(data.kalmanCov, 3); Serial.print(",");
+    Serial.print(data.lpAlpha, 2); Serial.print(",");
+    Serial.print(data.dzThreshold, 1); Serial.print(",");
+    Serial.print(data.hystThreshold, 1); Serial.print(",");
+    Serial.print(data.maWindow); Serial.print(",");
+    Serial.print(data.medWindow); Serial.print("]");
     Serial.print("|FREE_MEM:");
     Serial.print(data.freeMem);
     Serial.print("|UPTIME:");
