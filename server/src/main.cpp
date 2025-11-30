@@ -5,6 +5,8 @@
 #include "sensors.h"
 #include "pid.h"
 #include "debugger.h"
+#include "kalman.h"
+#include "serial_reader.h"
 
 // ==========================
 // INSTANCIAS DE CLASES
@@ -17,6 +19,8 @@ PID linePid(DEFAULT_LINE_KP, DEFAULT_LINE_KI, DEFAULT_LINE_KD);
 PID leftPid(DEFAULT_LEFT_KP, DEFAULT_LEFT_KI, DEFAULT_LEFT_KD);
 PID rightPid(DEFAULT_RIGHT_KP, DEFAULT_RIGHT_KI, DEFAULT_RIGHT_KD);
 Debugger debugger;
+Kalman kalman(0.1, 10.0);  // Q=0.1, R=10.0
+SerialReader serialReader;
 
 // ==========================
 // VARIABLES GLOBALES
@@ -38,10 +42,6 @@ int steering = 0;
 unsigned long lastLedTime = 0;
 bool ledState = false;
 
-// buffer global reutilizable
-char serBuf[64];
-bool lineReady = false;
-uint8_t idx = 0;
 
 // ==========================
 // FUNCIONES AUXILIARES
@@ -55,38 +55,6 @@ int freeMemory() {
   return (int) &v - (__brkval == 0 ? (int) &__heap_start : (int) __brkval);
 }
 
-// --------------------------------------------------------------------------
-// se llama desde loop() o desde una interrupción de Serial
-// --------------------------------------------------------------------------
-void fillSerialBuffer()
-{
-  while (Serial.available()) {
-    char c = Serial.read();
-    if (c == '\n' || c == '\r') {          // fin de línea
-      serBuf[idx] = '\0';                  // terminador C-string
-      lineReady = true;
-      idx       = 0;                       // preparado para la próxima
-      return;
-    }
-    if (idx < sizeof(serBuf) - 1) serBuf[idx++] = c;
-  }
-}
-
-// --------------------------------------------------------------------------
-// devuelve true cuando hay una línea nueva; *buf apunta al texto
-// ya en minúsculas y sin '\r' / '\n'
-// --------------------------------------------------------------------------
-bool getSerialLine(const char **buf)
-{
-  if (!lineReady) return false;
-  *buf = serBuf;          // puntero al buffer
-
-  // pasar a minúsculas "in-place"
-  for (char *p = serBuf; *p; ++p) *p = tolower(*p);
-
-  lineReady = false;      // consumido
-  return true;
-}
 
 // ==========================
 // INTERRUPT SERVICE ROUTINES
@@ -147,10 +115,16 @@ void loop() {
     float dtLine = LOOP_LINE_MS / 1000.0;
 
     if (currentMode == MODE_LINE_FOLLOWING) {
-      qtr.read();
-      lastLinePosition = qtr.linePosition;
+       qtr.read();
 
-      float error = 0 - qtr.linePosition;
+       if (config.kalmanEnabled) {
+         kalman.update(qtr.linePosition);
+         lastLinePosition = kalman.getEstimate();
+       } else {
+         lastLinePosition = qtr.linePosition;
+       }
+
+       float error = 0 - lastLinePosition;
       float pidOutput = linePid.calculate(0, error, dtLine);
       lastPidOutput = pidOutput;
 
@@ -228,9 +202,9 @@ void loop() {
    }
 
    // Serial Commands
-   fillSerialBuffer();            // recoge bytes
+   serialReader.fillBuffer();            // recoge bytes
    const char *cmd;
-   if (getSerialLine(&cmd)) {     // tenemos línea completa
+   if (serialReader.getLine(&cmd)) {     // tenemos línea completa
      bool success = false;
      if (strlen(cmd) == 0) return;          // línea vacía
 
@@ -275,6 +249,7 @@ void loop() {
        config.baseRPM        = DEFAULT_BASE_RPM;
        config.cascadeMode    = DEFAULT_CASCADE;
        config.telemetry = DEFAULT_TELEMETRY_ENABLED;
+       config.kalmanEnabled = DEFAULT_KALMAN_ENABLED;
        config.operationMode  = DEFAULT_OPERATION_MODE;
        config.checksum       = 1234567891;
        saveConfig();
@@ -285,7 +260,7 @@ void loop() {
 
      } else if (strcmp(cmd, "help") == 0) {
        debugger.systemMessage("Comandos: calibrate, save, get debug, get telemetry, get config, reset, help");
-       debugger.systemMessage("set telemetry 0/1  |  set mode 0/1/2  |  set cascade 0/1");
+       debugger.systemMessage("set telemetry 0/1  |  set mode 0/1/2  |  set cascade 0/1  |  set kalman 0/1");
        debugger.systemMessage("set line kp,ki,kd  |  set left kp,ki,kd  |  set right kp,ki,kd");
        debugger.systemMessage("set base speed <value>  |  set base rpm <value>");
 
@@ -319,6 +294,13 @@ void loop() {
        int val = strtol(cmd + 12, &end, 10);
        if (end == cmd + 12 || *end != '\0') { debugger.systemMessage("Falta argumento"); return; }
        config.cascadeMode = (val == 1);
+       success = true;
+
+     } else if (strncmp(cmd, "set kalman ", 11) == 0) {
+       char* end;
+       int val = strtol(cmd + 11, &end, 10);
+       if (end == cmd + 11 || *end != '\0') { debugger.systemMessage("Falta argumento"); return; }
+       config.kalmanEnabled = (val == 1);
        success = true;
 
      } else if (strncmp(cmd, "set line ", 9) == 0) {
