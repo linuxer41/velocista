@@ -121,9 +121,9 @@ const unsigned long REALTIME_INTERVAL_MS = 100; // Intervalo de envío de teleme
 // =============================================================================
 
 // PID para línea (más agresivo para corrección rápida)
-const float DEFAULT_LINE_KP = 2.0;
+const float DEFAULT_LINE_KP = 0.65;
 const float DEFAULT_LINE_KI = 0.01;
-const float DEFAULT_LINE_KD = 0.05;
+const float DEFAULT_LINE_KD = 0.005;
 
 // PID para motores (más agresivo para alcanzar RPM objetivo)
 const float DEFAULT_LEFT_KP = 0.5;
