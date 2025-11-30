@@ -70,6 +70,7 @@ class ConfigData extends SerialData {
   final int? mode;
   final int? cascade;
   final int? telemetry;
+  final List<int>? featConfig;
 
   ConfigData({
     this.lineKPid,
@@ -80,6 +81,7 @@ class ConfigData extends SerialData {
     this.mode,
     this.cascade,
     this.telemetry,
+    this.featConfig,
   }) : super(3);
 
   static ConfigData? fromSerial(String dataString) {
@@ -108,6 +110,7 @@ class ConfigData extends SerialData {
     final rightKPid = _parseDoubleArray(dataMap['RIGHT_K_PID']);
     final base = _parseDoubleArray(dataMap['BASE']);
     final wheels = _parseDoubleArray(dataMap['WHEELS']);
+    final featConfig = _parseIntArray(dataMap['FEAT_CONFIG']);
 
     // Parse simple values
     final mode = int.tryParse(dataMap['MODE'] ?? '');
@@ -123,6 +126,7 @@ class ConfigData extends SerialData {
       mode: mode,
       cascade: cascade,
       telemetry: telemetry,
+      featConfig: featConfig,
     );
   }
 
@@ -174,7 +178,8 @@ class DebugData extends SerialData {
   final int? uptime;
 
   // Features data
-  final List<int>? features;
+  final List<int>? featConfig;
+  final List<dynamic>? featValues;
 
   DebugData({
     this.lineKPid,
@@ -194,7 +199,8 @@ class DebugData extends SerialData {
     this.loopUs,
     this.freeMem,
     this.uptime,
-    this.features,
+    this.featConfig,
+    this.featValues,
   }) : super(5);
 
   static DebugData? fromSerial(String dataString) {
@@ -231,7 +237,8 @@ class DebugData extends SerialData {
     final pid = _parseDoubleArray(dataMap['PID']);
     final speedCms = _parseDoubleArray(dataMap['SPEED_CMS']);
     final qtr = _parseIntArray(dataMap['QTR']);
-    final features = _parseIntArray(dataMap['FEATURES']);
+    final featConfig = _parseIntArray(dataMap['FEAT_CONFIG']) ?? _parseIntArray(dataMap['FILTERS']);
+    final featValues = _parseDynamicArray(dataMap['FEAT_VALUES']);
 
     // Parse simple values
     final mode = int.tryParse(dataMap['MODE'] ?? '');
@@ -259,7 +266,8 @@ class DebugData extends SerialData {
       loopUs: loopUs,
       freeMem: freeMem,
       uptime: uptime,
-      features: features,
+      featConfig: featConfig,
+      featValues: featValues,
     );
   }
 
@@ -293,7 +301,8 @@ class TelemetryData extends SerialData {
   final int? freeMem;
 
   // Features data
-  final List<int>? features;
+  final List<int>? featConfig;
+  final List<dynamic>? featValues;
 
   TelemetryData({
     required this.operationMode,
@@ -313,7 +322,8 @@ class TelemetryData extends SerialData {
     this.batt,
     this.loopUs,
     this.freeMem,
-    this.features,
+    this.featConfig,
+    this.featValues,
   }) : super(4);
 
   static TelemetryData? fromSerial(String dataString) {
@@ -362,7 +372,8 @@ class TelemetryData extends SerialData {
     final pid = _parseDoubleArray(dataMap['PID']);
     final speedCms = _parseDoubleArray(dataMap['SPEED_CMS']);
     final qtr = _parseIntArray(dataMap['QTR']);
-    final features = _parseIntArray(dataMap['FEATURES']);
+    final featConfig = _parseIntArray(dataMap['FEAT_CONFIG']) ?? _parseIntArray(dataMap['FILTERS']);
+    final featValues = _parseDynamicArray(dataMap['FEAT_VALUES']);
 
     // Parse simple values
     final batt = double.tryParse(dataMap['BATT'] ?? '0.0') ?? 0.0;
@@ -396,7 +407,8 @@ class TelemetryData extends SerialData {
       batt: batt,
       loopUs: loopUs,
       freeMem: freeMem,
-      features: features,
+      featConfig: featConfig,
+      featValues: featValues,
     );
   }
 
@@ -429,6 +441,17 @@ List<int>? _parseIntArray(dynamic value) {
   if (content.isEmpty) return [];
 
   return content.split(',').map((s) => int.tryParse(s.trim()) ?? 0).toList();
+}
+
+List<dynamic>? _parseDynamicArray(dynamic value) {
+  if (value is! String) return null;
+  final str = value.trim();
+  if (!str.startsWith('[') || !str.endsWith(']')) return null;
+
+  final content = str.substring(1, str.length - 1);
+  if (content.isEmpty) return [];
+
+  return content.split(',').map((s) => s.trim()).toList();
 }
 
 /// Command classes for different modes
@@ -560,17 +583,35 @@ class RelationCommand {
   }
 }
 
-class FeaturesCommand {
-  final List<int> features; // List of 8 feature states (0 or 1)
+class FeatureCommand {
+  final int index; // Feature index (0-7)
+  final int value; // Feature state (0 or 1)
 
-  FeaturesCommand(this.features) {
-    if (features.length != 8) {
-      throw ArgumentError('Features list must contain exactly 8 elements');
+  FeatureCommand(this.index, this.value) {
+    if (index < 0 || index > 7) {
+      throw ArgumentError('Feature index must be between 0 and 7');
+    }
+    if (value != 0 && value != 1) {
+      throw ArgumentError('Feature value must be 0 or 1');
     }
   }
 
   String toCommand() {
-    return 'set features ${features.join(',')}';
+    return 'set feature $index $value';
+  }
+}
+
+class FiltersCommand {
+  final List<int> filters; // List of 6 filter states (0 or 1)
+
+  FiltersCommand(this.filters) {
+    if (filters.length != 6) {
+      throw ArgumentError('Filters list must contain exactly 6 elements');
+    }
+  }
+
+  String toCommand() {
+    return 'set filters ${filters.join(',')}';
   }
 }
 

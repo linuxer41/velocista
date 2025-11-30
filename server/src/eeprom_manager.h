@@ -23,7 +23,6 @@ public:
   void load() {
     EEPROM.get(EEPROM_CONFIG_ADDR, config);
     if (config.checksum != 1234567892) {
-      Serial.println("Config inválida, cargando valores por defecto");
       // PID para línea
       config.lineKp = DEFAULT_LINE_KP;
       config.lineKi = DEFAULT_LINE_KI;

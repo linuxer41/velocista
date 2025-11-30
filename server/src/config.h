@@ -138,7 +138,7 @@ const float DEFAULT_RIGHT_KD = 0.01;
 const int16_t DEFAULT_BASE_SPEED = 200;
 const bool DEFAULT_CASCADE = true;
 const bool DEFAULT_TELEMETRY_ENABLED = true;
-const bool DEFAULT_FEATURE_ENABLES[8] = {false, true, false, false, true, false, false, false}; // [MED, MA, KAL, HYS, DZ, LP, APID, SP]
+const bool DEFAULT_FEATURE_ENABLES[8] = {false, false, false, false, false, false, false, false}; // [MED, MA, KAL, HYS, DZ, LP, APID, SP]
 #define DEFAULT_OPERATION_MODE MODE_IDLE
 const float DEFAULT_BASE_RPM = 120.0f;
 

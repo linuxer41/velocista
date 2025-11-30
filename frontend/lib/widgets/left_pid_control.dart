@@ -56,7 +56,7 @@ class _LeftPidControlState extends State<LeftPidControl> {
     }
   }
 
-  void _updatePIDConfig() {
+  void _updatePIDConfig() async {
     final kp = double.tryParse(_kpController.text) ?? 5.0;
     final ki = double.tryParse(_kiController.text) ?? 0.5;
     final kd = double.tryParse(_kdController.text) ?? 0.1;
@@ -68,7 +68,9 @@ class _LeftPidControlState extends State<LeftPidControl> {
       ki: ki,
       kd: kd,
     );
-    widget.appState.sendCommand(pidCommand.toCommand());
+    await widget.appState.sendCommand(pidCommand.toCommand());
+    // Request fresh config data to sync UI
+    await widget.appState.sendCommand(ConfigRequestCommand().toCommand());
   }
 
   @override

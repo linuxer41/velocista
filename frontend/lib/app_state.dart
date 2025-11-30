@@ -74,8 +74,8 @@ class AppState extends ChangeNotifier {
   TelemetryData? _previousTelemetryData;
   int _previousTime = 0;
 
-  // Features data
-  final ValueNotifier<List<int>?> features = ValueNotifier(null);
+  // Features data (6 filters: MED, MA, KAL, HYS, DZ, LP)
+  final ValueNotifier<List<int>?> featConfig = ValueNotifier([1, 1, 1, 1, 1, 1]);
 
   // ACK notifications
   final ValueNotifier<String?> lastAck = ValueNotifier(null);
@@ -288,6 +288,10 @@ class AppState extends ChangeNotifier {
           }
           if (configData.cascade != null) cascadeEnabled.value = configData.cascade == 1;
           if (configData.telemetry != null) telemetryEnabled.value = configData.telemetry == 1;
+          // Update features config
+          if (configData.featConfig != null) {
+            featConfig.value = List.from(configData.featConfig!);
+          }
           // Set currentData to trigger UI updates
           currentData.value = configData;
         }
@@ -348,11 +352,11 @@ class AppState extends ChangeNotifier {
             batt: serialData.batt,
             loopUs: serialData.loopUs,
             freeMem: serialData.freeMem,
-            features: serialData.features,
+            featConfig: serialData.featConfig,
           );
           // Update features state if available
-          if (serialData.features != null) {
-            features.value = List.from(serialData.features!);
+          if (serialData.featConfig != null) {
+            featConfig.value = List.from(serialData.featConfig!);
           }
         } else if (serialData is ConfigData) {
           // Update PID config from received config data

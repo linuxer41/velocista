@@ -126,12 +126,12 @@ void loop() {
       if (config.cascadeMode) {
          // Set target RPMs for cascade control
          float rpmAdjustment = pidOutput * 0.5;
-         leftTargetRPM = config.baseRPM - rpmAdjustment;
-         rightTargetRPM = config.baseRPM + rpmAdjustment;
+         leftTargetRPM = config.baseRPM + rpmAdjustment;
+         rightTargetRPM = config.baseRPM - rpmAdjustment;
        } else {
         // Open-loop control
-        int leftSpeed = config.baseSpeed - pidOutput;
-        int rightSpeed = config.baseSpeed + pidOutput;
+        int leftSpeed = config.baseSpeed + pidOutput;
+        int rightSpeed = config.baseSpeed - pidOutput;
         leftSpeed = constrain(leftSpeed, -MAX_SPEED, MAX_SPEED);
         rightSpeed = constrain(rightSpeed, -MAX_SPEED, MAX_SPEED);
         leftMotor.setSpeed(leftSpeed);

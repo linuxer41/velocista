@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_gauges/gauges.dart';
 import '../app_state.dart';
 import '../arduino_data.dart';
+import '../arduino_data.dart' as arduino_data;
 import '../connection_bottom_sheet.dart';
 import '../widgets/pid_control.dart';
 import '../widgets/remote_control.dart';
@@ -418,9 +419,9 @@ class _HomePageState extends State<HomePage> {
                           ),
                           child: IconButton(
                             onPressed: () async {
-                              await appState.sendCommand(ConfigRequestCommand().toCommand());
+                              // Call get config to get config data including FEAT_CONFIG
                               final configCommand = ConfigRequestCommand();
-                              appState.sendCommand(configCommand.toCommand());
+                              await appState.sendCommand(configCommand.toCommand());
                             },
                             icon: Icon(
                               Icons.sync,
@@ -611,18 +612,22 @@ class _HomePageState extends State<HomePage> {
           Row(
             children: [
               Expanded(
-                child: _buildBaseSpeedInput('Velocidad Base', _baseSpeedController, () {
+                child: _buildBaseSpeedInput('Velocidad Base', _baseSpeedController, () async {
                   final value = double.tryParse(_baseSpeedController.text) ?? 200.0;
                   final baseSpeedCommand = BaseSpeedCommand(value);
-                  appState.sendCommand(baseSpeedCommand.toCommand());
+                  await appState.sendCommand(baseSpeedCommand.toCommand());
+                  // Request fresh config data to sync UI
+                  await appState.sendCommand(ConfigRequestCommand().toCommand());
                 }),
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: _buildBaseSpeedInput('RPM Base', _baseRpmController, () {
+                child: _buildBaseSpeedInput('RPM Base', _baseRpmController, () async {
                   final value = double.tryParse(_baseRpmController.text) ?? 120.0;
                   final baseRpmCommand = BaseRpmCommand(value);
-                  appState.sendCommand(baseRpmCommand.toCommand());
+                  await appState.sendCommand(baseRpmCommand.toCommand());
+                  // Request fresh config data to sync UI
+                  await appState.sendCommand(ConfigRequestCommand().toCommand());
                 }),
               ),
             ],
@@ -748,7 +753,7 @@ class _HomePageState extends State<HomePage> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: () {
+              onPressed: () async {
                 // Send line PID command
                 final kp = double.tryParse(_lineKpController.text) ?? 2.0;
                 final ki = double.tryParse(_lineKiController.text) ?? 0.05;
@@ -759,7 +764,9 @@ class _HomePageState extends State<HomePage> {
                   ki: ki,
                   kd: kd,
                 );
-                appState.sendCommand(pidCommand.toCommand());
+                await appState.sendCommand(pidCommand.toCommand());
+                // Request fresh config data to sync UI
+                await appState.sendCommand(ConfigRequestCommand().toCommand());
               },
               child: const Text('Actualizar PID Línea',
                   style: TextStyle(fontSize: 12)),
@@ -852,9 +859,9 @@ class _HomePageState extends State<HomePage> {
           ),
           const SizedBox(height: 8),
           ValueListenableBuilder<List<int>?>(
-            valueListenable: appState.features,
-            builder: (context, features, child) {
-              if (features == null || features.length != 8) {
+            valueListenable: appState.featConfig,
+            builder: (context, featConfig, child) {
+              if (featConfig == null || featConfig.length != 8) {
                 return const Text('Cargando features...');
               }
 
@@ -887,13 +894,15 @@ class _HomePageState extends State<HomePage> {
                           ),
                         ),
                         Switch(
-                          value: features[index] == 1,
+                          value: featConfig[index] == 1,
                           onChanged: (value) {
-                            final newFeatures = List<int>.from(features);
-                            newFeatures[index] = value ? 1 : 0;
-                            appState.features.value = newFeatures;
-                            final featuresCommand = FeaturesCommand(newFeatures);
-                            appState.sendCommand(featuresCommand.toCommand());
+                            final newValue = value ? 1 : 0;
+                            if (appState.featConfig.value != null && appState.featConfig.value!.length > index) {
+                              appState.featConfig.value![index] = newValue;
+                              appState.featConfig.notifyListeners();
+                              final featureCommand = FeatureCommand(index, newValue);
+                              appState.sendCommand(featureCommand.toCommand());
+                            }
                           },
                           activeColor: Theme.of(context).colorScheme.primary,
                           materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -931,28 +940,26 @@ class _HomePageState extends State<HomePage> {
           ),
           const SizedBox(height: 12),
           ValueListenableBuilder<List<int>?>(
-            valueListenable: appState.features,
-            builder: (context, features, child) {
-              // Always show labels, use default values if features is null
-              final currentFeatures = features ?? [1, 1, 1, 1, 1, 1, 1, 0];
+            valueListenable: appState.featConfig,
+            builder: (context, featConfig, child) {
+              // Always show labels, use default values if featConfig is null
+              final currentFeatures = featConfig ?? [1, 1, 1, 1, 1, 1];
 
-              const featureNames = ['MED', 'MA', 'KAL', 'HYS', 'DZ', 'LP', 'APID', 'SP'];
+              const featureNames = ['MED', 'MA', 'KAL', 'HYS', 'DZ', 'LP'];
               const featureDescriptions = [
                 'Mediano',
                 'Media Móvil',
                 'Kalman',
                 'Histeresis',
                 'Zona Muerta',
-                'Pasa Bajos',
-                'PID Adaptativo',
-                'Perfil Velocidad'
+                'Pasa Bajos'
               ];
 
               return Column(
                 children: [
-                  // First row: MED, MA, KAL, HYS
+                  // First row: MED, MA, KAL
                   Row(
-                    children: List.generate(4, (index) {
+                    children: List.generate(3, (index) {
                       return Expanded(
                         child: Container(
                           margin: const EdgeInsets.symmetric(horizontal: 1),
@@ -978,12 +985,17 @@ class _HomePageState extends State<HomePage> {
                               const SizedBox(height: 2),
                               Switch(
                                 value: currentFeatures[index] == 1,
-                                onChanged: (value) {
-                                  final newFeatures = List<int>.from(currentFeatures);
-                                  newFeatures[index] = value ? 1 : 0;
-                                  appState.features.value = newFeatures;
-                                  final featuresCommand = FeaturesCommand(newFeatures);
-                                  appState.sendCommand(featuresCommand.toCommand());
+                                onChanged: (value) async {
+                                  final newValue = value ? 1 : 0;
+                                  if (appState.featConfig.value != null && appState.featConfig.value!.length > index) {
+                                    appState.featConfig.value![index] = newValue;
+                                    appState.featConfig.notifyListeners();
+                                    // Send all 6 filter values at once
+                                    final filtersCommand = arduino_data.FiltersCommand(appState.featConfig.value!.sublist(0, 6));
+                                    await appState.sendCommand(filtersCommand.toCommand());
+                                    // Request fresh config data to sync UI
+                                    await appState.sendCommand(ConfigRequestCommand().toCommand());
+                                  }
                                 },
                                 activeColor: Theme.of(context).colorScheme.primary,
                                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -995,10 +1007,10 @@ class _HomePageState extends State<HomePage> {
                     }),
                   ),
                   const SizedBox(height: 6),
-                  // Second row: DZ, LP, APID, SP
+                  // Second row: HYS, DZ, LP
                   Row(
-                    children: List.generate(4, (index) {
-                      final actualIndex = index + 4; // 4, 5, 6, 7
+                    children: List.generate(3, (index) {
+                      final actualIndex = index + 3; // 3, 4, 5
                       return Expanded(
                         child: Container(
                           margin: const EdgeInsets.symmetric(horizontal: 1),
@@ -1024,12 +1036,17 @@ class _HomePageState extends State<HomePage> {
                               const SizedBox(height: 2),
                               Switch(
                                 value: currentFeatures[actualIndex] == 1,
-                                onChanged: (value) {
-                                  final newFeatures = List<int>.from(currentFeatures);
-                                  newFeatures[actualIndex] = value ? 1 : 0;
-                                  appState.features.value = newFeatures;
-                                  final featuresCommand = FeaturesCommand(newFeatures);
-                                  appState.sendCommand(featuresCommand.toCommand());
+                                onChanged: (value) async {
+                                  final newValue = value ? 1 : 0;
+                                  if (appState.featConfig.value != null && appState.featConfig.value!.length > actualIndex) {
+                                    appState.featConfig.value![actualIndex] = newValue;
+                                    appState.featConfig.notifyListeners();
+                                    // Send all 6 filter values at once
+                                    final filtersCommand = FiltersCommand(appState.featConfig.value!.sublist(0, 6));
+                                    await appState.sendCommand(filtersCommand.toCommand());
+                                    // Request fresh config data to sync UI
+                                    await appState.sendCommand(ConfigRequestCommand().toCommand());
+                                  }
                                 },
                                 activeColor: Theme.of(context).colorScheme.primary,
                                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -1295,11 +1312,13 @@ class _HomePageState extends State<HomePage> {
                                       mainAxisAlignment:
                                           MainAxisAlignment.center,
                                       children: List.generate(8, (index) {
+                                        // Reverse order: sensor 1 on right, sensor 8 on left
+                                        final reversedIndex = 7 - index;
                                         // Only sensors 1-6 (indices 1-6) are active, telemetry sends values for sensors
                                         final isActive =
-                                            index >= 1 && index <= 6;
+                                            reversedIndex >= 1 && reversedIndex <= 6;
                                         final sensorIndex = isActive
-                                            ? index - 1
+                                            ? reversedIndex - 1
                                             : -1; // Map to telemetry array (0-5)
 
                                         final sensorValue = isActive &&
@@ -1344,9 +1363,7 @@ class _HomePageState extends State<HomePage> {
                                                     child: Container(
                                                       decoration: BoxDecoration(
                                                         color: isActive
-                                                            ? (percentage < 0.3
-                                                                ? Colors.green
-                                                                : Colors.red)
+                                                            ? Colors.black
                                                             : Theme.of(context)
                                                                 .colorScheme
                                                                 .onSurfaceVariant
@@ -1361,19 +1378,40 @@ class _HomePageState extends State<HomePage> {
                                                 ),
                                               ),
                                               const SizedBox(height: 1),
-                                              Text(
-                                                '${index + 1}',
-                                                style: TextStyle(
-                                                  fontSize: 8,
-                                                  color: isActive
-                                                      ? Theme.of(context)
-                                                          .colorScheme
-                                                          .onSurface
-                                                      : Theme.of(context)
-                                                          .colorScheme
-                                                          .onSurfaceVariant
-                                                          .withOpacity(0.5),
-                                                ),
+                                              Column(
+                                                children: [
+                                                  Text(
+                                                    '$sensorValue',
+                                                    style: TextStyle(
+                                                      fontSize: 6,
+                                                      color: isActive
+                                                          ? Theme.of(context)
+                                                              .colorScheme
+                                                              .onSurfaceVariant
+                                                              .withOpacity(0.8)
+                                                          : Theme.of(context)
+                                                              .colorScheme
+                                                              .onSurfaceVariant
+                                                              .withOpacity(0.3),
+                                                    ),
+                                                    textAlign: TextAlign.center,
+                                                  ),
+                                                  Text(
+                                                    '${reversedIndex + 1}',
+                                                    style: TextStyle(
+                                                      fontSize: 7,
+                                                      color: isActive
+                                                          ? Theme.of(context)
+                                                              .colorScheme
+                                                              .onSurface
+                                                          : Theme.of(context)
+                                                              .colorScheme
+                                                              .onSurfaceVariant
+                                                              .withOpacity(0.5),
+                                                    ),
+                                                    textAlign: TextAlign.center,
+                                                  ),
+                                                ],
                                               ),
                                             ],
                                           ),
@@ -1621,15 +1659,15 @@ class _HomePageState extends State<HomePage> {
                                                   const SizedBox(height: 2),
                                                   // Features status
                                                   ValueListenableBuilder<List<int>?>(
-                                                    valueListenable: appState.features,
-                                                    builder: (context, features, child) {
-                                                      if (features == null || features.length != 8) return const SizedBox.shrink();
+                                                    valueListenable: appState.featConfig,
+                                                    builder: (context, featConfig, child) {
+                                                      if (featConfig == null || featConfig.length != 8) return const SizedBox.shrink();
 
                                                       final featureNames = ['MED', 'MA', 'KAL', 'HYS', 'DZ', 'LP', 'APID', 'SP'];
                                                       final activeFeatures = <String>[];
 
-                                                      for (int i = 0; i < features.length; i++) {
-                                                        if (features[i] == 1) {
+                                                      for (int i = 0; i < featConfig.length; i++) {
+                                                        if (featConfig[i] == 1) {
                                                           activeFeatures.add(featureNames[i]);
                                                         }
                                                       }
@@ -1963,9 +2001,9 @@ class _HomePageState extends State<HomePage> {
                                                       const SizedBox(height: 8),
                                                       // Features Status
                                                       ValueListenableBuilder<List<int>?>(
-                                                        valueListenable: appState.features,
-                                                        builder: (context, features, child) {
-                                                          if (features == null || features.length != 8) return const SizedBox.shrink();
+                                                        valueListenable: appState.featConfig,
+                                                        builder: (context, featConfig, child) {
+                                                          if (featConfig == null || featConfig.length != 8) return const SizedBox.shrink();
 
                                                           return Container(
                                                             width: double.infinity,
@@ -1987,7 +2025,7 @@ class _HomePageState extends State<HomePage> {
                                                                 ),
                                                                 const SizedBox(height: 4),
                                                                 Text(
-                                                                  'MED:${features[0]} MA:${features[1]} KAL:${features[2]} HYS:${features[3]} DZ:${features[4]} LP:${features[5]} APID:${features[6]} SP:${features[7]}',
+                                                                  'MED:${featConfig[0]} MA:${featConfig[1]} KAL:${featConfig[2]} HYS:${featConfig[3]} DZ:${featConfig[4]} LP:${featConfig[5]} APID:${featConfig[6]} SP:${featConfig[7]}',
                                                                   style: TextStyle(
                                                                     fontSize: 9,
                                                                     color: Theme.of(context).colorScheme.onSurfaceVariant,

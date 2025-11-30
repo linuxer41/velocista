@@ -10,7 +10,7 @@ Este proyecto implementa un robot seguidor de línea basado en Arduino con contr
 - **Sensores**: 6 sensores infrarrojos QTR para detección de línea
 - **Motores**: 2 motores DC con encoders para retroalimentación RPM
 - **Control**: PID cascada (línea + velocidad) con lazos separados (100Hz línea, 200Hz velocidad)
-- **Comunicación**: Serial (9600 baud) para comandos y telemetría
+- **Comunicación**: Serial (115200 baud) para comandos y telemetría
 - **Debugger**: Clase centralizada para manejo de mensajes seriales (sistema y debug)
 
 ### Modos de Operación
@@ -54,7 +54,7 @@ rc throttle,steering - Control remoto (ej: rc 200,50)
 ### Debug y Telemetría
 ```
 set telemetry 0/1    - Desactiva/activa salida continua de telemetry
-set features 1,0,1,0,1,1,0,0 - Configura habilitación de features [MED,MA,KAL,HYS,DZ,LP,APID,SP]
+set feature 0 1 - Configura habilitación individual de features (0-7)
 get debug           - Envía datos de debug completos una sola vez
 get telemetry        - Envía datos de telemetry una sola vez
 get config          - Envía configuración actual (PID y velocidades base)
@@ -92,14 +92,14 @@ type:3|LINE_K_PID:[2.00,0.05,0.75]|LEFT_K_PID:[5.00,0.50,0.10]|RIGHT_K_PID:[5.00
 Datos en tiempo real del robot (línea, motores, sensores):
 
 ```
-type:4|LINE:[429.30,-225.00,150.50,5.25,150.00]|LEFT:[120.00,232.50,166,1234,567,166.00,112.50,25.00,2.10]|RIGHT:[-85.50,7.50,-53,4567,890,53.00,-7.50,15.00,1.85]|PID:[150.00,166.00,53.00]|SPEED_CMS:[15.08,-10.68]|QTR:[687,292,0,0,0,0]|FEATURES:[1,1,1,1,1,1,1,0]|BATT:7.85|LOOP_US:45|FREE_MEM:1024|UPTIME:5000
+type:4|LINE:[429.30,-225.00,150.50,5.25,150.00]|LEFT:[120.00,232.50,166,1234,567]|RIGHT:[-85.50,7.50,-53,4567,890]|PID:[150.00,166.00,53.00]|SPEED_CMS:[15.08,-10.68]|QTR:[687,292,0,0,0,0]|FEAT_CONFIG:[0,1,0,0,1,0,0,0]|FEAT_VALUES:[]|BATT:7.85|LOOP_US:45|FREE_MEM:1024|UPTIME:5000
 ```
 
 ### type:5 - Datos Completos de Debug
 Información completa de debugging (config + telemetry + datos PID detallados):
 
 ```
-type:5|LINE_K_PID:[2.00,0.05,0.75]|LEFT_K_PID:[5.00,0.50,0.10]|RIGHT_K_PID:[5.00,0.50,0.10]|BASE:[200,120.00]|WHEELS:[32.0,85.0]|MODE:1|CASCADE:1|TELEMETRY:1|LINE:[429.30,-225.00,150.50,5.25,150.00]|LEFT:[120.00,232.50,166,1234,567,166.00,112.50,25.00,2.10]|RIGHT:[-85.50,7.50,-53,4567,890,53.00,-7.50,15.00,1.85]|PID:[150.00,166.00,53.00]|SPEED_CMS:[15.08,-10.68]|QTR:[687,292,0,0,0,0]|FEATURES:[1,1,1,1,1,1,1,0]|BATT:7.85|LOOP_US:45|FREE_MEM:1024|UPTIME:5000
+type:5|LINE_K_PID:[2.00,0.05,0.75]|LEFT_K_PID:[5.00,0.50,0.10]|RIGHT_K_PID:[5.00,0.50,0.10]|BASE:[200,120.00]|WHEELS:[32.0,85.0]|MODE:1|CASCADE:1|TELEMETRY:1|LINE:[429.30,-225.00,150.50,5.25,150.00]|LEFT:[120.00,232.50,166,1234,567]|RIGHT:[-85.50,7.50,-53,4567,890]|PID:[150.00,166.00,53.00]|SPEED_CMS:[15.08,-10.68]|QTR:[687,292,0,0,0,0]|FEAT_CONFIG:[0,1,0,0,1,0,0,0]|FEAT_VALUES:[]|BATT:7.85|LOOP_US:45|FREE_MEM:1024|UPTIME:5000
 ```
 
 **Configuración (igual que type:3):**
@@ -113,12 +113,13 @@ type:5|LINE_K_PID:[2.00,0.05,0.75]|LEFT_K_PID:[5.00,0.50,0.10]|RIGHT_K_PID:[5.00
 
 **Telemetry (igual que type:4):**
 - **LINE**: [posicion_linea,error,integral,derivada,correccion_aplicada] de la línea
-- **LEFT/RIGHT**: [RPM_actual,RPM_objetivo,PWM,forward_count,backward_count,output_PID,error_PID,integral_PID,derivada_PID] izquierdo/derecho
+- **LEFT/RIGHT**: [RPM_actual,RPM_objetivo,PWM,encoder_count,encoder_backward] izquierdo/derecho
 - **PID**: [output_line,output_izquierdo,output_derecho] salidas PID
 - **SPEED_CMS**: [velocidad_izquierda_cm_s,velocidad_derecha_cm_s] velocidades lineales
 - **QTR**: [A0,A1,A2,A3,A4,A5] valores calibrados de los 6 sensores QTR (0-1000)
+- **FEAT_CONFIG**: [f0,f1,f2,f3,f4,f5,f6,f7] configuración de features (1=habilitado, 0=deshabilitado)
+- **FEAT_VALUES**: [] valores actuales de features (reservado para futuras implementaciones)
 - **BATT**: Voltaje de batería en V
-- **FEATURES**: [med_enable,ma_enable,kal_enable,hyst_enable,dz_enable,lp_enable,apid_enable,sp_enable] estados de habilitación de features avanzadas (1=habilitado, 0=deshabilitado)
 - **LOOP_US**: Tiempo de ejecución del último ciclo PID en microsegundos
 - **FREE_MEM**: Memoria libre en bytes
 - **UPTIME**: Tiempo desde inicio en ms
@@ -223,8 +224,8 @@ function parseDebugData(debugString) {
 }
 
 // Ejemplo:
-// Input: "type:4|LINE:[429.30,-225.00,150.50,5.25]|LEFT:[120.00,232.50,166,1234,567]|RIGHT:[-85.50,7.50,-53,4567,890]|PID:[150.00,166.00,53.00]|SPEED_CMS:[15.08,-10.68]|QTR:[687,292,0,0,0,0]|BATT:7.85|LOOP_US:45|FREE_MEM:1024|UPTIME:5000"
-// Output: { LINE: [429.3, -225, 150.5, 5.25], LEFT: [120, 232.5, 166, 1234, 567], RIGHT: [-85.5, 7.5, -53, 4567, 890], PID: [150, 166, 53], SPEED_CMS: [15.08, -10.68], QTR: [687, 292, 0, 0, 0, 0], BATT: 7.85, LOOP_US: 45, FREE_MEM: 1024, UPTIME: 5000 }
+// Input: "type:4|LINE:[429.30,-225.00,150.50,5.25,150.00]|LEFT:[120.00,232.50,166,1234,567]|RIGHT:[-85.50,7.50,-53,4567,890]|PID:[150.00,166.00,53.00]|SPEED_CMS:[15.08,-10.68]|QTR:[687,292,0,0,0,0]|FEAT_CONFIG:[0,1,0,0,1,0,0,0]|FEAT_VALUES:[]|BATT:7.85|LOOP_US:45|FREE_MEM:1024|UPTIME:5000"
+// Output: { LINE: [429.3, -225, 150.5, 5.25, 150], LEFT: [120, 232.5, 166, 1234, 567], RIGHT: [-85.5, 7.5, -53, 4567, 890], PID: [150, 166, 53], SPEED_CMS: [15.08, -10.68], QTR: [687, 292, 0, 0, 0, 0], FEAT_CONFIG: [0,1,0,0,1,0,0,0], FEAT_VALUES: [], BATT: 7.85, LOOP_US: 45, FREE_MEM: 1024, UPTIME: 5000 }
 ```
 
 ### Recomendaciones para UI
@@ -259,8 +260,8 @@ function parseDebugData(debugString) {
 El robot incluye 8 features configurables para optimizar el rendimiento:
 
 #### Filtros para Procesamiento de Señal (Features 0-5)
-1. **Filtro Mediano (0)**: Elimina valores atípicos usando una ventana de 5 muestras
-2. **Filtro de Media Móvil (1)**: Suaviza las lecturas de posición de línea con una ventana de 5 muestras
+1. **Filtro Mediano (0)**: Elimina valores atípicos usando una ventana de 3 muestras
+2. **Filtro de Media Móvil (1)**: Suaviza las lecturas de posición de línea con una ventana de 3 muestras
 3. **Filtro de Kalman (2)**: Estima la posición real considerando ruido de proceso (0.01) y medición (0.1)
 4. **Histéresis (3)**: Evita cambios bruscos en la posición con umbral de 10 unidades
 5. **Zona Muerta (4)**: Ignora errores menores a 5 unidades para reducir oscilaciones

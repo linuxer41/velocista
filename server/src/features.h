@@ -12,11 +12,11 @@
 class Features {
 private:
     bool enables[8];
-    // Median filter
-    float medianBuffer[5];
+    // Median filter (reduced size since not enabled by default)
+    float medianBuffer[3];
     int medianCount;
     // Moving average
-    float movingBuffer[5];
+    float movingBuffer[3];
     float movingSum;
     int movingCount;
     // Kalman
@@ -53,25 +53,25 @@ public:
     float applySignalFilters(float raw) {
         float current = raw;
 
-        // 0: Median filter (5 samples)
+        // 0: Median filter (3 samples)
         if (enables[0]) {
             medianBuffer[medianCount] = raw;
-            medianCount = (medianCount + 1) % 5;
+            medianCount = (medianCount + 1) % 3;
             if (medianCount == 0) { // buffer full
-                float sorted[5];
+                float sorted[3];
                 memcpy(sorted, medianBuffer, sizeof(sorted));
-                sort(sorted, 5);
-                current = sorted[2]; // median
+                sort(sorted, 3);
+                current = sorted[1]; // median
             }
         }
 
-        // 1: Moving average (5 samples)
+        // 1: Moving average (3 samples)
         if (enables[1]) {
             movingSum -= movingBuffer[movingCount];
             movingBuffer[movingCount] = current;
             movingSum += current;
-            movingCount = (movingCount + 1) % 5;
-            current = movingSum / 5.0;
+            movingCount = (movingCount + 1) % 3;
+            current = movingSum / 3.0;
         }
 
         // 2: Kalman filter
