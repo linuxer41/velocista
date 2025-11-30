@@ -5,8 +5,8 @@
 #include "sensors.h"
 #include "pid.h"
 #include "debugger.h"
-#include "kalman.h"
 #include "serial_reader.h"
+#include "features.h"
 
 // ==========================
 // INSTANCIAS DE CLASES
@@ -19,8 +19,8 @@ PID linePid(DEFAULT_LINE_KP, DEFAULT_LINE_KI, DEFAULT_LINE_KD);
 PID leftPid(DEFAULT_LEFT_KP, DEFAULT_LEFT_KI, DEFAULT_LEFT_KD);
 PID rightPid(DEFAULT_RIGHT_KP, DEFAULT_RIGHT_KI, DEFAULT_RIGHT_KD);
 Debugger debugger;
-Kalman kalman(0.1, 10.0);  // Q=0.1, R=10.0
 SerialReader serialReader;
+Features features;
 
 // ==========================
 // VARIABLES GLOBALES
@@ -90,6 +90,8 @@ void setup() {
   linePid.setGains(config.lineKp, config.lineKi, config.lineKd);
   leftPid.setGains(config.leftKp, config.leftKi, config.leftKd);
   rightPid.setGains(config.rightKp, config.rightKi, config.rightKd);
+  // Configurar features
+  features.setEnables(config.featureEnables);
 
   qtr.setCalibration(config.sensorMin, config.sensorMax);
 
@@ -116,14 +118,7 @@ void loop() {
 
     if (currentMode == MODE_LINE_FOLLOWING) {
        qtr.read();
-
-       if (config.kalmanEnabled) {
-         kalman.update(qtr.linePosition);
-         lastLinePosition = kalman.getEstimate();
-       } else {
-         lastLinePosition = qtr.linePosition;
-       }
-
+       lastLinePosition = features.applySignalFilters(qtr.linePosition);
        float error = 0 - lastLinePosition;
       float pidOutput = linePid.calculate(0, error, dtLine);
       lastPidOutput = pidOutput;
@@ -249,7 +244,7 @@ void loop() {
        config.baseRPM        = DEFAULT_BASE_RPM;
        config.cascadeMode    = DEFAULT_CASCADE;
        config.telemetry = DEFAULT_TELEMETRY_ENABLED;
-       config.kalmanEnabled = DEFAULT_KALMAN_ENABLED;
+       memcpy(config.featureEnables, DEFAULT_FEATURE_ENABLES, sizeof(DEFAULT_FEATURE_ENABLES));
        config.operationMode  = DEFAULT_OPERATION_MODE;
        config.checksum       = 1234567891;
        saveConfig();
@@ -260,8 +255,8 @@ void loop() {
 
      } else if (strcmp(cmd, "help") == 0) {
        debugger.systemMessage("Comandos: calibrate, save, get debug, get telemetry, get config, reset, help");
-       debugger.systemMessage("set telemetry 0/1  |  set mode 0/1/2  |  set cascade 0/1  |  set kalman 0/1");
-       debugger.systemMessage("set line kp,ki,kd  |  set left kp,ki,kd  |  set right kp,ki,kd");
+       debugger.systemMessage("set telemetry 0/1  |  set mode 0/1/2  |  set cascade 0/1");
+       debugger.systemMessage("set feature <idx> 0/1  |  set line kp,ki,kd  |  set left kp,ki,kd  |  set right kp,ki,kd");
        debugger.systemMessage("set base speed <value>  |  set base rpm <value>");
 
      // ---------- comandos con parámetros ------------------------------
@@ -296,11 +291,16 @@ void loop() {
        config.cascadeMode = (val == 1);
        success = true;
 
-     } else if (strncmp(cmd, "set kalman ", 11) == 0) {
-       char* end;
-       int val = strtol(cmd + 11, &end, 10);
-       if (end == cmd + 11 || *end != '\0') { debugger.systemMessage("Falta argumento"); return; }
-       config.kalmanEnabled = (val == 1);
+     } else if (strncmp(cmd, "set feature ", 12) == 0) {
+       const char* p = cmd + 12;
+       char* end1;
+       int idx = strtol(p, &end1, 10);
+       if (end1 == p || *end1 != ' ') { debugger.systemMessage("Formato: set feature <idx> <0/1>"); return; }
+       char* end2;
+       int val = strtol(end1 + 1, &end2, 10);
+       if (end2 == end1 + 1 || *end2 != '\0' || idx < 0 || idx > 7) { debugger.systemMessage("Formato: set feature <idx> <0/1>"); return; }
+       config.featureEnables[idx] = (val == 1);
+       features.setEnables(config.featureEnables);
        success = true;
 
      } else if (strncmp(cmd, "set line ", 9) == 0) {

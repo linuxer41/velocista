@@ -22,7 +22,7 @@ public:
 
   void load() {
     EEPROM.get(EEPROM_CONFIG_ADDR, config);
-    if (config.checksum != 1234567891) {
+    if (config.checksum != 1234567892) {
       Serial.println("Config inválida, cargando valores por defecto");
       // PID para línea
       config.lineKp = DEFAULT_LINE_KP;
@@ -44,14 +44,14 @@ public:
       config.rcMaxSteering = RC_MAX_STEERING;
       config.cascadeMode = DEFAULT_CASCADE;
       config.telemetry= DEFAULT_TELEMETRY_ENABLED;
-      config.kalmanEnabled = DEFAULT_KALMAN_ENABLED;
+      memcpy(config.featureEnables, DEFAULT_FEATURE_ENABLES, sizeof(DEFAULT_FEATURE_ENABLES));
       config.operationMode = DEFAULT_OPERATION_MODE;
       config.baseRPM = DEFAULT_BASE_RPM;
       for (int i = 0; i < NUM_SENSORS; i++) {
         config.sensorMin[i] = 0;
         config.sensorMax[i] = 1023;
       }
-      config.checksum = 1234567891;
+      config.checksum = 1234567892;
       save();
     }
   }
