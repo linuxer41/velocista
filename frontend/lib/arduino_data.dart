@@ -173,8 +173,8 @@ class DebugData extends SerialData {
   final int? freeMem;
   final int? uptime;
 
-  // Filters data
-  final List<int>? filters;
+  // Features data
+  final List<int>? features;
 
   DebugData({
     this.lineKPid,
@@ -194,7 +194,7 @@ class DebugData extends SerialData {
     this.loopUs,
     this.freeMem,
     this.uptime,
-    this.filters,
+    this.features,
   }) : super(5);
 
   static DebugData? fromSerial(String dataString) {
@@ -231,7 +231,7 @@ class DebugData extends SerialData {
     final pid = _parseDoubleArray(dataMap['PID']);
     final speedCms = _parseDoubleArray(dataMap['SPEED_CMS']);
     final qtr = _parseIntArray(dataMap['QTR']);
-    final filters = _parseIntArray(dataMap['FILTERS']);
+    final features = _parseIntArray(dataMap['FEATURES']);
 
     // Parse simple values
     final mode = int.tryParse(dataMap['MODE'] ?? '');
@@ -259,7 +259,7 @@ class DebugData extends SerialData {
       loopUs: loopUs,
       freeMem: freeMem,
       uptime: uptime,
-      filters: filters,
+      features: features,
     );
   }
 
@@ -292,8 +292,8 @@ class TelemetryData extends SerialData {
   final int? loopUs;
   final int? freeMem;
 
-  // Filters data
-  final List<int>? filters;
+  // Features data
+  final List<int>? features;
 
   TelemetryData({
     required this.operationMode,
@@ -313,7 +313,7 @@ class TelemetryData extends SerialData {
     this.batt,
     this.loopUs,
     this.freeMem,
-    this.filters,
+    this.features,
   }) : super(4);
 
   static TelemetryData? fromSerial(String dataString) {
@@ -362,7 +362,7 @@ class TelemetryData extends SerialData {
     final pid = _parseDoubleArray(dataMap['PID']);
     final speedCms = _parseDoubleArray(dataMap['SPEED_CMS']);
     final qtr = _parseIntArray(dataMap['QTR']);
-    final filters = _parseIntArray(dataMap['FILTERS']);
+    final features = _parseIntArray(dataMap['FEATURES']);
 
     // Parse simple values
     final batt = double.tryParse(dataMap['BATT'] ?? '0.0') ?? 0.0;
@@ -396,7 +396,7 @@ class TelemetryData extends SerialData {
       batt: batt,
       loopUs: loopUs,
       freeMem: freeMem,
-      filters: filters,
+      features: features,
     );
   }
 
@@ -560,17 +560,17 @@ class RelationCommand {
   }
 }
 
-class FiltersCommand {
-  final List<int> filters; // List of 6 filter states (0 or 1)
+class FeaturesCommand {
+  final List<int> features; // List of 8 feature states (0 or 1)
 
-  FiltersCommand(this.filters) {
-    if (filters.length != 6) {
-      throw ArgumentError('Filters list must contain exactly 6 elements');
+  FeaturesCommand(this.features) {
+    if (features.length != 8) {
+      throw ArgumentError('Features list must contain exactly 8 elements');
     }
   }
 
   String toCommand() {
-    return 'set filters ${filters.join(',')}';
+    return 'set features ${features.join(',')}';
   }
 }
 

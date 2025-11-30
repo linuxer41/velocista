@@ -54,7 +54,7 @@ rc throttle,steering - Control remoto (ej: rc 200,50)
 ### Debug y Telemetría
 ```
 set telemetry 0/1    - Desactiva/activa salida continua de telemetry
-set filters 1,0,1,0,1,1 - Configura habilitación de filtros [MED,MA,KAL,HYS,DZ,LP]
+set features 1,0,1,0,1,1,0,0 - Configura habilitación de features [MED,MA,KAL,HYS,DZ,LP,APID,SP]
 get debug           - Envía datos de debug completos una sola vez
 get telemetry        - Envía datos de telemetry una sola vez
 get config          - Envía configuración actual (PID y velocidades base)
@@ -92,14 +92,14 @@ type:3|LINE_K_PID:[2.00,0.05,0.75]|LEFT_K_PID:[5.00,0.50,0.10]|RIGHT_K_PID:[5.00
 Datos en tiempo real del robot (línea, motores, sensores):
 
 ```
-type:4|LINE:[429.30,-225.00,150.50,5.25,150.00]|LEFT:[120.00,232.50,166,1234,567,166.00,112.50,25.00,2.10]|RIGHT:[-85.50,7.50,-53,4567,890,53.00,-7.50,15.00,1.85]|PID:[150.00,166.00,53.00]|SPEED_CMS:[15.08,-10.68]|QTR:[687,292,0,0,0,0]|FILTERS:[1,1,1,1,1,1]|BATT:7.85|LOOP_US:45|FREE_MEM:1024|UPTIME:5000
+type:4|LINE:[429.30,-225.00,150.50,5.25,150.00]|LEFT:[120.00,232.50,166,1234,567,166.00,112.50,25.00,2.10]|RIGHT:[-85.50,7.50,-53,4567,890,53.00,-7.50,15.00,1.85]|PID:[150.00,166.00,53.00]|SPEED_CMS:[15.08,-10.68]|QTR:[687,292,0,0,0,0]|FEATURES:[1,1,1,1,1,1,1,0]|BATT:7.85|LOOP_US:45|FREE_MEM:1024|UPTIME:5000
 ```
 
 ### type:5 - Datos Completos de Debug
 Información completa de debugging (config + telemetry + datos PID detallados):
 
 ```
-type:5|LINE_K_PID:[2.00,0.05,0.75]|LEFT_K_PID:[5.00,0.50,0.10]|RIGHT_K_PID:[5.00,0.50,0.10]|BASE:[200,120.00]|WHEELS:[32.0,85.0]|MODE:1|CASCADE:1|TELEMETRY:1|LINE:[429.30,-225.00,150.50,5.25,150.00]|LEFT:[120.00,232.50,166,1234,567,166.00,112.50,25.00,2.10]|RIGHT:[-85.50,7.50,-53,4567,890,53.00,-7.50,15.00,1.85]|PID:[150.00,166.00,53.00]|SPEED_CMS:[15.08,-10.68]|QTR:[687,292,0,0,0,0]|FILTERS:[1,1,1,1,1,1]|BATT:7.85|LOOP_US:45|FREE_MEM:1024|UPTIME:5000
+type:5|LINE_K_PID:[2.00,0.05,0.75]|LEFT_K_PID:[5.00,0.50,0.10]|RIGHT_K_PID:[5.00,0.50,0.10]|BASE:[200,120.00]|WHEELS:[32.0,85.0]|MODE:1|CASCADE:1|TELEMETRY:1|LINE:[429.30,-225.00,150.50,5.25,150.00]|LEFT:[120.00,232.50,166,1234,567,166.00,112.50,25.00,2.10]|RIGHT:[-85.50,7.50,-53,4567,890,53.00,-7.50,15.00,1.85]|PID:[150.00,166.00,53.00]|SPEED_CMS:[15.08,-10.68]|QTR:[687,292,0,0,0,0]|FEATURES:[1,1,1,1,1,1,1,0]|BATT:7.85|LOOP_US:45|FREE_MEM:1024|UPTIME:5000
 ```
 
 **Configuración (igual que type:3):**
@@ -118,7 +118,7 @@ type:5|LINE_K_PID:[2.00,0.05,0.75]|LEFT_K_PID:[5.00,0.50,0.10]|RIGHT_K_PID:[5.00
 - **SPEED_CMS**: [velocidad_izquierda_cm_s,velocidad_derecha_cm_s] velocidades lineales
 - **QTR**: [A0,A1,A2,A3,A4,A5] valores calibrados de los 6 sensores QTR (0-1000)
 - **BATT**: Voltaje de batería en V
-- **FILTERS**: [med_enable,ma_enable,kal_enable,hyst_enable,dz_enable,lp_enable] estados de habilitación de filtros de línea (1=habilitado, 0=deshabilitado)
+- **FEATURES**: [med_enable,ma_enable,kal_enable,hyst_enable,dz_enable,lp_enable,apid_enable,sp_enable] estados de habilitación de features avanzadas (1=habilitado, 0=deshabilitado)
 - **LOOP_US**: Tiempo de ejecución del último ciclo PID en microsegundos
 - **FREE_MEM**: Memoria libre en bytes
 - **UPTIME**: Tiempo desde inicio en ms
@@ -255,17 +255,22 @@ function parseDebugData(debugString) {
 - **Modo Remoto**: Siempre cascada para control preciso de velocidad
 - **Saturación**: Salidas limitadas a ±230 PWM
 
-### Filtros Aplicados al Seguimiento de Línea (Modo sin Cascada)
-Para mejorar la estabilidad y reducir el ruido en el seguimiento de línea sin control en cascada, se aplican los siguientes filtros en secuencia ordenados por importancia:
+### Features Avanzadas del Robot
+El robot incluye 8 features configurables para optimizar el rendimiento:
 
-1. **Filtro Mediano**: Elimina valores atípicos usando una ventana de 5 muestras (primero para robustez)
-2. **Filtro de Media Móvil**: Suaviza las lecturas de posición de línea con una ventana de 5 muestras
-3. **Filtro de Kalman**: Estima la posición real considerando ruido de proceso (0.01) y medición (0.1)
-4. **Histéresis**: Evita cambios bruscos en la posición con umbral de 10 unidades
-5. **Zona Muerta**: Ignora errores menores a 5 unidades para reducir oscilaciones
-6. **Filtro Pasa Bajos**: Suaviza el error final con factor alpha de 0.8
+#### Filtros para Procesamiento de Señal (Features 0-5)
+1. **Filtro Mediano (0)**: Elimina valores atípicos usando una ventana de 5 muestras
+2. **Filtro de Media Móvil (1)**: Suaviza las lecturas de posición de línea con una ventana de 5 muestras
+3. **Filtro de Kalman (2)**: Estima la posición real considerando ruido de proceso (0.01) y medición (0.1)
+4. **Histéresis (3)**: Evita cambios bruscos en la posición con umbral de 10 unidades
+5. **Zona Muerta (4)**: Ignora errores menores a 5 unidades para reducir oscilaciones
+6. **Filtro Pasa Bajos (5)**: Suaviza el error final con factor alpha de 0.8
 
-El PID de línea incluye anti-windup integrado para prevenir acumulación excesiva del término integral. Estos filtros se aplican únicamente al PID de línea, manteniendo los PIDs de motores sin modificaciones.
+#### Features Avanzadas (Features 6-7)
+7. **PID Adaptativo (6)**: Ajusta automáticamente las ganancias PID basándose en la velocidad actual
+8. **Perfilado de Velocidad (7)**: Implementa rampas de aceleración/desaceleración para transiciones suaves
+
+El PID de línea incluye anti-windup integrado. Los features se aplican únicamente donde corresponde, manteniendo compatibilidad.
 
 ### Sensores
 - **Rango**: 0-1000 (normalizado)

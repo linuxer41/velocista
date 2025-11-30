@@ -271,7 +271,7 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildPidTabs(AppState appState) {
     return DefaultTabController(
-      length: 4,
+      length: 3,
       child: Column(
         children: [
           _buildBaseSpeedTab(appState),
@@ -280,7 +280,6 @@ class _HomePageState extends State<HomePage> {
               Tab(text: 'PID Línea'),
               Tab(text: 'PID Izquierdo'),
               Tab(text: 'PID Derecho'),
-              Tab(text: 'Filtros'),
             ],
             labelStyle:
                 const TextStyle(fontSize: 12, fontFamily: 'Space Grotesk'),
@@ -290,16 +289,18 @@ class _HomePageState extends State<HomePage> {
                 Theme.of(context).colorScheme.onSurfaceVariant,
           ),
           SizedBox(
-            height: 200, // Fixed height for the tab content
+            height: 250, // Reduced height since filters moved outside
             child: TabBarView(
               children: [
-                _buildLinePidTab(appState),
-                LeftPidControl(appState: appState),
-                RightPidControl(appState: appState),
-                _buildFiltersTab(appState),
+                SingleChildScrollView(child: _buildLinePidTab(appState)),
+                SingleChildScrollView(child: LeftPidControl(appState: appState)),
+                SingleChildScrollView(child: RightPidControl(appState: appState)),
               ],
             ),
           ),
+          const SizedBox(height: 4), // Reduced spacing between tabs and filters
+          // Filters Control Board - Outside the tabs
+          _buildFiltersControlBoard(appState),
         ],
       ),
     );
@@ -770,7 +771,6 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
 
-          const SizedBox(height: 8),
 
           // Current Values Display
           ValueListenableBuilder<SerialData?>(
@@ -819,19 +819,100 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildFiltersTab(AppState appState) {
-    const filterNames = ['MED', 'MA', 'KAL', 'HYS', 'DZ', 'LP'];
-    const filterDescriptions = [
+  Widget _buildFeaturesTab(AppState appState) {
+    const featureNames = ['MED', 'MA', 'KAL', 'HYS', 'DZ', 'LP', 'APID', 'SP'];
+    const featureDescriptions = [
       'Mediano',
       'Media Móvil',
       'Kalman',
       'Histeresis',
       'Zona Muerta',
-      'Pasa Bajos'
+      'Pasa Bajos',
+      'PID Adaptativo',
+      'Perfil Velocidad'
     ];
 
     return Container(
       padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Features de Seguimiento de Línea',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Theme.of(context).colorScheme.onSurface,
+              fontFamily: 'Space Grotesk',
+            ),
+          ),
+          const SizedBox(height: 8),
+          ValueListenableBuilder<List<int>?>(
+            valueListenable: appState.features,
+            builder: (context, features, child) {
+              if (features == null || features.length != 8) {
+                return const Text('Cargando features...');
+              }
+
+              return Column(
+                children: List.generate(8, (index) {
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                featureNames[index],
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: Theme.of(context).colorScheme.onSurface,
+                                ),
+                              ),
+                              Text(
+                                featureDescriptions[index],
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Switch(
+                          value: features[index] == 1,
+                          onChanged: (value) {
+                            final newFeatures = List<int>.from(features);
+                            newFeatures[index] = value ? 1 : 0;
+                            appState.features.value = newFeatures;
+                            final featuresCommand = FeaturesCommand(newFeatures);
+                            appState.sendCommand(featuresCommand.toCommand());
+                          },
+                          activeColor: Theme.of(context).colorScheme.primary,
+                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFiltersControlBoard(AppState appState) {
+    return Container(
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
         borderRadius: BorderRadius.circular(8),
@@ -848,58 +929,118 @@ class _HomePageState extends State<HomePage> {
               fontFamily: 'Space Grotesk',
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           ValueListenableBuilder<List<int>?>(
-            valueListenable: appState.filters,
-            builder: (context, filters, child) {
-              if (filters == null || filters.length != 6) {
-                return const Text('Cargando filtros...');
-              }
+            valueListenable: appState.features,
+            builder: (context, features, child) {
+              // Always show labels, use default values if features is null
+              final currentFeatures = features ?? [1, 1, 1, 1, 1, 1, 1, 0];
+
+              const featureNames = ['MED', 'MA', 'KAL', 'HYS', 'DZ', 'LP', 'APID', 'SP'];
+              const featureDescriptions = [
+                'Mediano',
+                'Media Móvil',
+                'Kalman',
+                'Histeresis',
+                'Zona Muerta',
+                'Pasa Bajos',
+                'PID Adaptativo',
+                'Perfil Velocidad'
+              ];
 
               return Column(
-                children: List.generate(6, (index) {
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    child: Row(
-                      children: [
-                        Expanded(
+                children: [
+                  // First row: MED, MA, KAL, HYS
+                  Row(
+                    children: List.generate(4, (index) {
+                      return Expanded(
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 1),
                           child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                filterNames[index],
+                                featureNames[index],
                                 style: TextStyle(
-                                  fontSize: 12,
+                                  fontSize: 10,
                                   fontWeight: FontWeight.w600,
                                   color: Theme.of(context).colorScheme.onSurface,
                                 ),
+                                textAlign: TextAlign.center,
                               ),
                               Text(
-                                filterDescriptions[index],
+                                featureDescriptions[index],
                                 style: TextStyle(
-                                  fontSize: 10,
+                                  fontSize: 7,
                                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                                 ),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 2),
+                              Switch(
+                                value: currentFeatures[index] == 1,
+                                onChanged: (value) {
+                                  final newFeatures = List<int>.from(currentFeatures);
+                                  newFeatures[index] = value ? 1 : 0;
+                                  appState.features.value = newFeatures;
+                                  final featuresCommand = FeaturesCommand(newFeatures);
+                                  appState.sendCommand(featuresCommand.toCommand());
+                                },
+                                activeColor: Theme.of(context).colorScheme.primary,
+                                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                               ),
                             ],
                           ),
                         ),
-                        Switch(
-                          value: filters[index] == 1,
-                          onChanged: (value) {
-                            final newFilters = List<int>.from(filters);
-                            newFilters[index] = value ? 1 : 0;
-                            appState.filters.value = newFilters;
-                            final filtersCommand = FiltersCommand(newFilters);
-                            appState.sendCommand(filtersCommand.toCommand());
-                          },
-                          activeColor: Theme.of(context).colorScheme.primary,
-                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      );
+                    }),
+                  ),
+                  const SizedBox(height: 6),
+                  // Second row: DZ, LP, APID, SP
+                  Row(
+                    children: List.generate(4, (index) {
+                      final actualIndex = index + 4; // 4, 5, 6, 7
+                      return Expanded(
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 1),
+                          child: Column(
+                            children: [
+                              Text(
+                                featureNames[actualIndex],
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  color: Theme.of(context).colorScheme.onSurface,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                              Text(
+                                featureDescriptions[actualIndex],
+                                style: TextStyle(
+                                  fontSize: 7,
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 2),
+                              Switch(
+                                value: currentFeatures[actualIndex] == 1,
+                                onChanged: (value) {
+                                  final newFeatures = List<int>.from(currentFeatures);
+                                  newFeatures[actualIndex] = value ? 1 : 0;
+                                  appState.features.value = newFeatures;
+                                  final featuresCommand = FeaturesCommand(newFeatures);
+                                  appState.sendCommand(featuresCommand.toCommand());
+                                },
+                                activeColor: Theme.of(context).colorScheme.primary,
+                                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                            ],
+                          ),
                         ),
-                      ],
-                    ),
-                  );
-                }),
+                      );
+                    }),
+                  ),
+                ],
               );
             },
           ),
@@ -1477,6 +1618,41 @@ class _HomePageState extends State<HomePage> {
                                                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                                                     ),
                                                   ),
+                                                  const SizedBox(height: 2),
+                                                  // Features status
+                                                  ValueListenableBuilder<List<int>?>(
+                                                    valueListenable: appState.features,
+                                                    builder: (context, features, child) {
+                                                      if (features == null || features.length != 8) return const SizedBox.shrink();
+
+                                                      final featureNames = ['MED', 'MA', 'KAL', 'HYS', 'DZ', 'LP', 'APID', 'SP'];
+                                                      final activeFeatures = <String>[];
+
+                                                      for (int i = 0; i < features.length; i++) {
+                                                        if (features[i] == 1) {
+                                                          activeFeatures.add(featureNames[i]);
+                                                        }
+                                                      }
+
+                                                      if (activeFeatures.isEmpty) {
+                                                        return Text(
+                                                          'Features: ninguno activo',
+                                                          style: TextStyle(
+                                                            fontSize: 8,
+                                                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                          ),
+                                                        );
+                                                      }
+
+                                                      return Text(
+                                                        'Features: ${activeFeatures.join(', ')}',
+                                                        style: TextStyle(
+                                                          fontSize: 8,
+                                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                        ),
+                                                      );
+                                                    },
+                                                  ),
                                                 ],
                                               ),
                                             ),
@@ -1785,11 +1961,11 @@ class _HomePageState extends State<HomePage> {
                                                         ),
                                                       ),
                                                       const SizedBox(height: 8),
-                                                      // Filters Status
+                                                      // Features Status
                                                       ValueListenableBuilder<List<int>?>(
-                                                        valueListenable: appState.filters,
-                                                        builder: (context, filters, child) {
-                                                          if (filters == null || filters.length != 6) return const SizedBox.shrink();
+                                                        valueListenable: appState.features,
+                                                        builder: (context, features, child) {
+                                                          if (features == null || features.length != 8) return const SizedBox.shrink();
 
                                                           return Container(
                                                             width: double.infinity,
@@ -1802,7 +1978,7 @@ class _HomePageState extends State<HomePage> {
                                                               crossAxisAlignment: CrossAxisAlignment.start,
                                                               children: [
                                                                 Text(
-                                                                  'Filtros',
+                                                                  'Features',
                                                                   style: TextStyle(
                                                                     fontSize: 11,
                                                                     fontWeight: FontWeight.w600,
@@ -1811,7 +1987,7 @@ class _HomePageState extends State<HomePage> {
                                                                 ),
                                                                 const SizedBox(height: 4),
                                                                 Text(
-                                                                  'MED:${filters[0]} MA:${filters[1]} KAL:${filters[2]} HYS:${filters[3]} DZ:${filters[4]} LP:${filters[5]}',
+                                                                  'MED:${features[0]} MA:${features[1]} KAL:${features[2]} HYS:${features[3]} DZ:${features[4]} LP:${features[5]} APID:${features[6]} SP:${features[7]}',
                                                                   style: TextStyle(
                                                                     fontSize: 9,
                                                                     color: Theme.of(context).colorScheme.onSurfaceVariant,

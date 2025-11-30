@@ -74,11 +74,12 @@ class AppState extends ChangeNotifier {
   TelemetryData? _previousTelemetryData;
   int _previousTime = 0;
 
+  // Features data
+  final ValueNotifier<List<int>?> features = ValueNotifier(null);
+
   // ACK notifications
   final ValueNotifier<String?> lastAck = ValueNotifier(null);
 
-  // Filters state
-  final ValueNotifier<List<int>?> filters = ValueNotifier([1, 1, 1, 1, 1, 1]); // Default all enabled
 
   AppState() {
     _initializeSerialClient();
@@ -347,11 +348,11 @@ class AppState extends ChangeNotifier {
             batt: serialData.batt,
             loopUs: serialData.loopUs,
             freeMem: serialData.freeMem,
-            filters: serialData.filters,
+            features: serialData.features,
           );
-          // Update filters state if available
-          if (serialData.filters != null) {
-            filters.value = List.from(serialData.filters!);
+          // Update features state if available
+          if (serialData.features != null) {
+            features.value = List.from(serialData.features!);
           }
         } else if (serialData is ConfigData) {
           // Update PID config from received config data

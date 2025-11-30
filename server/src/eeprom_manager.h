@@ -44,7 +44,6 @@ public:
       config.rcMaxSteering = RC_MAX_STEERING;
       config.cascadeMode = DEFAULT_CASCADE;
       config.telemetry= DEFAULT_TELEMETRY_ENABLED;
-      memcpy(config.filterEnables, DEFAULT_FILTER_ENABLES, sizeof(config.filterEnables));
       config.operationMode = DEFAULT_OPERATION_MODE;
       config.baseRPM = DEFAULT_BASE_RPM;
       for (int i = 0; i < NUM_SENSORS; i++) {

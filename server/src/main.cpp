@@ -34,131 +34,14 @@ float leftTargetRPM = 0;
 float rightTargetRPM = 0;
 int throttle = 0;
 int steering = 0;
-float filteredLinePos = 0;
-
-// ==========================
-// FILTROS PARA POSICIÓN DE LÍNEA
-// ==========================
-
-// Filtro de Media Móvil
-// Suaviza las lecturas de posición de línea promediando las últimas N muestras
-// Reduce el ruido de alta frecuencia y variaciones rápidas en las mediciones
-// Parámetros: Ventana de 5 muestras para balancear suavizado y respuesta
-const int MA_WINDOW = 5;
-float maBuffer[MA_WINDOW];
-int maIndex = 0;
-float maSum = 0;
-bool maFull = false;
-
-float applyMovingAverage(float newVal) {
-  maSum -= maBuffer[maIndex];
-  maBuffer[maIndex] = newVal;
-  maSum += newVal;
-  maIndex = (maIndex + 1) % MA_WINDOW;
-  if (!maFull && maIndex == 0) maFull = true;
-  return maFull ? maSum / MA_WINDOW : maSum / (maIndex == 0 ? MA_WINDOW : maIndex);
-}
-
-// Filtro de Kalman
-// Estima el estado real (posición de línea) combinando predicciones y mediciones
-// Reduce ruido considerando tanto el ruido del proceso como el de medición
-// Parámetros: q=0.01 (ruido de proceso), r=0.1 (ruido de medición)
-// Útil para sensores con ruido gaussiano y sistemas con dinámica predecible
-struct KalmanFilter {
-  float estimate;    // x - estado estimado (posición filtrada)
-  float errorCov;    // p - covarianza del error de estimación
-  float processNoise; // q - ruido del proceso (incertidumbre en el modelo)
-  float measNoise;   // r - ruido de medición (incertidumbre del sensor)
-};
-
-KalmanFilter kalmanLine = {0, 1, 0.01, 0.1};
-
-float kalmanUpdate(KalmanFilter &kf, float measurement) {
-  // Paso de predicción: aumenta la incertidumbre basada en el ruido del proceso
-  kf.errorCov += kf.processNoise;
-  
-  // Paso de actualización: corrige la estimación con la nueva medición
-  float kalmanGain = kf.errorCov / (kf.errorCov + kf.measNoise);
-  kf.estimate += kalmanGain * (measurement - kf.estimate);
-  kf.errorCov *= (1 - kalmanGain);
-  
-  return kf.estimate;
-}
-
-// Filtro Mediano
-// Elimina valores atípicos (outliers) seleccionando el valor central de una ventana ordenada
-// Muy efectivo contra ruido impulsivo o lecturas erráticas de sensores
-// Parámetros: Ventana de 5 muestras para balancear robustez y retardo
-// Ventaja: No distorsiona valores normales, solo elimina extremos
-const int MED_WINDOW = 5;
-float medBuffer[MED_WINDOW];
-int medIndex = 0;
-
-float applyMedian(float newVal) {
-  medBuffer[medIndex] = newVal;
-  medIndex = (medIndex + 1) % MED_WINDOW;
-  
-  float sorted[MED_WINDOW];
-  memcpy(sorted, medBuffer, sizeof(sorted));
-  
-  // Ordenamiento burbuja para encontrar la mediana
-  for(int i = 0; i < MED_WINDOW - 1; i++) {
-    for(int j = 0; j < MED_WINDOW - 1 - i; j++) {
-      if(sorted[j] > sorted[j + 1]) {
-        float temp = sorted[j];
-        sorted[j] = sorted[j + 1];
-        sorted[j + 1] = temp;
-      }
-    }
-  }
-  
-  return sorted[MED_WINDOW / 2];
-}
-
-// Filtro de Histéresis
-// Evita cambios rápidos y oscilatorios en la posición detectada
-// Solo actualiza el valor cuando el cambio supera un umbral significativo
-// Parámetros: Umbral de 10 unidades para filtrar ruido menor pero permitir correcciones grandes
-// Útil para prevenir "caza" del controlador cerca de la línea ideal
-float prevHystPosition = 0;
-const float HYSTERESIS_THRESHOLD = 10.0;
-
-float applyHysteresis(float newPos) {
-  if (abs(newPos - prevHystPosition) > HYSTERESIS_THRESHOLD) {
-    prevHystPosition = newPos;
-  }
-  return prevHystPosition;
-}
-
-// Zona Muerta para Error
-// Ignora errores pequeños que no requieren corrección
-// Evita que el PID reaccione a ruido menor, reduciendo oscilaciones innecesarias
-// Parámetros: Umbral de 5 unidades, ajustable según la sensibilidad deseada
-// Beneficio: Mayor estabilidad en condiciones de ruido bajo
-const float DEAD_ZONE_THRESHOLD = 5.0;
-
-float applyDeadZone(float error) {
-  if (abs(error) < DEAD_ZONE_THRESHOLD) return 0;
-  return error;
-}
-
-// Filtro Pasa Bajos para Error
-// Suaviza cambios rápidos en el error, actuando como un filtro de frecuencia baja
-// Reduce la ganancia de altas frecuencias, estabilizando el control
-// Parámetros: Alpha=0.8 (alta suavización, respuesta lenta pero estable)
-// Fórmula: y[n] = alpha * x[n] + (1-alpha) * y[n-1]
-// Mayor alpha = más peso al valor actual, menor filtrado
-float lpErrorPrev = 0;
-const float LP_ALPHA = 0.8;
-
-float applyLowPass(float newVal) {
-  lpErrorPrev = LP_ALPHA * newVal + (1 - LP_ALPHA) * lpErrorPrev;
-  return lpErrorPrev;
-}
-
 // LED indication
 unsigned long lastLedTime = 0;
 bool ledState = false;
+
+// buffer global reutilizable
+char serBuf[64];
+bool lineReady = false;
+uint8_t idx = 0;
 
 // ==========================
 // FUNCIONES AUXILIARES
@@ -172,6 +55,39 @@ int freeMemory() {
   return (int) &v - (__brkval == 0 ? (int) &__heap_start : (int) __brkval);
 }
 
+// --------------------------------------------------------------------------
+// se llama desde loop() o desde una interrupción de Serial
+// --------------------------------------------------------------------------
+void fillSerialBuffer()
+{
+  while (Serial.available()) {
+    char c = Serial.read();
+    if (c == '\n' || c == '\r') {          // fin de línea
+      serBuf[idx] = '\0';                  // terminador C-string
+      lineReady = true;
+      idx       = 0;                       // preparado para la próxima
+      return;
+    }
+    if (idx < sizeof(serBuf) - 1) serBuf[idx++] = c;
+  }
+}
+
+// --------------------------------------------------------------------------
+// devuelve true cuando hay una línea nueva; *buf apunta al texto
+// ya en minúsculas y sin '\r' / '\n'
+// --------------------------------------------------------------------------
+bool getSerialLine(const char **buf)
+{
+  if (!lineReady) return false;
+  *buf = serBuf;          // puntero al buffer
+
+  // pasar a minúsculas "in-place"
+  for (char *p = serBuf; *p; ++p) *p = tolower(*p);
+
+  lineReady = false;      // consumido
+  return true;
+}
+
 // ==========================
 // INTERRUPT SERVICE ROUTINES
 // ==========================
@@ -183,12 +99,6 @@ void rightEncoderISR() {
   rightMotor.updateEncoder();
 }
 
-String readSerialLine() {
-  String s = Serial.readStringUntil('\n');
-  s.trim();
-  s.toLowerCase();
-  return s;
-}
 // ==========================
 // SETUP
 // ==========================
@@ -218,11 +128,10 @@ void setup() {
 
   qtr.calibrate();
 
-  // Inicializar buffers de filtros
-  memset(maBuffer, 0, sizeof(maBuffer));
-  memset(medBuffer, 0, sizeof(medBuffer));
 
-  debugger.systemMessage("Robot iniciado. Modo: IDLE");
+  char msg[50];
+  sprintf(msg, "Robot iniciado. Modo: %d", currentMode);
+  debugger.systemMessage(msg);
   lastLineTime = millis();
   lastSpeedTime = millis();
 }
@@ -241,23 +150,7 @@ void loop() {
       qtr.read();
       lastLinePosition = qtr.linePosition;
 
-      // Aplicar filtros condicionalmente según configuración
-      float rawPos = qtr.linePosition;
-      float currentPos = rawPos;
-
-      // Filtros de posición en secuencia (orden por importancia)
-      if (config.filterEnables[0]) currentPos = applyMedian(currentPos);        // Mediano (elimina outliers)
-      if (config.filterEnables[1]) currentPos = applyMovingAverage(currentPos); // Media Móvil (suaviza)
-      if (config.filterEnables[2]) currentPos = kalmanUpdate(kalmanLine, currentPos); // Kalman (estima)
-      if (config.filterEnables[3]) currentPos = applyHysteresis(currentPos);    // Histéresis (estabilidad)
-
-      filteredLinePos = currentPos;
-
-      // Calcular error y aplicar filtros de error
-      float error = 0 - currentPos;
-      if (config.filterEnables[4]) error = applyDeadZone(error); // Zona Muerta
-      if (config.filterEnables[5]) error = applyLowPass(error);  // Pasa Bajos
-      
+      float error = 0 - qtr.linePosition;
       float pidOutput = linePid.calculate(0, error, dtLine);
       lastPidOutput = pidOutput;
 
@@ -335,178 +228,185 @@ void loop() {
    }
 
    // Serial Commands
-  if (Serial.available()) {
-    String command = readSerialLine();
-    bool success = false;
-    if (command.length() == 0) return;          // línea vacía
+   fillSerialBuffer();            // recoge bytes
+   const char *cmd;
+   if (getSerialLine(&cmd)) {     // tenemos línea completa
+     bool success = false;
+     if (strlen(cmd) == 0) return;          // línea vacía
 
-    if (command == "calibrate") {
-      leftMotor.setSpeed(0);
-      rightMotor.setSpeed(0);
-      digitalWrite(MODE_LED_PIN, HIGH);  // LED on during calibration
-      debugger.systemMessage("Calibrando...");
-      qtr.calibrate();
-      digitalWrite(MODE_LED_PIN, LOW);   // LED off after calibration
-      success = true;
-      debugger.systemMessage("Calibración completada.");
+     if (strcmp(cmd, "calibrate") == 0) {
+       leftMotor.setSpeed(0);
+       rightMotor.setSpeed(0);
+       digitalWrite(MODE_LED_PIN, HIGH);  // LED on during calibration
+       debugger.systemMessage("Calibrando...");
+       qtr.calibrate();
+       digitalWrite(MODE_LED_PIN, LOW);   // LED off after calibration
+       success = true;
+       debugger.systemMessage("Calibración completada.");
 
-    } else if (command == "save") {
-      saveConfig();
-      success = true;
+     } else if (strcmp(cmd, "save") == 0) {
+       saveConfig();
+       success = true;
 
-    } else if (command == "get debug") {
-      printDebugInfo();
-      success = true;
+     } else if (strcmp(cmd, "get debug") == 0) {
+       printDebugInfo();
+       success = true;
 
-    } else if (command == "get telemetry") {
-      printTelemetryInfo();
-      success = true;
+     } else if (strcmp(cmd, "get telemetry") == 0) {
+       printTelemetryInfo();
+       success = true;
 
-    } else if (command == "get config") {
-      debugger.configData();
-      success = true;
+     } else if (strcmp(cmd, "get config") == 0) {
+       debugger.configData();
+       success = true;
 
-    } else if (command == "reset") {
-      // restaurar valores por defecto
-      config.lineKp = DEFAULT_LINE_KP;
-      config.lineKi = DEFAULT_LINE_KI;
-      config.lineKd = DEFAULT_LINE_KD;
-      config.leftKp  = DEFAULT_LEFT_KP;
-      config.leftKi  = DEFAULT_LEFT_KI;
-      config.leftKd  = DEFAULT_LEFT_KD;
-      config.rightKp = DEFAULT_RIGHT_KP;
-      config.rightKi = DEFAULT_RIGHT_KI;
-      config.rightKd = DEFAULT_RIGHT_KD;
-      config.baseSpeed      = DEFAULT_BASE_SPEED;
-      config.baseRPM        = DEFAULT_BASE_RPM;
-      config.cascadeMode    = DEFAULT_CASCADE;
-      config.telemetry = DEFAULT_TELEMETRY_ENABLED;
-      memcpy(config.filterEnables, DEFAULT_FILTER_ENABLES, sizeof(config.filterEnables));
-      config.operationMode  = DEFAULT_OPERATION_MODE;
-      config.checksum       = 1234567891;
-      saveConfig();
-      linePid.setGains(config.lineKp, config.lineKi, config.lineKd);
-      leftPid.setGains(config.leftKp, config.leftKi, config.leftKd);
-      rightPid.setGains(config.rightKp, config.rightKi, config.rightKd);
-      success = true;
+     } else if (strcmp(cmd, "reset") == 0) {
+       // restaurar valores por defecto
+       config.lineKp = DEFAULT_LINE_KP;
+       config.lineKi = DEFAULT_LINE_KI;
+       config.lineKd = DEFAULT_LINE_KD;
+       config.leftKp  = DEFAULT_LEFT_KP;
+       config.leftKi  = DEFAULT_LEFT_KI;
+       config.leftKd  = DEFAULT_LEFT_KD;
+       config.rightKp = DEFAULT_RIGHT_KP;
+       config.rightKi = DEFAULT_RIGHT_KI;
+       config.rightKd = DEFAULT_RIGHT_KD;
+       config.baseSpeed      = DEFAULT_BASE_SPEED;
+       config.baseRPM        = DEFAULT_BASE_RPM;
+       config.cascadeMode    = DEFAULT_CASCADE;
+       config.telemetry = DEFAULT_TELEMETRY_ENABLED;
+       config.operationMode  = DEFAULT_OPERATION_MODE;
+       config.checksum       = 1234567891;
+       saveConfig();
+       linePid.setGains(config.lineKp, config.lineKi, config.lineKd);
+       leftPid.setGains(config.leftKp, config.leftKi, config.leftKd);
+       rightPid.setGains(config.rightKp, config.rightKi, config.rightKd);
+       success = true;
 
-    } else if (command == "help") {
-      debugger.systemMessage("Comandos: calibrate, save, get debug, get telemetry, get config, reset, help");
-      debugger.systemMessage("set telemetry 0/1  |  set mode 0/1/2  |  set cascade 0/1");
-      debugger.systemMessage("set line kp,ki,kd  |  set left kp,ki,kd  |  set right kp,ki,kd");
-      debugger.systemMessage("set base speed <value>  |  set base rpm <value>");
-      debugger.systemMessage("set filters 1,0,1,0,1,1  |  rc throttle,steering");
+     } else if (strcmp(cmd, "help") == 0) {
+       debugger.systemMessage("Comandos: calibrate, save, get debug, get telemetry, get config, reset, help");
+       debugger.systemMessage("set telemetry 0/1  |  set mode 0/1/2  |  set cascade 0/1");
+       debugger.systemMessage("set line kp,ki,kd  |  set left kp,ki,kd  |  set right kp,ki,kd");
+       debugger.systemMessage("set base speed <value>  |  set base rpm <value>");
 
-    // ---------- comandos con parámetros ------------------------------
-    } else if (command.startsWith("set telemetry ")) {
-      if (command.length() < 14) { debugger.systemMessage("Falta argumento"); return; }
-      telemetry= (command.substring(13).toInt() == 1);
-      success = true;
+     // ---------- comandos con parámetros ------------------------------
+     } else if (strncmp(cmd, "set telemetry ", 14) == 0) {
+       char* end;
+       int val = strtol(cmd + 14, &end, 10);
+       if (end == cmd + 14 || *end != '\0') { debugger.systemMessage("Falta argumento"); return; }
+       telemetry = (val == 1);
+       success = true;
 
-    } else if (command.startsWith("set mode ")) {
-      if (command.length() < 10) { debugger.systemMessage("Falta argumento"); return; }
-      int m = command.substring(9).toInt();
-      if (m == 0) currentMode = MODE_IDLE;
-      else if (m == 1) currentMode = MODE_LINE_FOLLOWING;
-      else if (m == 2) currentMode = MODE_REMOTE_CONTROL;
-      else { debugger.systemMessage("Modo inválido: 0=idle, 1=line, 2=remote"); return; }
-      config.operationMode = currentMode;
-      if (currentMode == MODE_REMOTE_CONTROL) {
-        throttle = 0; steering = 0;
-        leftMotor.setSpeed(0); rightMotor.setSpeed(0);
-      } else if (currentMode == MODE_IDLE) {
-        leftMotor.setSpeed(0); rightMotor.setSpeed(0);
-      }
-      success = true;
-
-    } else if (command.startsWith("set cascade ")) {
-      if (command.length() < 13) { debugger.systemMessage("Falta argumento"); return; }
-      config.cascadeMode = (command.substring(12).toInt() == 1);
-      success = true;
-
-    } else if (command.startsWith("set line ")) {
-      int coma1 = command.indexOf(',', 9);
-      int coma2 = command.indexOf(',', coma1 + 1);
-      if (coma1 == -1 || coma2 == -1) {
-        debugger.systemMessage("Formato: set line kp,ki,kd"); return;
-      }
-      float kp = command.substring(9, coma1).toFloat();
-      float ki = command.substring(coma1 + 1, coma2).toFloat();
-      float kd = command.substring(coma2 + 1).toFloat();
-      config.lineKp = kp; config.lineKi = ki; config.lineKd = kd;
-      linePid.setGains(kp, ki, kd);
-      success = true;
-
-    } else if (command.startsWith("set left ")) {
-      int coma1 = command.indexOf(',', 9);
-      int coma2 = command.indexOf(',', coma1 + 1);
-      if (coma1 == -1 || coma2 == -1) {
-        debugger.systemMessage("Formato: set left kp,ki,kd"); return;
-      }
-      float kp = command.substring(9, coma1).toFloat();
-      float ki = command.substring(coma1 + 1, coma2).toFloat();
-      float kd = command.substring(coma2 + 1).toFloat();
-      config.leftKp = kp; config.leftKi = ki; config.leftKd = kd;
-      leftPid.setGains(kp, ki, kd);
-      success = true;
-
-    } else if (command.startsWith("set right ")) {
-       int coma1 = command.indexOf(',', 10);
-       int coma2 = command.indexOf(',', coma1 + 1);
-       if (coma1 == -1 || coma2 == -1) {
-         debugger.systemMessage("Formato: set right kp,ki,kd"); return;
+     } else if (strncmp(cmd, "set mode ", 9) == 0) {
+       char* end;
+       int m = strtol(cmd + 9, &end, 10);
+       if (end == cmd + 9 || *end != '\0') { debugger.systemMessage("Falta argumento"); return; }
+       if (m == 0) currentMode = MODE_IDLE;
+       else if (m == 1) currentMode = MODE_LINE_FOLLOWING;
+       else if (m == 2) currentMode = MODE_REMOTE_CONTROL;
+       else { debugger.systemMessage("Modo inválido: 0=idle, 1=line, 2=remote"); return; }
+       config.operationMode = currentMode;
+       if (currentMode == MODE_REMOTE_CONTROL) {
+         throttle = 0; steering = 0;
+         leftMotor.setSpeed(0); rightMotor.setSpeed(0);
+       } else if (currentMode == MODE_IDLE) {
+         leftMotor.setSpeed(0); rightMotor.setSpeed(0);
        }
-       float kp = command.substring(10, coma1).toFloat();
-       float ki = command.substring(coma1 + 1, coma2).toFloat();
-       float kd = command.substring(coma2 + 1).toFloat();
+       success = true;
+
+     } else if (strncmp(cmd, "set cascade ", 12) == 0) {
+       char* end;
+       int val = strtol(cmd + 12, &end, 10);
+       if (end == cmd + 12 || *end != '\0') { debugger.systemMessage("Falta argumento"); return; }
+       config.cascadeMode = (val == 1);
+       success = true;
+
+     } else if (strncmp(cmd, "set line ", 9) == 0) {
+       const char* p = cmd + 9;
+       float kp = atof(p);
+       while (*p && *p != ',') p++;
+       if (*p != ',') { debugger.systemMessage("Formato: set line kp,ki,kd"); return; }
+       p++;
+       float ki = atof(p);
+       while (*p && *p != ',') p++;
+       if (*p != ',') { debugger.systemMessage("Formato: set line kp,ki,kd"); return; }
+       p++;
+       float kd = atof(p);
+       while (*p && *p != '\0') p++;
+       if (*p != '\0') { debugger.systemMessage("Formato: set line kp,ki,kd"); return; }
+       config.lineKp = kp; config.lineKi = ki; config.lineKd = kd;
+       linePid.setGains(kp, ki, kd);
+       success = true;
+
+     } else if (strncmp(cmd, "set left ", 9) == 0) {
+       const char* p = cmd + 9;
+       float kp = atof(p);
+       while (*p && *p != ',') p++;
+       if (*p != ',') { debugger.systemMessage("Formato: set left kp,ki,kd"); return; }
+       p++;
+       float ki = atof(p);
+       while (*p && *p != ',') p++;
+       if (*p != ',') { debugger.systemMessage("Formato: set left kp,ki,kd"); return; }
+       p++;
+       float kd = atof(p);
+       while (*p && *p != '\0') p++;
+       if (*p != '\0') { debugger.systemMessage("Formato: set left kp,ki,kd"); return; }
+       config.leftKp = kp; config.leftKi = ki; config.leftKd = kd;
+       leftPid.setGains(kp, ki, kd);
+       success = true;
+
+     } else if (strncmp(cmd, "set right ", 10) == 0) {
+       const char* p = cmd + 10;
+       float kp = atof(p);
+       while (*p && *p != ',') p++;
+       if (*p != ',') { debugger.systemMessage("Formato: set right kp,ki,kd"); return; }
+       p++;
+       float ki = atof(p);
+       while (*p && *p != ',') p++;
+       if (*p != ',') { debugger.systemMessage("Formato: set right kp,ki,kd"); return; }
+       p++;
+       float kd = atof(p);
+       while (*p && *p != '\0') p++;
+       if (*p != '\0') { debugger.systemMessage("Formato: set right kp,ki,kd"); return; }
        config.rightKp = kp; config.rightKi = ki; config.rightKd = kd;
        rightPid.setGains(kp, ki, kd);
        success = true;
 
-     } else if (command.startsWith("set base speed ")) {
-       if (command.length() < 15) { debugger.systemMessage("Falta argumento"); return; }
-       int speed = command.substring(14).toInt();
+     } else if (strncmp(cmd, "set base speed ", 15) == 0) {
+       char* end;
+       int speed = strtol(cmd + 15, &end, 10);
+       if (end == cmd + 15 || *end != '\0') { debugger.systemMessage("Falta argumento"); return; }
        config.baseSpeed = speed;
        success = true;
 
-     } else if (command.startsWith("set base rpm ")) {
-       if (command.length() < 13) { debugger.systemMessage("Falta argumento"); return; }
-       float rpm = command.substring(12).toFloat();
+     } else if (strncmp(cmd, "set base rpm ", 13) == 0) {
+       float rpm = atof(cmd + 13);
        config.baseRPM = rpm;
        success = true;
 
-     } else if (command.startsWith("rc ")) {
-      int coma = command.indexOf(',', 3);
-      if (coma == -1) {
-        debugger.systemMessage("Formato: rc throttle,steering"); return;
-      }
-      int t = command.substring(3, coma).toInt();
-      int s = command.substring(coma + 1).toInt();
-      throttle  = constrain(t, -MAX_SPEED, MAX_SPEED);
-      steering  = constrain(s, -MAX_SPEED, MAX_SPEED);
-      success = true;
-
-     } else if (command.startsWith("set filters ")) {
-       String values = command.substring(12);
-       int idx = 0;
-       int start = 0;
-       int len = values.length();
-       for (int i = 0; i <= len && idx < 6; i++) {
-         if (i == len || values[i] == ',') {
-           if (start < i) {
-             config.filterEnables[idx++] = (values.substring(start, i).toInt() == 1);
-           }
-           start = i + 1;
-         }
-       }
+     } else if (strncmp(cmd, "rc ", 3) == 0) {
+       const char* params = cmd + 3;
+       char* comma = strchr(params, ',');
+       if (!comma) { debugger.systemMessage("Formato: rc throttle,steering"); return; }
+       char* end1;
+       int t = strtol(params, &end1, 10);
+       if (end1 != comma) { debugger.systemMessage("Formato: rc throttle,steering"); return; }
+       char* end2;
+       int s = strtol(comma + 1, &end2, 10);
+       if (*end2 != '\0') { debugger.systemMessage("Formato: rc throttle,steering"); return; }
+       throttle  = constrain(t, -MAX_SPEED, MAX_SPEED);
+       steering  = constrain(s, -MAX_SPEED, MAX_SPEED);
        success = true;
+     }
 
-    }
-
-    if (success) { debugger.ackMessage( (" " + command).c_str() ); } else {
-      debugger.systemMessage("Comando desconocido. Envía 'help'");
-    }
-  }
+     if (success) {
+       char ackMsg[50];
+       sprintf(ackMsg, " %s", cmd);
+       debugger.ackMessage(ackMsg);
+     } else {
+       debugger.systemMessage("Comando desconocido. Envía 'help'");
+     }
+   }
 }
 
 // ==========================
@@ -517,7 +417,7 @@ void printDebugInfo() {
   int* sensors = qtr.getSensorValues();
   memcpy(data.sensors, sensors, sizeof(data.sensors));
 
-  data.linePos = filteredLinePos;
+  data.linePos = qtr.linePosition;
   data.cascade = config.cascadeMode;
   data.mode = currentMode;
   data.uptime = millis();
@@ -564,8 +464,6 @@ void printDebugInfo() {
   data.encL = leftMotor.getEncoderCount();
   data.encR = rightMotor.getEncoderCount();
 
-  // Estados de habilitación de filtros para debugging
-  memcpy(data.filterEnables, config.filterEnables, sizeof(data.filterEnables));
 
   debugger.debugData(data);
 }
@@ -579,7 +477,7 @@ void printTelemetryInfo() {
   int* sensors = qtr.getSensorValues();
   memcpy(data.sensors, sensors, sizeof(data.sensors));
 
-  data.linePos = filteredLinePos;
+  data.linePos = qtr.linePosition;
   data.lineError = linePid.getError();
   data.linePidOut = lastPidOutput;
   data.lineIntegral = linePid.getIntegral();
@@ -609,8 +507,6 @@ void printTelemetryInfo() {
   data.cascade = config.cascadeMode;
   data.mode = currentMode;
 
-  // Estados de habilitación de filtros para debugging
-  memcpy(data.filterEnables, config.filterEnables, sizeof(data.filterEnables));
 
   debugger.telemetryData(data);
 }

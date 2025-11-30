@@ -55,8 +55,6 @@ struct DebugData {
   int freeMem;
   long encL, encR;
 
-  // Filtros de línea
-  bool filterEnables[6]; // [MED, MA, KAL, HYS, DZ, LP]
 };
 
 class Debugger {
@@ -138,24 +136,10 @@ public:
     Serial.print(data.sensors[3]); Serial.print(",");
     Serial.print(data.sensors[4]); Serial.print(",");
     Serial.print(data.sensors[5]); Serial.print("]");
-    Serial.print("|FILTERS:[");
-    Serial.print(data.filterEnables[0] ? "1" : "0"); Serial.print(",");
-    Serial.print(data.filterEnables[1] ? "1" : "0"); Serial.print(",");
-    Serial.print(data.filterEnables[2] ? "1" : "0"); Serial.print(",");
-    Serial.print(data.filterEnables[3] ? "1" : "0"); Serial.print(",");
-    Serial.print(data.filterEnables[4] ? "1" : "0"); Serial.print(",");
-    Serial.print(data.filterEnables[5] ? "1" : "0"); Serial.print("]");
     Serial.print("|BATT:");
     Serial.print(data.battery, 2);
     Serial.print("|LOOP_US:");
     Serial.print(data.loopTime);
-    Serial.print("|FILTERS:[");
-    Serial.print(data.filterEnables[0] ? "1" : "0"); Serial.print(",");
-    Serial.print(data.filterEnables[1] ? "1" : "0"); Serial.print(",");
-    Serial.print(data.filterEnables[2] ? "1" : "0"); Serial.print(",");
-    Serial.print(data.filterEnables[3] ? "1" : "0"); Serial.print(",");
-    Serial.print(data.filterEnables[4] ? "1" : "0"); Serial.print(",");
-    Serial.print(data.filterEnables[5] ? "1" : "0"); Serial.print("]");
     Serial.print("|FREE_MEM:");
     Serial.print(data.freeMem);
     Serial.print("|UPTIME:");
