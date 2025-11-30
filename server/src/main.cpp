@@ -41,6 +41,10 @@ int steering = 0;
 // LED indication
 unsigned long lastLedTime = 0;
 bool ledState = false;
+// Variables para mejoras dinámicas
+float previousLinePosition = 0;
+float dynamicBaseRPM = DEFAULT_BASE_RPM;
+int dynamicBaseSpeed = DEFAULT_BASE_SPEED;
 
 
 // ==========================
@@ -95,7 +99,7 @@ void setup() {
 
   qtr.setCalibration(config.sensorMin, config.sensorMax);
 
-
+  
   qtr.calibrate();
 
 
@@ -118,20 +122,74 @@ void loop() {
 
     if (currentMode == MODE_LINE_FOLLOWING) {
        qtr.read();
-       lastLinePosition = features.applySignalFilters(qtr.linePosition);
-       float error = 0 - lastLinePosition;
-      float pidOutput = linePid.calculate(0, error, dtLine);
-      lastPidOutput = pidOutput;
+       int* rawSensors = qtr.getRawSensorValues();
+       // Verificar si todos los sensores están casi en negro (70% negro)
+       bool allBlack = true;
+       for(int i = 0; i < NUM_SENSORS; i++) {
+         int range = config.sensorMax[i] - config.sensorMin[i];
+         if(range > 0) {
+           if(rawSensors[i] > config.sensorMin[i] + 0.3 * range) {
+             allBlack = false;
+             break;
+           }
+         } else {
+           allBlack = false;
+           break;
+         }
+       }
+       // Verificar si todos los sensores están casi en blanco (30% blanco)
+       bool allWhite = true;
+       for(int i = 0; i < NUM_SENSORS; i++) {
+         int range = config.sensorMax[i] - config.sensorMin[i];
+         if(range > 0) {
+           if(rawSensors[i] < config.sensorMax[i] - 0.3 * range) {
+             allWhite = false;
+             break;
+           }
+         } else {
+           allWhite = false;
+           break;
+         }
+       }
+
+       // Calcular curvatura para ajustes dinámicos
+       float currentPosition = features.applySignalFilters(qtr.linePosition);
+       float curvature = abs(currentPosition - previousLinePosition) / dtLine;
+       previousLinePosition = currentPosition;
+
+       // Ajustes dinámicos de velocidad base
+       dynamicBaseRPM = config.baseRPM;
+       dynamicBaseSpeed = config.baseSpeed;
+       if(curvature > 500 || allBlack) {  // Alta curvatura o pérdida de línea
+         dynamicBaseRPM = max(60.0f, dynamicBaseRPM - 30.0f);
+         dynamicBaseSpeed = max(100, dynamicBaseSpeed - 50);
+       }
+
+       float pidOutput;
+       if(allBlack) {
+         pidOutput = -200;  // girar a la izquierda rápidamente cuando todos los sensores están en negro
+       } else if(allWhite) {
+         pidOutput = 200;   // girar a la derecha rápidamente cuando todos los sensores están en blanco
+       } else {
+         lastLinePosition = currentPosition;
+         float error = 0 - lastLinePosition;
+         // Ajuste dinámico de ganancias PID basado en curvatura
+         float dynamicKp = config.lineKp + curvature * 0.001;  // Factor pequeño para ajuste
+         float dynamicKd = config.lineKd + curvature * 0.0005;
+         linePid.setGains(dynamicKp, config.lineKi, dynamicKd);
+         pidOutput = linePid.calculate(0, error, dtLine);
+       }
+       lastPidOutput = pidOutput;
 
       if (config.cascadeMode) {
          // Set target RPMs for cascade control
          float rpmAdjustment = pidOutput * 0.5;
-         leftTargetRPM = config.baseRPM + rpmAdjustment;
-         rightTargetRPM = config.baseRPM - rpmAdjustment;
+         leftTargetRPM = dynamicBaseRPM + rpmAdjustment;
+         rightTargetRPM = dynamicBaseRPM - rpmAdjustment;
        } else {
         // Open-loop control
-        int leftSpeed = config.baseSpeed + pidOutput;
-        int rightSpeed = config.baseSpeed - pidOutput;
+        int leftSpeed = dynamicBaseSpeed + pidOutput;
+        int rightSpeed = dynamicBaseSpeed - pidOutput;
         leftSpeed = constrain(leftSpeed, -MAX_SPEED, MAX_SPEED);
         rightSpeed = constrain(rightSpeed, -MAX_SPEED, MAX_SPEED);
         leftMotor.setSpeed(leftSpeed);
@@ -160,6 +218,13 @@ void loop() {
 
       leftSpeed = constrain(leftSpeed, -MAX_SPEED, MAX_SPEED);
       rightSpeed = constrain(rightSpeed, -MAX_SPEED, MAX_SPEED);
+
+      // Actualizar velocidad máxima registrada
+      int currentMax = max(abs(leftSpeed), abs(rightSpeed));
+      if(currentMax > config.maxSpeed) {
+        config.maxSpeed = currentMax;
+        saveConfig();
+      }
 
       leftMotor.setSpeed(leftSpeed);
       rightMotor.setSpeed(rightSpeed);
@@ -246,6 +311,7 @@ void loop() {
        config.telemetry = DEFAULT_TELEMETRY_ENABLED;
        memcpy(config.featureEnables, DEFAULT_FEATURE_ENABLES, sizeof(DEFAULT_FEATURE_ENABLES));
        config.operationMode  = DEFAULT_OPERATION_MODE;
+       config.maxSpeed = DEFAULT_MAX_SPEED;
        config.checksum       = 1234567891;
        saveConfig();
        linePid.setGains(config.lineKp, config.lineKi, config.lineKd);
@@ -488,7 +554,6 @@ void printTelemetryInfo() {
   data.freeMem = freeMemory();
   data.cascade = config.cascadeMode;
   data.mode = currentMode;
-
 
   debugger.telemetryData(data);
 }

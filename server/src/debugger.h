@@ -38,6 +38,7 @@ struct DebugData {
   // Velocidades base
   int baseSpeed;
   float baseRPM;
+  int maxSpeed;
 
   // Ruedas
   float wheelDiameter;
@@ -138,7 +139,8 @@ public:
     Serial.print(config.rightKd, 2); Serial.print(F("]"));
     Serial.print(F("|BASE:["));
     Serial.print(config.baseSpeed); Serial.print(F(","));
-    Serial.print(config.baseRPM, 2); Serial.print(F("]"));
+    Serial.print(config.baseRPM, 2); Serial.print(F(","));
+    Serial.print(config.maxSpeed); Serial.print(F("]"));
     Serial.print(F("|WHEELS:["));
     Serial.print(config.wheelDiameter, 1); Serial.print(F(","));
     Serial.print(config.wheelDistance, 1); Serial.print(F("]"));

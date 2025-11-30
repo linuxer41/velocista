@@ -2,7 +2,7 @@
 
 ## Descripción del Proyecto
 
-Este proyecto implementa un robot seguidor de línea basado en Arduino con control PID avanzado. Incluye modos de reposo (idle), seguimiento de línea, control remoto, y configuración ajustable vía comandos seriales.
+Este proyecto implementa un robot seguidor de línea basado en Arduino con control PID avanzado y mejoras dinámicas. Incluye modos de reposo (idle), seguimiento de línea con ajustes adaptativos, control remoto, y configuración ajustable vía comandos seriales.
 
 ## Arquitectura del Sistema
 
@@ -105,7 +105,7 @@ type:5|LINE_K_PID:[2.00,0.05,0.75]|LEFT_K_PID:[5.00,0.50,0.10]|RIGHT_K_PID:[5.00
 **Configuración (igual que type:3):**
 - **LINE_K_PID**: [KP,KI,KD] ganancias PID de línea
 - **LEFT_K_PID/RIGHT_K_PID**: [KP,KI,KD] ganancias PID de motores
-- **BASE**: [PWM_base,RPM_base] velocidades base
+- **BASE**: [PWM_base,RPM_base,max_speed] velocidades base y máxima configurda
 - **WHEELS**: [diámetro_rueda_mm,distancia_ruedas_mm] dimensiones físicas
 - **MODE**: Modo actual (0=IDLE, 1=LINE_FOLLOWING, 2=REMOTE_CONTROL)
 - **CASCADE**: Control en cascada (1=activado, 0=desactivado)
@@ -122,6 +122,7 @@ type:5|LINE_K_PID:[2.00,0.05,0.75]|LEFT_K_PID:[5.00,0.50,0.10]|RIGHT_K_PID:[5.00
 - **BATT**: Voltaje de batería en V
 - **LOOP_US**: Tiempo de ejecución del último ciclo PID en microsegundos
 - **FREE_MEM**: Memoria libre en bytes
+- **MAX_SPEED_REC**: Velocidad máxima registrada durante la operación
 - **UPTIME**: Tiempo desde inicio en ms
 
 ### Campos de Debug (type:5)
@@ -272,6 +273,11 @@ El robot incluye 8 features configurables para optimizar el rendimiento:
 8. **Perfilado de Velocidad (7)**: Implementa rampas de aceleración/desaceleración para transiciones suaves
 
 El PID de línea incluye anti-windup integrado. Los features se aplican únicamente donde corresponde, manteniendo compatibilidad.
+
+### Mejoras Dinámicas Recientes
+- **Ajuste Dinámico de PID**: Las ganancias Kp y Kd se ajustan automáticamente basado en la curvatura detectada de la línea para una respuesta más adaptativa.
+- **Control de Velocidad Variable**: La velocidad base se reduce en curvas cerradas o pérdida de línea para mejorar estabilidad y seguridad.
+- **Registro de Velocidad Máxima**: Se guarda en EEPROM la velocidad máxima alcanzada durante la operación, visible en telemetría.
 
 ### Sensores
 - **Rango**: 0-1000 (normalizado)

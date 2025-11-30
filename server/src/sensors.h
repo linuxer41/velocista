@@ -12,6 +12,7 @@
 class QTR {
 private:
   int sensorValues[NUM_SENSORS];
+  int rawSensorValues[NUM_SENSORS];
   int16_t sensorMin[NUM_SENSORS];
   int16_t sensorMax[NUM_SENSORS];
 
@@ -48,6 +49,7 @@ public:
     delayMicroseconds(100);
     for (int i = 0; i < NUM_SENSORS; i++) {
       int val = analogRead(SENSOR_PINS[i]);
+      rawSensorValues[i] = val;
       int range = sensorMax[i] - sensorMin[i];
       if (range > 0) {
         val = map(val, sensorMin[i], sensorMax[i], 0, 1000);
@@ -96,6 +98,10 @@ public:
 
   int* getSensorValues() {
     return sensorValues;
+  }
+
+  int* getRawSensorValues() {
+    return rawSensorValues;
   }
 };
 

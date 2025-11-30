@@ -32,9 +32,9 @@ const int SENSOR_PINS[NUM_SENSORS] = {A0, A1, A2, A3, A4, A5};
 #define ENCODER_RIGHT_A   3
 #define ENCODER_RIGHT_B   8
 
-// Sensor ultrasónico (obstáculos)
-// #define TRIG_PIN          12
-// #define ECHO_PIN          13
+// Sensor ultrasónico (obstáculos) - No implementado
+// #define TRIG_PIN          11
+// #define ECHO_PIN          4
 
 // LEDs de indicación de modo
 #define MODE_LED_PIN      13  // LED integrado para indicar modo
@@ -79,6 +79,7 @@ struct RobotConfig {
    bool featureEnables[8];               // Enable/disable advanced features
    OperationMode operationMode;          // Modo de operación actual
    float baseRPM;                        // RPM base para control de velocidad
+   int maxSpeed;                         // Velocidad máxima registrada
    uint32_t checksum;                    // Checksum para verificación
 };
 
@@ -141,6 +142,7 @@ const bool DEFAULT_TELEMETRY_ENABLED = true;
 const bool DEFAULT_FEATURE_ENABLES[8] = {false, false, false, false, false, false, false, false}; // [MED, MA, KAL, HYS, DZ, LP, APID, SP]
 #define DEFAULT_OPERATION_MODE MODE_IDLE
 const float DEFAULT_BASE_RPM = 120.0f;
+const int DEFAULT_MAX_SPEED = 0;
 
 // =============================================================================
 // ENUMERACIONES
