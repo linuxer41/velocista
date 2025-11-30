@@ -53,68 +53,78 @@ rc throttle,steering - Control remoto (ej: rc 200,50)
 
 ### Debug y Telemetría
 ```
-set realtime 0/1    - Desactiva/activa salida continua de realtime
-telemetry           - Envía datos de telemetry completos una sola vez
-realtime            - Envía datos de realtime una sola vez
+set telemetry 0/1    - Desactiva/activa salida continua de telemetry
+get debug           - Envía datos de debug completos una sola vez
+get telemetry        - Envía datos de telemetry una sola vez
+get config          - Envía configuración actual (PID y velocidades base)
 help                - Muestra lista de comandos disponibles
 ```
 
-## Formato de Salida Debug
+## Formato de Mensajes Seriales
 
-La salida de realtime se envía cada 100ms cuando está activada:
-
-```
-type:4|LINE:[429.30,-225.00]|LEFT:[120.00,232.50,166,1234]|RIGHT:[120.00,7.50,53,5678]|QTR:[687,292,0,0,0,0]|MODE:0|CASCADE:1|UPTIME:5000
-```
-
-La salida de telemetry completa se envía con el comando `telemetry`:
-
-```
-type:2|LINE_PID:[2.00,0.05,0.75,429.30,-225.00,150.00,50.00,5.25]|LVEL:[120.00,232.50,166,1234]|RVEL:[120.00,7.50,53,5678]|LEFT_PID:[5.00,0.50,0.10,232.50,166.00,112.50,25.00,2.10]|RIGHT_PID:[5.00,0.50,0.10,7.50,53.00,-7.50,15.00,1.85]|QTR:[687,292,0,0,0,0]|CASCADE:1|MODE:0|BATT:7.85|LOOP_US:45|UPTIME:5000
-```
-
-Los mensajes de sistema (comandos, estados) usan prefijo `type:1|` (mínimos para no sobrecargar):
+### type:1 - Mensajes de Sistema
+Mensajes informativos del sistema (respuestas a comandos, estados, errores):
 
 ```
 type:1|Calibrating... Move robot over line.
+type:1|Robot iniciado. Modo: IDLE
+type:1|Comando desconocido. Envía 'help'
 ```
 
-Los datos de telemetry completa usan prefijo `type:2|`:
+### type:2 - Confirmación de Comandos
+Confirmaciones de comandos procesados correctamente:
 
 ```
-type:2|LINE_PID:[...]|...
+type:2|ack:set mode 1
+type:2|ack:set telemetry 1
+type:2|ack:save
 ```
 
-Los datos de realtime usan prefijo `type:4|`:
+### type:3 - Datos de Configuración
+Configuración actual del robot (PID, velocidades base, modo, cascada):
 
 ```
-type:4|LINE:[429.30,-225.00]|LEFT:[120.00,232.50,166,1234]|RIGHT:[120.00,7.50,53,5678]|QTR:[687,292,0,0,0,0]|MODE:0|CASCADE:1|UPTIME:5000
+type:3|LINE_K_PID:[2.00,0.05,0.75]|LEFT_K_PID:[5.00,0.50,0.10]|RIGHT_K_PID:[5.00,0.50,0.10]|BASE:[200,120.00]|WHEELS:[32.0,85.0]|MODE:1|CASCADE:1|TELEMETRY:1
 ```
 
-Los mensajes de confirmación de comandos usan prefijo `type:3|`:
+### type:4 - Datos de Telemetry
+Datos en tiempo real del robot (línea, motores, sensores):
 
 ```
-type:3|ack:mode line
+type:4|LINE:[429.30,-225.00,150.50,5.25,150.00]|LEFT:[120.00,232.50,166,1234,567,166.00,112.50,25.00,2.10]|RIGHT:[-85.50,7.50,-53,4567,890,53.00,-7.50,15.00,1.85]|PID:[150.00,166.00,53.00]|SPEED_CMS:[15.08,-10.68]|QTR:[687,292,0,0,0,0]|BATT:7.85|LOOP_US:45|FREE_MEM:1024|UPTIME:5000
 ```
 
-### Campos de Debug
-- **LINE_PID**: [KP,KI,KD,posicion_linea,output,error,integral,derivada] del PID de línea
-- **LVEL/RVEL**: [RPM_actual,RPM_objetivo,PWM,encoder_count] izquierdo/derecho
-- **LEFT_PID/RIGHT_PID**: [KP,KI,KD,RPM_objetivo,output,error,integral,derivada] del PID de motor
-- **QTR**: Valores crudos de los 6 sensores QTR
-- **CASCADE**: Control en cascada (1=activado, 0=desactivado, solo en modo línea)
-- **MODE**: Modo actual (0=IDLE, 1=LINE_FOLLOWING, 2=REMOTE_CONTROL)
-- **BATT**: Voltaje de batería en V
-- **LOOP_US**: Tiempo de ejecución del último ciclo PID en microsegundos
-- **UPTIME**: Tiempo desde inicio en ms
+### type:5 - Datos Completos de Debug
+Información completa de debugging (config + telemetry + datos PID detallados):
 
-### Campos de Realtime
-- **LINE**: [posicion_linea,error] de la línea
-- **LEFT/RIGHT**: [RPM_actual,RPM_objetivo,PWM,encoder_count] izquierdo/derecho
-- **QTR**: Valores crudos de los 6 sensores QTR
+```
+type:5|LINE_K_PID:[2.00,0.05,0.75]|LEFT_K_PID:[5.00,0.50,0.10]|RIGHT_K_PID:[5.00,0.50,0.10]|BASE:[200,120.00]|WHEELS:[32.0,85.0]|MODE:1|CASCADE:1|TELEMETRY:1|LINE:[429.30,-225.00,150.50,5.25,150.00]|LEFT:[120.00,232.50,166,1234,567,166.00,112.50,25.00,2.10]|RIGHT:[-85.50,7.50,-53,4567,890,53.00,-7.50,15.00,1.85]|PID:[150.00,166.00,53.00]|SPEED_CMS:[15.08,-10.68]|QTR:[687,292,0,0,0,0]|BATT:7.85|LOOP_US:45|FREE_MEM:1024|UPTIME:5000
+```
+
+**Configuración (igual que type:3):**
+- **LINE_K_PID**: [KP,KI,KD] ganancias PID de línea
+- **LEFT_K_PID/RIGHT_K_PID**: [KP,KI,KD] ganancias PID de motores
+- **BASE**: [PWM_base,RPM_base] velocidades base
+- **WHEELS**: [diámetro_rueda_mm,distancia_ruedas_mm] dimensiones físicas
 - **MODE**: Modo actual (0=IDLE, 1=LINE_FOLLOWING, 2=REMOTE_CONTROL)
 - **CASCADE**: Control en cascada (1=activado, 0=desactivado)
+- **TELEMETRY**: Estado de telemetría continua (1=activada, 0=desactivada)
+
+**Telemetry (igual que type:4):**
+- **LINE**: [posicion_linea,error,integral,derivada,correccion_aplicada] de la línea
+- **LEFT/RIGHT**: [RPM_actual,RPM_objetivo,PWM,forward_count,backward_count,output_PID,error_PID,integral_PID,derivada_PID] izquierdo/derecho
+- **PID**: [output_line,output_izquierdo,output_derecho] salidas PID
+- **SPEED_CMS**: [velocidad_izquierda_cm_s,velocidad_derecha_cm_s] velocidades lineales
+- **QTR**: [A0,A1,A2,A3,A4,A5] valores calibrados de los 6 sensores QTR (0-1000)
+- **BATT**: Voltaje de batería en V
+- **LOOP_US**: Tiempo de ejecución del último ciclo PID en microsegundos
+- **FREE_MEM**: Memoria libre en bytes
 - **UPTIME**: Tiempo desde inicio en ms
+
+### Campos de Debug (type:5)
+Contiene todos los campos de configuración, telemetry y datos adicionales de debugging:
+
+**Debug Adicional: No hay campos adicionales redundantes (toda info PID está en telemetry)**
 
 ## Configuración Inicial
 
@@ -128,6 +138,7 @@ KP: 5.0, KI: 0.5, KD: 0.1
 
 // Velocidad base: 200
 // Máxima velocidad: 230
+// Telemetry: 1 (activada)
 ```
 
 ### Calibración de Sensores
@@ -139,7 +150,7 @@ KP: 5.0, KI: 0.5, KD: 0.1
 ## Interfaz para Desarrollador Frontend
 
 ### Conexión Serial
-- **Baud Rate**: 9600
+- **Baud Rate**: 115200
 - **Puerto**: Depende del sistema (COMx en Windows, /dev/ttyUSBx en Linux)
 - **Librería**: Web Serial API (Chrome) o Node.js serialport
 
@@ -147,7 +158,7 @@ KP: 5.0, KI: 0.5, KD: 0.1
 ```javascript
 // Conectar
 const port = await navigator.serial.requestPort();
-await port.open({ baudRate: 9600 });
+await port.open({ baudRate: 115200 });
 
 // Enviar comando
 const writer = port.writable.getWriter();
@@ -161,32 +172,37 @@ console.log(new TextDecoder().decode(value));
 
 ### Tipos de Mensajes Seriales
 
-El robot envía 4 tipos de mensajes por serial:
+El robot envía 5 tipos de mensajes por serial:
 
 1. **type:1|mensaje** - Mensajes de sistema (respuestas a comandos)
-2. **type:2|datos** - Datos de telemetry completos
-3. **type:3|ack:comando** - Confirmación de comando procesado
-4. **type:4|datos** - Datos de realtime (línea, motores, sensores)
+2. **type:2|ack:comando** - Confirmación de comando procesado
+3. **type:3|datos** - Datos de configuración (PID, velocidades base, modo, cascada)
+4. **type:4|datos** - Datos de telemetry (línea, motores, sensores)
+5. **type:5|datos** - Datos completos de debug (config + telemetry + debug extra)
 
 ### Parsing de Datos
 ```javascript
 function parseSerialMessage(line) {
   if (line.startsWith('type:1|')) {
-    // Mensaje de sistema
+    // type:1 - Mensaje de sistema
     const message = line.substring(7);
     handleSystemMessage(message);
   } else if (line.startsWith('type:2|')) {
-    // Datos de telemetry completos - parsear arrays
-    const data = parseTelemetryData(line.substring(7));
-    updateUI(data);
-  } else if (line.startsWith('type:3|')) {
-    // Confirmación de comando
+    // type:2 - Confirmación de comando
     const ack = line.substring(7);
     confirmCommand(ack);
+  } else if (line.startsWith('type:3|')) {
+    // type:3 - Datos de configuración
+    const config = parseConfigData(line.substring(7));
+    updateConfigUI(config);
   } else if (line.startsWith('type:4|')) {
-    // Datos de realtime
-    const data = parseRealtimeData(line.substring(7));
-    updateRealtimeUI(data);
+    // type:4 - Datos de telemetry
+    const data = parseTelemetryData(line.substring(7));
+    updateTelemetryUI(data);
+  } else if (line.startsWith('type:5|')) {
+    // type:5 - Datos completos de debug
+    const data = parseDebugData(line.substring(7));
+    updateDebugUI(data);
   }
 }
 
@@ -205,8 +221,8 @@ function parseDebugData(debugString) {
 }
 
 // Ejemplo:
-// Input: "type:4|LINE:[429.30,-225.00]|LEFT:[120.00,232.50,166,1234]|RIGHT:[120.00,7.50,53,5678]|QTR:[687,292,0,0,0,0]|MODE:0|CASCADE:1|UPTIME:5000"
-// Output: { LINE: [429.3, -225], LEFT: [120, 232.5, 166, 1234], RIGHT: [120, 7.5, 53, 5678], QTR: [687, 292, 0, 0, 0, 0], MODE: 0, CASCADE: 1, UPTIME: 5000 }
+// Input: "type:4|LINE:[429.30,-225.00,150.50,5.25]|LEFT:[120.00,232.50,166,1234,567]|RIGHT:[-85.50,7.50,-53,4567,890]|PID:[150.00,166.00,53.00]|SPEED_CMS:[15.08,-10.68]|QTR:[687,292,0,0,0,0]|BATT:7.85|LOOP_US:45|FREE_MEM:1024|UPTIME:5000"
+// Output: { LINE: [429.3, -225, 150.5, 5.25], LEFT: [120, 232.5, 166, 1234, 567], RIGHT: [-85.5, 7.5, -53, 4567, 890], PID: [150, 166, 53], SPEED_CMS: [15.08, -10.68], QTR: [687, 292, 0, 0, 0, 0], BATT: 7.85, LOOP_US: 45, FREE_MEM: 1024, UPTIME: 5000 }
 ```
 
 ### Recomendaciones para UI
@@ -223,7 +239,7 @@ function parseDebugData(debugString) {
 3. **Cascada**: Toggle para control cascada con `set cascade 0/1`
 4. **PID Tuning**: Sliders para KP/KI/KD con envío automático (`set line kp,ki,kd`, `set left kp,ki,kd`, `set right kp,ki,kd`)
 5. **Velocidad Base**: Sliders para base speed y base RPM (`set base speed <value>`, `set base rpm <value>`)
-6. **Telemetría**: Gráfico en tiempo real de posición, RPM, sensores (`set realtime 1`)
+6. **Telemetría**: Gráfico en tiempo real de posición, RPM, sensores (`set telemetry 1`)
 7. **Control Remoto**: Joystick virtual para enviar comandos `rc throttle,steering`
 8. **Calibración**: Botón para iniciar calibración con progreso (`calibrate`)
 9. **Configuración**: Guardar/cargar configuración (`save`, `reset`)
@@ -243,9 +259,11 @@ function parseDebugData(debugString) {
 - **Umbral**: Sin línea si valores inconsistentes
 
 ### Motores
-- **Encoder**: 36 pulsos por revolución
-- **RPM**: Calculado cada 100ms
-- **Dirección**: PWM positivo/negativo
+- **Encoder**: 36 pulsos por revolución, dirección determinada comparando canales A y B durante interrupción en A
+- **Dirección Encoder**: Si canal A y B tienen el mismo valor (ambos HIGH o ambos LOW) = sentido horario; si difieren = sentido antihorario
+- **RPM**: Calculado cada 100ms, puede ser positivo/negativo según dirección real de giro
+- **Encoder Count**: Contador acumulado, puede ser positivo/negativo según dirección
+- **Dirección**: PWM positivo/negativo para comando, pero dirección real medida por encoders
 
 ## Troubleshooting
 
@@ -257,8 +275,8 @@ function parseDebugData(debugString) {
 ### PID no converge
 - Aumentar KP para respuesta más rápida
 - Ajustar KD para reducir oscilaciones
-- Usar `telemetry` para monitorear PID completo
-- Usar `realtime 1` para monitoreo continuo de RPM y sensores
+- Usar `debug` para monitorear PID completo
+- Usar `telemetry 1` para monitoreo continuo de RPM y sensores
 
 ### Sensores no calibrados
 - Ejecutar `calibrate`
@@ -273,9 +291,10 @@ pio run  # PlatformIO
 ```
 
 ### Testing
-- Usar `set realtime 1` para monitoreo continuo de datos realtime
-- `telemetry` para snapshots completos de telemetry
-- `realtime` para snapshot único de datos realtime
+- Usar `set telemetry 1` para monitoreo continuo de datos telemetry
+- `get debug` para snapshots completos de debug
+- `get telemetry` para snapshot único de datos telemetry
+- `get config` para obtener configuración actual
 - `set mode 0/1/2` para cambiar modos: 0=idle, 1=line, 2=remote
 - `set cascade 0/1` para activar/desactivar control cascada
 - `set line/left/right kp,ki,kd` para ajustar PID

@@ -19,7 +19,8 @@ private:
   int pin1, pin2;
   int speed;
   Location location;
-  volatile long encoderCount;
+  volatile long forwardCount;
+  volatile long backwardCount;
   long lastCount;
   unsigned long lastSpeedCheck;
   float currentRPM;
@@ -27,7 +28,7 @@ private:
   int encoderAPin, encoderBPin;
 
 public:
-  Motor(int p1, int p2, Location loc, int encA, int encB) : pin1(p1), pin2(p2), speed(0), location(loc), encoderCount(0), lastCount(0), lastSpeedCheck(0), currentRPM(0), targetRPM(0), encoderAPin(encA), encoderBPin(encB) {
+  Motor(int p1, int p2, Location loc, int encA, int encB) : pin1(p1), pin2(p2), speed(0), location(loc), forwardCount(0), backwardCount(0), lastCount(0), lastSpeedCheck(0), currentRPM(0), targetRPM(0), encoderAPin(encA), encoderBPin(encB) {
   }
 
   void init() {
@@ -66,7 +67,7 @@ public:
   float getRPM() {
     unsigned long now = millis();
     if (now - lastSpeedCheck < 100) return currentRPM;
-    long currentCount = encoderCount;
+    long currentCount = forwardCount - backwardCount;
     long delta = currentCount - lastCount;
     float dt = (now - lastSpeedCheck) / 1000.0;
     currentRPM = (delta / (float)PULSES_PER_REVOLUTION) * 60.0 / dt;
@@ -84,21 +85,25 @@ public:
   }
 
   long getEncoderCount() {
-    return encoderCount;
+    return forwardCount;
+  }
+
+  long getBackwardCount() {
+    return backwardCount;
   }
 
   void updateEncoder() {
     if (location == LEFT) {
       if (digitalRead(encoderBPin)) {
-        encoderCount--;
+        backwardCount++;  // LEFT motor: B HIGH = backward
       } else {
-        encoderCount++;
+        forwardCount++;   // LEFT motor: B LOW = forward
       }
     } else {
       if (digitalRead(encoderBPin)) {
-        encoderCount++;
+        forwardCount++;   // RIGHT motor: B HIGH = forward
       } else {
-        encoderCount--;
+        backwardCount++;  // RIGHT motor: B LOW = backward
       }
     }
   }

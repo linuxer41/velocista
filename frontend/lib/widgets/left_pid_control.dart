@@ -40,13 +40,16 @@ class _LeftPidControlState extends State<LeftPidControl> {
 
   void _updateFromTelemetry() {
     final data = widget.appState.currentData.value;
-    if (data != null && data.leftPid != null && data.leftPid!.length >= 3) {
-      // Update controllers with telemetry left PID values
-      _kpController.text = data.leftPid![0].toStringAsFixed(2);
-      _kiController.text = data.leftPid![1].toStringAsFixed(3);
-      _kdController.text = data.leftPid![2].toStringAsFixed(2);
+    if (data is ConfigData &&
+        data.leftKPid != null &&
+        data.leftKPid!.length >= 3) {
+      // Update controllers with config left PID values only when ConfigData arrives
+      final leftKPid = data.leftKPid!;
+      _kpController.text = leftKPid[0].toStringAsFixed(2);
+      _kiController.text = leftKPid[1].toStringAsFixed(3);
+      _kdController.text = leftKPid[2].toStringAsFixed(2);
     } else {
-      // No telemetry data, show defaults
+      // No config data, show defaults
       _kpController.text = '5.0';
       _kiController.text = '0.5';
       _kdController.text = '0.1';
@@ -80,7 +83,7 @@ class _LeftPidControlState extends State<LeftPidControl> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Left Motor PID',
+            'PID Motor Izquierdo',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
@@ -126,7 +129,8 @@ class _LeftPidControlState extends State<LeftPidControl> {
             width: double.infinity,
             child: ElevatedButton(
               onPressed: _updatePIDConfig,
-              child: const Text('Update Left PID', style: TextStyle(fontSize: 12)),
+              child:
+                  const Text('Update Left PID', style: TextStyle(fontSize: 12)),
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 backgroundColor: Theme.of(context).colorScheme.primary,
@@ -138,10 +142,12 @@ class _LeftPidControlState extends State<LeftPidControl> {
           const SizedBox(height: 8),
 
           // Current Values Display
-          ValueListenableBuilder<ArduinoData?>(
+          ValueListenableBuilder<SerialData?>(
             valueListenable: widget.appState.currentData,
             builder: (context, data, child) {
-              if (data == null || data.leftPid == null) return const SizedBox.shrink();
+              if (data is! DebugData) return const SizedBox.shrink();
+
+              final rpmTarget = data.left != null && data.left!.length > 1 ? data.left![1] : 0.0;
 
               return Container(
                 padding: const EdgeInsets.all(6),
@@ -149,14 +155,15 @@ class _LeftPidControlState extends State<LeftPidControl> {
                   color: Theme.of(context).colorScheme.surface,
                   borderRadius: BorderRadius.circular(6),
                   border: Border.all(
-                    color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                    color:
+                        Theme.of(context).colorScheme.outline.withOpacity(0.3),
                   ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Left Motor Status',
+                      'Estado Motor Izquierdo',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
@@ -165,7 +172,7 @@ class _LeftPidControlState extends State<LeftPidControl> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'RPM Target: ${data.leftPid![3].toStringAsFixed(1)}',
+                      'RPM Target: ${rpmTarget.toStringAsFixed(1)}',
                       style: TextStyle(
                         fontSize: 10,
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -207,7 +214,10 @@ class _LeftPidControlState extends State<LeftPidControl> {
               hintText: hint,
               hintStyle: TextStyle(
                 fontSize: 12,
-                color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.5),
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurfaceVariant
+                    .withOpacity(0.5),
               ),
               filled: true,
               fillColor: Theme.of(context).colorScheme.surface,
@@ -217,7 +227,8 @@ class _LeftPidControlState extends State<LeftPidControl> {
                   color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
                 ),
               ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             ),
             style: TextStyle(
               fontSize: 12,

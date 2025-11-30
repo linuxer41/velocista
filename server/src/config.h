@@ -75,6 +75,7 @@ struct RobotConfig {
    int16_t rcMaxThrottle;                // Throttle máximo control remoto
    int16_t rcMaxSteering;                // Steering máximo control remoto
    bool cascadeMode;                     // Modo cascada activado/desactivado
+   bool telemetry;                // Habilitar/deshabilitar telemetry (0=deshabilitado, 1=habilitado)
    OperationMode operationMode;          // Modo de operación actual
    float baseRPM;                        // RPM base para control de velocidad
    uint32_t checksum;                    // Checksum para verificación
@@ -103,7 +104,7 @@ const int16_t RC_MAX_STEERING = 150;    // Steering máximo
 
 // Batería
 const uint8_t BATTERY_PIN = A7;         // Pin para medir voltaje de batería
-const float BATTERY_FACTOR = 5.0 / 1023.0 * (10.0 + 2.2) / 2.2; // Factor de conversión (divisor resistivo)
+const float BATTERY_FACTOR = 10.0 / 1023.0; // Factor de conversión (divisor resistivo 2x 10k)
 
 // Tiempos de bucle
 const uint16_t LOOP_LINE_MS  = 10;   // 100 Hz para PID de línea
@@ -112,8 +113,8 @@ const uint16_t LOOP_SPEED_MS = 5;    // 200 Hz para PID de velocidad
 // Velocidad base
 const float BASE_RPM = 120.0f; // RPM base para control de velocidad
 
-// Realtime
-const unsigned long REALTIME_INTERVAL_MS = 100; // Intervalo de envío de realtime en ms
+// Telemetry
+const unsigned long REALTIME_INTERVAL_MS = 100; // Intervalo de envío de telemetry en ms
 
 // =============================================================================
 // VALORES POR DEFECTO
@@ -121,20 +122,21 @@ const unsigned long REALTIME_INTERVAL_MS = 100; // Intervalo de envío de realti
 
 // PID para línea (más agresivo para corrección rápida)
 const float DEFAULT_LINE_KP = 2.0;
-const float DEFAULT_LINE_KI = 0.05;
-const float DEFAULT_LINE_KD = 0.75;
+const float DEFAULT_LINE_KI = 0.01;
+const float DEFAULT_LINE_KD = 0.05;
 
 // PID para motores (más agresivo para alcanzar RPM objetivo)
-const float DEFAULT_LEFT_KP = 5.0;
-const float DEFAULT_LEFT_KI = 0.5;
-const float DEFAULT_LEFT_KD = 0.1;
+const float DEFAULT_LEFT_KP = 0.5;
+const float DEFAULT_LEFT_KI = 0.0;
+const float DEFAULT_LEFT_KD = 0.01;
 
-const float DEFAULT_RIGHT_KP = 5.0;
-const float DEFAULT_RIGHT_KI = 0.5;
-const float DEFAULT_RIGHT_KD = 0.1;
+const float DEFAULT_RIGHT_KP = 0.5;
+const float DEFAULT_RIGHT_KI = 0.0;
+const float DEFAULT_RIGHT_KD = 0.01;
 
 const int16_t DEFAULT_BASE_SPEED = 200;
 const bool DEFAULT_CASCADE = true;
+const bool DEFAULT_TELEMETRY_ENABLED = true;
 #define DEFAULT_OPERATION_MODE MODE_IDLE
 const float DEFAULT_BASE_RPM = 120.0f;
 

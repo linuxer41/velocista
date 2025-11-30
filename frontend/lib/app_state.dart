@@ -38,6 +38,18 @@ class AppState extends ChangeNotifier {
   final ValueNotifier<ArduinoPIDConfig> pidConfig =
       ValueNotifier(ArduinoPIDConfig());
 
+  // Configuración PID izquierda y derecha
+  final ValueNotifier<List<double>?> leftPid = ValueNotifier(null);
+  final ValueNotifier<List<double>?> rightPid = ValueNotifier(null);
+
+  // Configuración velocidad base
+  final ValueNotifier<double?> baseSpeed = ValueNotifier(null);
+  final ValueNotifier<double?> baseRpm = ValueNotifier(null);
+
+  // Estados de toggles
+  final ValueNotifier<bool> cascadeEnabled = ValueNotifier(true);
+  final ValueNotifier<bool> telemetryEnabled = ValueNotifier(true);
+
   // Modo de operación actual
   final ValueNotifier<OperationMode> currentMode =
       ValueNotifier(OperationMode.idle);
@@ -45,13 +57,22 @@ class AppState extends ChangeNotifier {
   // Tema de la aplicación
   final ValueNotifier<bool> isDarkMode = ValueNotifier(false);
 
-  // Datos de telemetría actuales
-  final ValueNotifier<ArduinoData?> currentData = ValueNotifier(null);
+  // Datos separados por tipo
+  final ValueNotifier<TelemetryData?> telemetryData = ValueNotifier(null);
+  final ValueNotifier<DebugData?> debugData = ValueNotifier(null);
 
-  // Datos raw para terminal
+  // Datos raw para terminal (todos los tipos)
+  final ValueNotifier<SerialData?> currentData = ValueNotifier(null);
   final ValueNotifier<List<TerminalMessage>> rawDataBuffer = ValueNotifier([]);
-  final ValueNotifier<List<TerminalMessage>> sentCommandsBuffer = ValueNotifier([]);
-  final ValueNotifier<List<TerminalMessage>> receivedDataBuffer = ValueNotifier([]);
+  final ValueNotifier<List<TerminalMessage>> sentCommandsBuffer =
+      ValueNotifier([]);
+  final ValueNotifier<List<TerminalMessage>> receivedDataBuffer =
+      ValueNotifier([]);
+
+  // Acceleration calculation
+  final ValueNotifier<double> acceleration = ValueNotifier(0.0);
+  TelemetryData? _previousTelemetryData;
+  int _previousTime = 0;
 
   // ACK notifications
   final ValueNotifier<String?> lastAck = ValueNotifier(null);
@@ -69,8 +90,6 @@ class AppState extends ChangeNotifier {
       onCommandSent: _handleSentCommand,
     );
   }
-
-
 
   // Actualizar configuración PID
   Future<void> updatePIDConfig(ArduinoPIDConfig newConfig) async {
@@ -140,7 +159,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-
   // Desconectar
   Future<void> disconnect() async {
     if (!isConnected.value) return;
@@ -176,17 +194,18 @@ class AppState extends ChangeNotifier {
     }
   }
 
-
-
   void _handleBluetoothError(String error) {
     connectionStatus.value = 'Error: $error';
     notifyListeners();
   }
 
-  void _handleConnected() {
+  void _handleConnected() async {
     isConnected.value = true;
-    connectionStatus.value = 'Conectado a ${connectedDevice.value?.name ?? 'Dispositivo'}';
+    connectionStatus.value =
+        'Conectado a ${connectedDevice.value?.name ?? 'Dispositivo'}';
     notifyListeners();
+    // Send get config on successful connection
+    await sendCommand(ConfigRequestCommand().toCommand());
   }
 
   void _handleDisconnected() {
@@ -197,12 +216,14 @@ class AppState extends ChangeNotifier {
   }
 
   void _handleRawDataReceived(String rawData) {
+    // print("handleRawDataReceived: $rawData");
     // Parse the raw data and handle it
     final line = rawData.trim();
     if (line.isEmpty) return;
 
     // Add to combined buffer
-    final currentCombinedBuffer = List<TerminalMessage>.from(rawDataBuffer.value);
+    final currentCombinedBuffer =
+        List<TerminalMessage>.from(rawDataBuffer.value);
     currentCombinedBuffer.add(TerminalMessage(line, MessageType.received));
     if (currentCombinedBuffer.length > 500) {
       currentCombinedBuffer.removeRange(0, currentCombinedBuffer.length - 500);
@@ -210,7 +231,8 @@ class AppState extends ChangeNotifier {
     rawDataBuffer.value = currentCombinedBuffer;
 
     // Add to received buffer
-    final currentReceivedBuffer = List<TerminalMessage>.from(receivedDataBuffer.value);
+    final currentReceivedBuffer =
+        List<TerminalMessage>.from(receivedDataBuffer.value);
     currentReceivedBuffer.add(TerminalMessage(line, MessageType.received));
     if (currentReceivedBuffer.length > 500) {
       currentReceivedBuffer.removeRange(0, currentReceivedBuffer.length - 500);
@@ -224,19 +246,123 @@ class AppState extends ChangeNotifier {
       print('System message: $message');
       return;
     } else if (line.startsWith('type:3|')) {
-      // Command acknowledgment - just log, no ArduinoData update
+      // Command acknowledgment - log and try to parse as config
       final ack = line.substring(7);
       print('Command ack: $ack');
       lastAck.value = ack; // Notify listeners
+
+      // Try to parse as config data
+      try {
+        final configData = ConfigData.fromSerial("type:3|$ack");
+        if (configData != null) {
+          // Update operation mode
+          if (configData.mode != null) {
+            currentMode.value = OperationMode.fromId(configData.mode!);
+          }
+          // Update PID configs
+          if (configData.lineKPid != null && configData.lineKPid!.length >= 3) {
+            pidConfig.value = ArduinoPIDConfig(
+              kp: configData.lineKPid![0],
+              ki: configData.lineKPid![1],
+              kd: configData.lineKPid![2],
+              setpoint: 2500.0, // Default
+              baseSpeed: configData.base != null &&
+                      configData.base!.length >= 2
+                  ? configData.base![1] / 255.0
+                  : 0.8,
+            );
+          }
+          leftPid.value = configData.leftKPid;
+          rightPid.value = configData.rightKPid;
+          if (configData.base != null) {
+            if (configData.base!.length >= 1) baseSpeed.value = configData.base![0];
+            if (configData.base!.length >= 2) baseRpm.value = configData.base![1];
+          }
+          // Update toggle states
+          if (configData.cascade != null) {
+            cascadeEnabled.value = configData.cascade! == 1;
+          }
+          if (configData.cascade != null) cascadeEnabled.value = configData.cascade == 1;
+          if (configData.telemetry != null) telemetryEnabled.value = configData.telemetry == 1;
+          // Set currentData to trigger UI updates
+          currentData.value = configData;
+        }
+      } catch (e) {
+        // Not config data, ignore
+      }
       return;
     }
 
-    // Parse data for UI updates (type:2, type:4, or legacy formats)
     try {
-      // Try to parse as ArduinoData (handles all formats: typed messages, pipe-separated, JSON)
-      final arduinoData = ArduinoData.fromJson(line);
-      if (arduinoData != null) {
-        currentData.value = arduinoData;
+      // Try to parse as SerialData (handles all formats: typed messages, pipe-separated, serial)
+      final serialData = SerialData.fromSerial(line);
+      if (serialData != null) {
+        // Set the appropriate ValueNotifier based on data type
+        if (serialData is TelemetryData) {
+          // Calculate acceleration from RPM changes
+          if (_previousTelemetryData != null &&
+              serialData.left != null &&
+              _previousTelemetryData!.left != null) {
+            final currentTime = DateTime.now().millisecondsSinceEpoch;
+            final deltaTime = (currentTime - _previousTime) / 1000.0; // seconds
+            if (deltaTime > 0) {
+              // Convert RPM to m/s (approximation)
+              final leftSpeedPrev = _previousTelemetryData!.left![0] *
+                  0.036 /
+                  3.6; // RPM to km/h to m/s
+              final leftSpeedCurr = serialData.left![0] * 0.036 / 3.6;
+              acceleration.value = (leftSpeedCurr - leftSpeedPrev) / deltaTime;
+            }
+          }
+          _previousTelemetryData = serialData;
+          _previousTime = DateTime.now().millisecondsSinceEpoch;
+          telemetryData.value = serialData;
+        } else if (serialData is DebugData) {
+          debugData.value = serialData;
+          // Also set telemetryData for home page to update with telemetry data
+          final leftRpm = serialData.left != null && serialData.left!.isNotEmpty ? serialData.left![0] : 0.0;
+          final rightRpm = serialData.right != null && serialData.right!.isNotEmpty ? serialData.right![0] : 0.0;
+          final leftEncoderCount = serialData.left != null && serialData.left!.length > 3 ? serialData.left![3].toInt() : 0;
+          final rightEncoderCount = serialData.right != null && serialData.right!.length > 3 ? serialData.right![3].toInt() : 0;
+          telemetryData.value = TelemetryData(
+            operationMode: serialData.mode ?? 0,
+            modeName: (serialData.mode ?? 0) == 0
+                ? 'IDLE'
+                : (serialData.mode == 1 ? 'LINE FOLLOWING' : 'REMOTE CONTROL'),
+            leftEncoderSpeed: leftRpm,
+            rightEncoderSpeed: rightRpm,
+            leftEncoderCount: leftEncoderCount,
+            rightEncoderCount: rightEncoderCount,
+            sensors: serialData.qtr ?? [],
+            cascade: (serialData.cascade ?? 1) == 1,
+            uptime: serialData.uptime ?? 0,
+            line: serialData.line,
+            left: serialData.left,
+            right: serialData.right,
+            pid: serialData.pid,
+            speedCms: serialData.speedCms,
+            batt: serialData.batt,
+            loopUs: serialData.loopUs,
+            freeMem: serialData.freeMem,
+          );
+        } else if (serialData is ConfigData) {
+          // Update PID config from received config data
+          if (serialData.lineKPid != null && serialData.lineKPid!.length >= 3) {
+            pidConfig.value = ArduinoPIDConfig(
+              kp: serialData.lineKPid![0],
+              ki: serialData.lineKPid![1],
+              kd: serialData.lineKPid![2],
+              setpoint: 2500.0, // Default
+              baseSpeed: serialData.base != null &&
+                      serialData.base!.length >= 2
+                  ? serialData.base![1] / 255.0
+                  : 0.8,
+            );
+          }
+        }
+
+        // Always update currentData for terminal
+        currentData.value = serialData;
         notifyListeners();
       }
     } catch (e) {
@@ -250,7 +376,8 @@ class AppState extends ChangeNotifier {
 
   void _handleSentCommand(String commandData) {
     // Add to combined buffer
-    final currentCombinedBuffer = List<TerminalMessage>.from(rawDataBuffer.value);
+    final currentCombinedBuffer =
+        List<TerminalMessage>.from(rawDataBuffer.value);
     currentCombinedBuffer.add(TerminalMessage(commandData, MessageType.sent));
     if (currentCombinedBuffer.length > 500) {
       currentCombinedBuffer.removeRange(0, currentCombinedBuffer.length - 500);
@@ -258,7 +385,8 @@ class AppState extends ChangeNotifier {
     rawDataBuffer.value = currentCombinedBuffer;
 
     // Add to sent buffer
-    final currentSentBuffer = List<TerminalMessage>.from(sentCommandsBuffer.value);
+    final currentSentBuffer =
+        List<TerminalMessage>.from(sentCommandsBuffer.value);
     currentSentBuffer.add(TerminalMessage(commandData, MessageType.sent));
     if (currentSentBuffer.length > 500) {
       currentSentBuffer.removeRange(0, currentSentBuffer.length - 500);
@@ -271,10 +399,6 @@ class AppState extends ChangeNotifier {
     if (connectedDevice.value != null) return connectedDevice.value!.name;
     return null;
   }
-
-
-
-
 
   @override
   void dispose() {

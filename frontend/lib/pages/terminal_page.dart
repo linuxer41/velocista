@@ -116,9 +116,12 @@ class _TerminalPageState extends State<TerminalPage> {
                           setState(() {
                             _isPaused = !_isPaused;
                             if (!_isPaused) {
-                              _displayedAll = List.from(widget.provider.rawDataBuffer.value);
-                              _displayedReceived = List.from(widget.provider.receivedDataBuffer.value);
-                              _displayedSent = List.from(widget.provider.sentCommandsBuffer.value);
+                              _displayedAll = List.from(
+                                  widget.provider.rawDataBuffer.value);
+                              _displayedReceived = List.from(
+                                  widget.provider.receivedDataBuffer.value);
+                              _displayedSent = List.from(
+                                  widget.provider.sentCommandsBuffer.value);
                             }
                           });
                         },
@@ -158,35 +161,36 @@ class _TerminalPageState extends State<TerminalPage> {
               child: ListView(
                 scrollDirection: Axis.horizontal,
                 children: [
-                  _buildQuickCommandChip('0: IDLE', 'set mode 0'),
+                  _buildQuickCommandChip('0: REPOSO', 'set mode 0'),
                   const SizedBox(width: 8),
-                  _buildQuickCommandChip('1: LINE FOLLOW', 'set mode 1'),
+                  _buildQuickCommandChip('1: SEGUIDOR LÍNEA', 'set mode 1'),
                   const SizedBox(width: 8),
-                  _buildQuickCommandChip('2: REMOTE CTRL', 'set mode 2'),
+                  _buildQuickCommandChip('2: CONTROL REMOTO', 'set mode 2'),
                   const SizedBox(width: 8),
-                  _buildQuickCommandChip('CASCADE ON', 'set cascade 1'),
+                  _buildQuickCommandChip('CASCADA ON', 'set cascade 1'),
                   const SizedBox(width: 8),
-                  _buildQuickCommandChip('CASCADE OFF', 'set cascade 0'),
+                  _buildQuickCommandChip('CASCADA OFF', 'set cascade 0'),
                   const SizedBox(width: 8),
-                  _buildQuickCommandChip('REALTIME ON', 'set realtime 1'),
+                  _buildQuickCommandChip('TELEMETRÍA ON', 'set telemetry 1'),
                   const SizedBox(width: 8),
-                  _buildQuickCommandChip('REALTIME OFF', 'set realtime 0'),
+                  _buildQuickCommandChip('TELEMETRÍA OFF', 'set telemetry 0'),
                   const SizedBox(width: 8),
-                  _buildQuickCommandChip('REALTIME SNAP', 'realtime'),
+                  _buildQuickCommandChip('TELEMETRÍA INST', 'get telemetry'),
                   const SizedBox(width: 8),
-                  _buildQuickCommandChip('TELEMETRY', 'telemetry'),
+                  _buildQuickCommandChip('DEBUG', 'get debug'),
                   const SizedBox(width: 8),
-                  _buildQuickCommandChip('CALIBRATE', 'calibrate'),
+                  _buildQuickCommandChip('CONFIG', 'get config'),
                   const SizedBox(width: 8),
-                  _buildQuickCommandChip('SAVE', 'save'),
+                  _buildQuickCommandChip('CALIBRAR', 'calibrate'),
                   const SizedBox(width: 8),
-                  _buildQuickCommandChip('RESET', 'reset'),
+                  _buildQuickCommandChip('GUARDAR', 'save'),
                   const SizedBox(width: 8),
-                  _buildQuickCommandChip('HELP', 'help'),
+                  _buildQuickCommandChip('REINICIAR', 'reset'),
+                  const SizedBox(width: 8),
+                  _buildQuickCommandChip('AYUDA', 'help'),
                 ],
               ),
             ),
-
 
             // Console Output
             Expanded(
@@ -210,7 +214,6 @@ class _TerminalPageState extends State<TerminalPage> {
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: colorScheme.surface,
-               
               ),
               child: Row(
                 children: [
@@ -218,7 +221,8 @@ class _TerminalPageState extends State<TerminalPage> {
                     child: Container(
                       height: 48,
                       decoration: BoxDecoration(
-                        color: colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                        color: colorScheme.surfaceContainerHighest
+                            .withOpacity(0.5),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: TextField(
@@ -253,7 +257,9 @@ class _TerminalPageState extends State<TerminalPage> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: IconButton(
-                      onPressed: widget.provider.isConnected.value ? _sendCommand : null,
+                      onPressed: widget.provider.isConnected.value
+                          ? _sendCommand
+                          : null,
                       icon: Icon(
                         Icons.send,
                         color: colorScheme.onPrimary,
@@ -321,7 +327,6 @@ class _TerminalPageState extends State<TerminalPage> {
     );
   }
 
-
   Widget _buildTerminalContent() {
     switch (_selectedTab) {
       case TerminalTab.all:
@@ -357,7 +362,8 @@ class _TerminalPageState extends State<TerminalPage> {
     }
   }
 
-  Widget _buildMessageList(List<TerminalMessage> messages, MessageType messageType) {
+  Widget _buildMessageList(
+      List<TerminalMessage> messages, MessageType messageType) {
     if (!_isPaused) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_scrollController.hasClients) {
@@ -459,7 +465,7 @@ class _TerminalPageState extends State<TerminalPage> {
     if (command.isEmpty) return;
 
     _sendQuickCommand(command);
-    _commandController.clear();
+    // Keep the command in the input field for modification
   }
 
   Future<void> _sendQuickCommand(String command) async {

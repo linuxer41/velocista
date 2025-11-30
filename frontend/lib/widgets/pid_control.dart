@@ -40,19 +40,29 @@ class _PidControlState extends State<PidControl> {
 
   void _updateFromTelemetry() {
     final data = widget.appState.currentData.value;
-    if (data != null && data.linePid != null && data.linePid!.length >= 3) {
-      // Update controllers with telemetry line PID values
-      _kpController.text = data.linePid![0].toStringAsFixed(2);
-      _kiController.text = data.linePid![1].toStringAsFixed(3);
-      _kdController.text = data.linePid![2].toStringAsFixed(2);
+    if ((data is DebugData &&
+        data.lineKPid != null &&
+        data.lineKPid!.length >= 3) ||
+        (data is ConfigData &&
+        data.lineKPid != null &&
+        data.lineKPid!.length >= 3)) {
+      // Update controllers with config line PID values
+      List<double> lineKPid;
+      if (data is DebugData) {
+        lineKPid = data.lineKPid!;
+      } else {
+        lineKPid = (data as ConfigData).lineKPid!;
+      }
+      _kpController.text = lineKPid[0].toStringAsFixed(2);
+      _kiController.text = lineKPid[1].toStringAsFixed(3);
+      _kdController.text = lineKPid[2].toStringAsFixed(2);
     } else {
-      // No telemetry data, show defaults
-      _kpController.text = '2.0';
+      // No config data, show defaults
+      _kpController.text = '2.00';
       _kiController.text = '0.05';
       _kdController.text = '0.75';
     }
   }
-
 
   void _updatePIDConfig() {
     final kp = double.tryParse(_kpController.text) ?? 2.0;
@@ -86,7 +96,7 @@ class _PidControlState extends State<PidControl> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'PID Config',
+            'Configuración PID',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
@@ -148,7 +158,8 @@ class _PidControlState extends State<PidControl> {
                   child: const Text('Calibrar', style: TextStyle(fontSize: 12)),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 8),
-                    side: BorderSide(color: Theme.of(context).colorScheme.primary),
+                    side: BorderSide(
+                        color: Theme.of(context).colorScheme.primary),
                   ),
                 ),
               ),
@@ -158,34 +169,37 @@ class _PidControlState extends State<PidControl> {
           const SizedBox(height: 8),
 
           // Current Values Display
-          ValueListenableBuilder<ArduinoData?>(
+          ValueListenableBuilder<SerialData?>(
             valueListenable: widget.appState.currentData,
             builder: (context, data, child) {
-              if (data == null || data.linePid == null) return const SizedBox.shrink();
+              if (data is! DebugData) return const SizedBox.shrink();
+
+              final position = data.line != null && data.line!.isNotEmpty ? data.line![0] : 0.0;
 
               return Container(
-                padding: const EdgeInsets.all(6),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.surface,
                   borderRadius: BorderRadius.circular(6),
                   border: Border.all(
-                    color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                    color:
+                        Theme.of(context).colorScheme.outline.withOpacity(0.3),
                   ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Line PID Status',
+                      'Estado PID Línea',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: Theme.of(context).colorScheme.onSurface,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 6),
                     Text(
-                      'Position: ${data.linePid![3].toStringAsFixed(1)}',
+                      'Posición: ${position.toStringAsFixed(1)}',
                       style: TextStyle(
                         fontSize: 10,
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -227,7 +241,10 @@ class _PidControlState extends State<PidControl> {
               hintText: hint,
               hintStyle: TextStyle(
                 fontSize: 12,
-                color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.5),
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurfaceVariant
+                    .withOpacity(0.5),
               ),
               filled: true,
               fillColor: Theme.of(context).colorScheme.surface,
@@ -237,7 +254,8 @@ class _PidControlState extends State<PidControl> {
                   color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
                 ),
               ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             ),
             style: TextStyle(
               fontSize: 12,

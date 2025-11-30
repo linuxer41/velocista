@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:bluetooth_classic_multiplatform/bluetooth_classic_multiplatform.dart';
-import 'arduino_data.dart';
 
 /// Bluetooth client for communication
 /// Provides interface for Bluetooth connection
@@ -23,6 +22,7 @@ class SerialClient {
   final BluetoothClassicMultiplatform _bluetooth;
   BluetoothConnection? _bluetoothConnection;
   StreamSubscription? _bluetoothDataSubscription;
+  
 
   // Data handling
   String _lineBuffer = '';
@@ -136,14 +136,12 @@ class SerialClient {
         if (connectionResult == false) {
           throw Exception('Connection failed - device may not be paired or available. Please ensure the device is in pairing mode and try again.');
         } else {
-          // On Windows, connect returns true but no BluetoothConnection object
-          // This is a critical bug in the bluetooth_classic_multiplatform library on Windows
-          // The connection is established at the native level but the Dart code cannot access it
-          print('Library bug detected: connect() returned true but no BluetoothConnection object');
-          print('This is a known issue with bluetooth_classic_multiplatform on Windows');
-          print('The connection was established at the native level but cannot be used from Dart');
-
-          throw Exception('Library bug: bluetooth_classic_multiplatform on Windows returns bool instead of BluetoothConnection. Please report this to the library maintainer or use a different Bluetooth library.');
+          // On some platforms, connect may return true
+          // Try to get the connection object anyway
+          print('Connect returned bool true, attempting to get connection object');
+          // Some library versions may set the connection internally
+          // For now, assume connection failed since we can't get the object
+          throw Exception('Connection initialization failed - library returned unexpected result');
         }
       } else {
         throw Exception('Connection failed - unexpected result type: ${connectionResult.runtimeType}');
@@ -153,9 +151,19 @@ class SerialClient {
         throw Exception('Failed to establish connection - no connection object');
       }
 
+      // Wait a moment for connection to stabilize
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      // Set up data listener before marking as connected
+      try {
+        _setupBluetoothDataListener();
+      } catch (e) {
+        print('Failed to set up data listener: $e');
+        throw Exception('Failed to initialize data communication: $e');
+      }
+
       _isConnected = true;
       _connectionStatus = 'Connected to ${device.name ?? 'Unknown Device'}';
-      _setupBluetoothDataListener();
 
       onConnected?.call();
       print('Bluetooth connection successful');
@@ -232,34 +240,38 @@ class SerialClient {
     print('Setting up Bluetooth data listener');
 
     if (_bluetoothConnection == null || _bluetoothConnection!.input == null) {
-      print('Cannot set up Bluetooth data listener');
-      return;
+      throw Exception('Bluetooth connection input stream not available');
     }
 
-    _bluetoothDataSubscription = _bluetoothConnection!.input!.listen(
-      (data) {
-        try {
-          final message = utf8.decode(data);
-          _lineBuffer += message;
-          _processLineBuffer();
-        } catch (e) {
-          print('Bluetooth data handling error: $e');
-          onError?.call('Data handling error: $e');
-        }
-      },
-      onError: (error) {
-        print('Bluetooth data stream error: $error');
-        onError?.call('Data stream error: $error');
-        disconnect();
-      },
-      onDone: () {
-        print('Bluetooth data stream ended');
-        onDisconnected?.call();
-        disconnect();
-      },
-    );
+    try {
+      _bluetoothDataSubscription = _bluetoothConnection!.input!.listen(
+        (data) {
+          try {
+            final message = utf8.decode(data);
+            _lineBuffer += message;
+            _processLineBuffer();
+          } catch (e) {
+            print('Bluetooth data handling error: $e');
+            onError?.call('Data handling error: $e');
+          }
+        },
+        onError: (error) {
+          print('Bluetooth data stream error: $error');
+          onError?.call('Data stream error: $error');
+          disconnect();
+        },
+        onDone: () {
+          print('Bluetooth data stream ended');
+          onDisconnected?.call();
+          disconnect();
+        },
+      );
 
-    print('Bluetooth data listener set up successfully');
+      print('Bluetooth data listener set up successfully');
+    } catch (e) {
+      print('Failed to set up Bluetooth data listener: $e');
+      throw Exception('Cannot acquire data buffer: $e');
+    }
   }
 
 
@@ -269,18 +281,18 @@ class SerialClient {
       final index = _lineBuffer.indexOf('\n');
       final line = _lineBuffer.substring(0, index).trim();
       if (line.isNotEmpty) {
-        _processCompleteJsonObject(line);
+        _processCompleteDataLine(line);
       }
       _lineBuffer = _lineBuffer.substring(index + 1);
     }
   }
 
-  /// Process a complete JSON line
-  void _processCompleteJsonObject(String jsonString) {
-    final line = jsonString.trim();
+  /// Process a complete data line
+  void _processCompleteDataLine(String dataString) {
+    final line = dataString.trim();
     if (line.isEmpty) return;
 
-    // Send complete JSON object to callback (raw data)
+    // Send complete data line to callback (raw serial data)
     onDataReceived?.call(line);
   }
 

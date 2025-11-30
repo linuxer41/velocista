@@ -17,8 +17,6 @@ class ConnectionBottomSheet extends StatefulWidget {
 class _ConnectionBottomSheetState extends State<ConnectionBottomSheet> {
   // Track which device is currently being connected to
   BluetoothDevice? _connectingDevice;
-  Timer? _connectionTimeoutTimer;
-  static const int _connectionTimeoutSeconds = 10;
   bool _isConnectingAttempt = false;
   AppState? _provider;
 
@@ -43,27 +41,22 @@ class _ConnectionBottomSheetState extends State<ConnectionBottomSheet> {
     if (_provider != null) {
       _provider!.isConnected.removeListener(_handleConnectionStatusChange);
     }
-    _connectionTimeoutTimer?.cancel();
     super.dispose();
   }
 
   void _handleConnectionStatusChange() {
-    if (_provider != null &&
-        _provider!.isConnected.value &&
-        _connectingDevice != null) {
-      // Connection succeeded, cancel timeout and close the dialog
+    if (_provider != null && _provider!.isConnected.value && _connectingDevice != null) {
+      // Connection succeeded, close the dialog
       _isConnectingAttempt = false;
-      _connectionTimeoutTimer?.cancel();
       Navigator.of(context).pop();
-    } else if (_provider != null &&
-        !_provider!.isConnected.value &&
-        _connectingDevice != null) {
-      // Connection failed, reset loading state
+    } else if (_provider != null && !_provider!.isConnected.value && _connectingDevice != null) {
+      // Connection failed unexpectedly, reset loading state
       _isConnectingAttempt = false;
-      setState(() {
-        _connectingDevice = null;
-      });
-      _connectionTimeoutTimer?.cancel();
+      if (mounted) {
+        setState(() {
+          _connectingDevice = null;
+        });
+      }
     }
   }
 
@@ -91,53 +84,58 @@ class _ConnectionBottomSheetState extends State<ConnectionBottomSheet> {
       await Future.delayed(const Duration(milliseconds: 500));
     }
 
-    // Now proceed with connection to the target device
-    if (_connectingDevice != null) return; // Already connecting to a device
+    // Check if already connecting to this device
+    if (_connectingDevice?.address == device.address && _isConnectingAttempt) {
+      return; // Already connecting to this device
+    }
 
+    // Set connecting state
     setState(() {
       _connectingDevice = device;
     });
     _isConnectingAttempt = true;
 
-    // Start timeout timer
-    _connectionTimeoutTimer =
-        Timer(const Duration(seconds: _connectionTimeoutSeconds), () {
-      if (mounted && _connectingDevice != null) {
-        // Timeout reached, cancel connection
-        _isConnectingAttempt = false;
-        provider.disconnect();
-        setState(() {
-          _connectingDevice = null;
-        });
-        // Show timeout error
-        if (mounted) {
-          widget.onShowMessage?.call(
-            'Timeout: No se pudo conectar en 10 segundos. Verifica que el dispositivo esté disponible y cerca.',
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 5),
-          );
-        }
-      }
-    });
+    // Show connecting message
+    if (mounted) {
+      widget.onShowMessage?.call(
+        'Conectando a ${device.name ?? 'Dispositivo'}...',
+        backgroundColor: Colors.blue,
+        duration: const Duration(seconds: 2),
+      );
+    }
 
     try {
       print('Connecting to target device: ${device.name ?? 'Unknown'} (${device.address})');
+
+      // Wait for the connection to complete (success or failure)
       await provider.connectToDevice(device);
-      // Connection attempt completed, timeout will be handled by listener
+
+
     } catch (e) {
-      // Connection failed immediately, cancel timeout and show error
-      _isConnectingAttempt = false;
-      _connectionTimeoutTimer?.cancel();
-      setState(() {
-        _connectingDevice = null;
-      });
-      // Show error message
+      // Connection failed with an error, show the actual error
       if (mounted) {
+        String errorMessage = 'Error de conexión';
+        if (e.toString().contains('PlatformException')) {
+          errorMessage = 'Error del sistema: Verifica que el dispositivo esté emparejado y disponible';
+        } else if (e.toString().contains('couldNotConnect')) {
+          errorMessage = 'No se pudo conectar: El dispositivo puede no estar disponible';
+        } else {
+          errorMessage = 'Error de conexión: $e';
+        }
+
         widget.onShowMessage?.call(
-          'Error de conexión: $e',
+          errorMessage,
           backgroundColor: Colors.red,
           duration: const Duration(seconds: 5),
         );
+      }
+    } finally {
+      // Always reset the connecting state
+      _isConnectingAttempt = false;
+      if (mounted) {
+        setState(() {
+          _connectingDevice = null;
+        });
       }
     }
   }

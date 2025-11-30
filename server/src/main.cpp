@@ -22,9 +22,9 @@ Debugger debugger;
 // VARIABLES GLOBALES
 // ==========================
 OperationMode currentMode;
-bool realtimeEnabled = false;
+bool telemetry= false;
 float lastPidOutput = 0;
-unsigned long lastRealtimeTime = 0;
+unsigned long lastTelemetryTime = 0;
 unsigned long lastLineTime = 0;
 unsigned long lastSpeedTime = 0;
 int lastLinePosition = 0;
@@ -43,7 +43,7 @@ bool ledState = false;
 // FUNCIONES AUXILIARES
 // ==========================
 void printDebugInfo();
-void printRealtimeInfo();
+void printTelemetryInfo();
 
 int freeMemory() {
   extern int __heap_start, *__brkval;
@@ -73,7 +73,6 @@ String readSerialLine() {
 // ==========================
 void setup() {
   Serial.begin(115200);
-  Serial.setTimeout(10000);  // 10 second timeout for commands
   while (!Serial);
 
   leftMotor.init();
@@ -170,10 +169,10 @@ void loop() {
     loopTime = micros() - loopStartTime;
    }
 
-   // Realtime Print (Non-blocking)
-   if (realtimeEnabled && (millis() - lastRealtimeTime > REALTIME_INTERVAL_MS)) {
-     printRealtimeInfo();
-     lastRealtimeTime = millis();
+   // Telemetry Print (Non-blocking)
+   if (telemetry&& (millis() - lastTelemetryTime > REALTIME_INTERVAL_MS)) {
+     printTelemetryInfo();
+     lastTelemetryTime = millis();
    }
 
    // LED Mode Indication
@@ -213,12 +212,16 @@ void loop() {
       saveConfig();
       success = true;
 
-    } else if (command == "telemetry") {
+    } else if (command == "get debug") {
       printDebugInfo();
       success = true;
 
-    } else if (command == "realtime") {
-      printRealtimeInfo();
+    } else if (command == "get telemetry") {
+      printTelemetryInfo();
+      success = true;
+
+    } else if (command == "get config") {
+      debugger.configData();
       success = true;
 
     } else if (command == "reset") {
@@ -235,6 +238,7 @@ void loop() {
       config.baseSpeed      = DEFAULT_BASE_SPEED;
       config.baseRPM        = DEFAULT_BASE_RPM;
       config.cascadeMode    = DEFAULT_CASCADE;
+      config.telemetry = DEFAULT_TELEMETRY_ENABLED;
       config.operationMode  = DEFAULT_OPERATION_MODE;
       config.checksum       = 1234567891;
       saveConfig();
@@ -244,16 +248,16 @@ void loop() {
       success = true;
 
     } else if (command == "help") {
-      debugger.systemMessage("Comandos: calibrate, save, telemetry, realtime, reset, help");
-      debugger.systemMessage("set realtime 0/1  |  set mode 0/1/2  |  set cascade 0/1");
+      debugger.systemMessage("Comandos: calibrate, save, get debug, get telemetry, get config, reset, help");
+      debugger.systemMessage("set telemetry 0/1  |  set mode 0/1/2  |  set cascade 0/1");
       debugger.systemMessage("set line kp,ki,kd  |  set left kp,ki,kd  |  set right kp,ki,kd");
       debugger.systemMessage("set base speed <value>  |  set base rpm <value>");
       debugger.systemMessage("rc throttle,steering");
 
     // ---------- comandos con parámetros ------------------------------
-    } else if (command.startsWith("set realtime ")) {
+    } else if (command.startsWith("set telemetry ")) {
       if (command.length() < 14) { debugger.systemMessage("Falta argumento"); return; }
-      realtimeEnabled = (command.substring(13).toInt() == 1);
+      telemetry= (command.substring(13).toInt() == 1);
       success = true;
 
     } else if (command.startsWith("set mode ")) {
@@ -406,9 +410,9 @@ void printDebugInfo() {
 }
 
 // ==========================
-// DEBUG REALTIME
+// DEBUG Telemetry
 // ==========================
-void printRealtimeInfo() {
+void printTelemetryInfo() {
   DebugData data;
   qtr.read();  // Read sensors even in non-line-follower modes
   int* sensors = qtr.getSensorValues();
@@ -416,6 +420,11 @@ void printRealtimeInfo() {
 
   data.linePos = qtr.linePosition;
   data.lineError = linePid.getError();
+  data.linePidOut = lastPidOutput;
+  data.lineIntegral = linePid.getIntegral();
+  data.lineDeriv = linePid.getDerivative();
+  data.lPidOut = leftPid.getOutput();
+  data.rPidOut = rightPid.getOutput();
   data.uptime = millis();
   data.lRpm = leftMotor.getRPM();
   data.rRpm = rightMotor.getRPM();
@@ -425,8 +434,19 @@ void printRealtimeInfo() {
   data.rSpeed = rightMotor.getSpeed();
   data.encL = leftMotor.getEncoderCount();
   data.encR = rightMotor.getEncoderCount();
+  data.encLBackward = leftMotor.getBackwardCount();
+  data.encRBackward = rightMotor.getBackwardCount();
+  data.baseSpeed = config.baseSpeed;
+  data.baseRPM = config.baseRPM;
+  data.wheelDiameter = config.wheelDiameter;
+  data.wheelDistance = config.wheelDistance;
+  data.leftSpeedCms = (data.lRpm * PI * (config.wheelDiameter / 10.0)) / 60.0;
+  data.rightSpeedCms = (data.rRpm * PI * (config.wheelDiameter / 10.0)) / 60.0;
+  data.battery = analogRead(BATTERY_PIN) * BATTERY_FACTOR;
+  data.loopTime = loopTime;
+  data.freeMem = freeMemory();
   data.cascade = config.cascadeMode;
   data.mode = currentMode;
 
-  debugger.realtimeData(data);
+  debugger.telemetryData(data);
 }
