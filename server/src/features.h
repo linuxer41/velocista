@@ -12,20 +12,21 @@
 
 class Features {
 private:
-    bool enables[11];
-    // Median filter (reduced size since not enabled by default)
-    float medianBuffer[3];
-    int medianCount;
+    FeaturesConfig config;
+
+    // Median filter
+    int16_t medianBuffer[2];
+    uint8_t medianCount;
     // Moving average
-    float movingBuffer[3];
-    float movingSum;
-    int movingCount;
+    int16_t movingBuffer[2];
+    int32_t movingSum;
+    uint8_t movingCount;
     // Kalman
-    float kalmanX, kalmanP;
+    int16_t kalmanX, kalmanP;
     // Hysteresis
-    float hysteresisLast;
+    int16_t hysteresisLast;
     // Low pass
-    float lowPassLast;
+    int16_t lowPassLast;
 
     // Bubble sort for median
     void sort(float arr[], int n) {
@@ -41,86 +42,73 @@ private:
     }
 
 public:
-    Features() : medianCount(0), movingSum(0), movingCount(0), kalmanX(0), kalmanP(1), hysteresisLast(0), lowPassLast(0) {
+    Features() : medianCount(0), movingSum(0), movingCount(0), kalmanX(0), kalmanP(100), hysteresisLast(0), lowPassLast(0) {
         memset(medianBuffer, 0, sizeof(medianBuffer));
         memset(movingBuffer, 0, sizeof(movingBuffer));
-        memset(enables, 0, sizeof(enables));
     }
 
-    void setEnables(bool e[11]) {
-        memcpy(enables, e, sizeof(enables));
-    }
-
-    // For new FeaturesConfig struct
-    void setEnables(RobotConfig::FeaturesConfig& f) {
-        enables[0] = f.medianFilter;
-        enables[1] = f.movingAverage;
-        enables[2] = f.kalmanFilter;
-        enables[3] = f.hysteresis;
-        enables[4] = f.deadZone;
-        enables[5] = f.lowPass;
-        enables[6] = f.adaptivePid;
-        enables[7] = f.speedProfiling;
-        enables[8] = f.dynamicLinePid;
-        enables[9] = f.variableSpeed;
-        enables[10] = f.turnDirection;
+    void setConfig(FeaturesConfig& f) {
+        config = f;
     }
 
     float applySignalFilters(float raw) {
         float current = raw;
 
-        // 0: Median filter (3 samples)
-        if (enables[0]) {
-            medianBuffer[medianCount] = raw;
-            medianCount = (medianCount + 1) % 3;
+        // 0: Median filter (2 samples)
+        if (config.medianFilter) {
+            medianBuffer[medianCount] = raw * 100;
+            medianCount = (medianCount + 1) % 2;
             if (medianCount == 0) { // buffer full
-                float sorted[3];
-                memcpy(sorted, medianBuffer, sizeof(sorted));
-                sort(sorted, 3);
-                current = sorted[1]; // median
+                int16_t a = medianBuffer[0];
+                int16_t b = medianBuffer[1];
+                if (a > b) {
+                    int16_t temp = a;
+                    a = b;
+                    b = temp;
+                }
+                current = (a + b) / 2.0 / 100.0;
             }
         }
 
-        // 1: Moving average (3 samples)
-        if (enables[1]) {
+        // 1: Moving average (2 samples)
+        if (config.movingAverage) {
             movingSum -= movingBuffer[movingCount];
-            movingBuffer[movingCount] = current;
-            movingSum += current;
-            movingCount = (movingCount + 1) % 3;
-            current = movingSum / 3.0;
+            movingBuffer[movingCount] = current * 100;
+            movingSum += movingBuffer[movingCount];
+            movingCount = (movingCount + 1) % 2;
+            current = movingSum / 2.0 / 100.0;
         }
 
         // 2: Kalman filter
-        if (enables[2]) {
-            kalmanP += 0.01; // process noise
-            float k = kalmanP / (kalmanP + 0.1); // measurement noise
-            kalmanX += k * (current - kalmanX);
-            kalmanP *= (1 - k);
-            current = kalmanX;
+        if (config.kalmanFilter) {
+            kalmanP += 1; // 0.01 * 100
+            int32_t measurement = current * 100;
+            int32_t k = kalmanP * 100 / (kalmanP + 10); // k = P / (P + 0.1) scaled
+            kalmanX += k * (measurement - kalmanX) / 100;
+            kalmanP = kalmanP * (10000 - k) / 10000; // P *= (1 - k/100)
+            current = kalmanX / 100.0;
         }
 
         // 3: Hysteresis (threshold 10)
-        if (enables[3]) {
-            if (abs(current - hysteresisLast) > 10) {
-                hysteresisLast = current;
+        if (config.hysteresis) {
+            if (abs(current - hysteresisLast / 100.0) > 10) {
+                hysteresisLast = current * 100;
             } else {
-                current = hysteresisLast;
+                current = hysteresisLast / 100.0;
             }
         }
 
         // 4: Dead zone (threshold 5)
-        if (enables[4]) {
+        if (config.deadZone) {
             if (abs(current) < 5) current = 0;
         }
 
         // 5: Low pass (alpha 0.8)
-        if (enables[5]) {
-            current = 0.8 * lowPassLast + 0.2 * current;
-            lowPassLast = current;
+        if (config.lowPass) {
+            current = 0.8 * (lowPassLast / 100.0) + 0.2 * current;
+            lowPassLast = current * 100;
         }
 
-        // 6: Adaptive PID - TODO
-        // 7: Speed profiling - TODO
 
         return current;
     }

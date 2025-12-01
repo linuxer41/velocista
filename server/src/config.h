@@ -12,9 +12,28 @@
 #include <Arduino.h>
 
 // =============================================================================
-// CONFIGURACIÓN DE PINES
+// CONSTANTES GLOBALES
 // =============================================================================
 
+// EEPROM address for config
+const int16_t EEPROM_CONFIG_ADDR = 0;
+const float BATTERY_FACTOR = 10.0f / 1023.0f;
+const uint8_t BATTERY_PIN = A7;
+
+// Constants
+const int16_t DEFAULT_RC_DEADZONE = 10;
+const int16_t DEFAULT_RC_MAX_THROTTLE = 255;
+const int16_t DEFAULT_RC_MAX_STEERING = 150;
+const int16_t DEFAULT_PULSES_PER_REVOLUTION = 36;
+const float DEFAULT_WHEEL_DIAMETER_MM = 32.0f;
+const float DEFAULT_WHEEL_DISTANCE_MM = 85.0f;
+const uint16_t DEFAULT_LOOP_LINE_MS = 10;
+const uint16_t DEFAULT_LOOP_SPEED_MS = 5;
+const unsigned long DEFAULT_TELEMTRY_INTERVAL_MS = 100;
+
+// =============================================================================
+// CONFIGURACIÓN DE PINES
+// =============================================================================
 // Pines para controlador DRV8833 - Motores
 #define MOTOR_LEFT_PIN1   10
 #define MOTOR_LEFT_PIN2   9
@@ -40,172 +59,6 @@ const int SENSOR_PINS[NUM_SENSORS] = {A0, A1, A2, A3, A4, A5};
 #define MODE_LED_PIN      13  // LED integrado para indicar modo
 
 // =============================================================================
-// ENUMERACIONES
-// =============================================================================
-
-enum OperationMode {
-  MODE_IDLE,             // Idle - read sensors only
-  MODE_LINE_FOLLOWING,   // Seguir línea
-  MODE_REMOTE_CONTROL    // Control remoto
-};
-
-// =============================================================================
-// ESTRUCTURA CONFIGURACIÓN EEPROM
-// =============================================================================
-
-struct RobotConfig {
-   // PID para línea
-   float lineKp;                         // Ganancia proporcional PID línea
-   float lineKi;                         // Ganancia integral PID línea
-   float lineKd;                         // Ganancia derivativa PID línea
-   // PID para motor izquierdo
-   float leftKp;                         // Ganancia proporcional PID motor izq
-   float leftKi;                         // Ganancia integral PID motor izq
-   float leftKd;                         // Ganancia derivativa PID motor izq
-   // PID para motor derecho
-   float rightKp;                        // Ganancia proporcional PID motor der
-   float rightKi;                        // Ganancia integral PID motor der
-   float rightKd;                        // Ganancia derivativa PID motor der
-   int16_t baseSpeed;                    // Velocidad base
-   float wheelDiameter;                  // Diámetro de rueda en mm
-   float wheelDistance;                  // Distancia entre ruedas en mm
-   int16_t sensorMin[6];                 // Valores mínimos de sensores
-   int16_t sensorMax[6];                 // Valores máximos de sensores
-   int16_t rcDeadzone;                   // Zona muerta control remoto
-   int16_t rcMaxThrottle;                // Throttle máximo control remoto
-   int16_t rcMaxSteering;                // Steering máximo control remoto
-   bool cascadeMode;                     // Modo cascada activado/desactivado
-   bool telemetry;                // Habilitar/deshabilitar telemetry (0=deshabilitado, 1=habilitado)
-   // Features configuration
-   class FeaturesConfig {
-   public:
-     bool medianFilter : 1;      // 0
-     bool movingAverage : 1;     // 1
-     bool kalmanFilter : 1;      // 2
-     bool hysteresis : 1;        // 3
-     bool deadZone : 1;          // 4
-     bool lowPass : 1;           // 5
-     bool adaptivePid : 1;       // 6
-     bool speedProfiling : 1;    // 7
-     bool dynamicLinePid : 1;     // 8
-     bool variableSpeed : 1;     // 9
-     bool turnDirection : 1;     // 10
-     uint16_t : 5; // padding
-
-     // Serialize to string [0,1,0,...]
-     String serialize() {
-       String s = F("[");
-       s += medianFilter ? F("1") : F("0"); s += F(",");
-       s += movingAverage ? F("1") : F("0"); s += F(",");
-       s += kalmanFilter ? F("1") : F("0"); s += F(",");
-       s += hysteresis ? F("1") : F("0"); s += F(",");
-       s += deadZone ? F("1") : F("0"); s += F(",");
-       s += lowPass ? F("1") : F("0"); s += F(",");
-       s += adaptivePid ? F("1") : F("0"); s += F(",");
-       s += speedProfiling ? F("1") : F("0"); s += F(",");
-       s += dynamicLinePid ? F("1") : F("0"); s += F(",");
-       s += variableSpeed ? F("1") : F("0"); s += F(",");
-       s += turnDirection ? F("1") : F("0");
-       s += F("]");
-       return s;
-     }
-
-     // Deserialize from command like "0,1,0,1,1,1,0,1,1,1,0"
-     bool deserialize(const char* cmd) {
-       // Parse comma separated values
-       char temp[24];
-       strcpy(temp, cmd);
-       char* token = strtok(temp, ",");
-       int idx = 0;
-       while(token && idx < 11) {
-         if(*token == '1') {
-           setFeature(idx, true);
-         } else if(*token == '0') {
-           setFeature(idx, false);
-         } else {
-           return false; // Invalid
-         }
-         token = strtok(NULL, ",");
-         idx++;
-       }
-       return idx == 11;
-     }
-
-     void setFeature(int idx, bool value) {
-       switch(idx) {
-         case 0: medianFilter = value; break;
-         case 1: movingAverage = value; break;
-         case 2: kalmanFilter = value; break;
-         case 3: hysteresis = value; break;
-         case 4: deadZone = value; break;
-         case 5: lowPass = value; break;
-         case 6: adaptivePid = value; break;
-         case 7: speedProfiling = value; break;
-         case 8: dynamicLinePid = value; break;
-         case 9: variableSpeed = value; break;
-         case 10: turnDirection = value; break;
-       }
-     }
-
-     bool getFeature(int idx) {
-       switch(idx) {
-         case 0: return medianFilter;
-         case 1: return movingAverage;
-         case 2: return kalmanFilter;
-         case 3: return hysteresis;
-         case 4: return deadZone;
-         case 5: return lowPass;
-         case 6: return adaptivePid;
-         case 7: return speedProfiling;
-         case 8: return dynamicLinePid;
-         case 9: return variableSpeed;
-         case 10: return turnDirection;
-         default: return false;
-       }
-     }
-   } features;
-   OperationMode operationMode;          // Modo de operación actual
-   float baseRPM;                        // RPM base para control de velocidad
-   int maxSpeed;                         // Velocidad máxima registrada
-   uint32_t checksum;                    // Checksum para verificación
-};
-
-RobotConfig config;
-
-// =============================================================================
-// CONFIGURACIÓN AVANZADA
-// =============================================================================
-
-// Configuración encoders - Motor N20 358RPM con reductor 10:1
-const int16_t PULSES_PER_REVOLUTION = 36;
-const float WHEEL_DIAMETER_MM = 32.0f;  // Diámetro de ruedas en mm
-const float WHEEL_DISTANCE_MM = 85.0f;  // Distancia entre ruedas en mm
-const int16_t MAX_SPEED = 230;          // Velocidad máxima PWM
-const int16_t EEPROM_CONFIG_ADDR = 0;   // Dirección EEPROM para configuración
-
-// =============================================================================
-// CONFIGURACIÓN CONTROL REMOTO
-// =============================================================================
-
-const int16_t RC_DEADZONE = 10;         // Zona muerta para joystick
-const int16_t RC_MAX_THROTTLE = 255;    // Throttle máximo
-const int16_t RC_MAX_STEERING = 150;    // Steering máximo
-
-// Batería
-const uint8_t BATTERY_PIN = A7;         // Pin para medir voltaje de batería
-const float BATTERY_FACTOR = 10.0 / 1023.0; // Factor de conversión (divisor resistivo 2x 10k)
-
-// Tiempos de bucle
-const uint16_t LOOP_LINE_MS  = 10;   // 100 Hz para PID de línea
-const uint16_t LOOP_SPEED_MS = 5;    // 200 Hz para PID de velocidad
-
-// Velocidad base
-const float BASE_RPM = 120.0f; // RPM base para control de velocidad
-
-// Telemetry
-const unsigned long REALTIME_INTERVAL_MS = 100; // Intervalo de envío de telemetry en ms
-
-// =============================================================================
 // VALORES POR DEFECTO
 // =============================================================================
 
@@ -223,13 +76,176 @@ const float DEFAULT_RIGHT_KP = 0.5;
 const float DEFAULT_RIGHT_KI = 0.0;
 const float DEFAULT_RIGHT_KD = 0.01;
 
+// =============================================================================
+// ENUMERACIONES
+// =============================================================================
+
+enum OperationMode {
+  MODE_IDLE,             // Idle - read sensors only
+  MODE_LINE_FOLLOWING,   // Seguir línea
+  MODE_REMOTE_CONTROL    // Control remoto
+};
+
+// Features configuration class
+class FeaturesConfig {
+public:
+  bool medianFilter : 1;      // 0
+  bool movingAverage : 1;     // 1
+  bool kalmanFilter : 1;      // 2
+  bool hysteresis : 1;        // 3
+  bool deadZone : 1;          // 4
+  bool lowPass : 1;           // 5
+  bool dynamicLinePid : 1;     // 6
+  bool speedProfiling : 1;     // 7
+  bool turnDirection : 1;     // 8
+
+  // Serialize to string [0,1,0,...]
+  const char* serialize() {
+    static char buf[22];
+    sprintf(buf, "[%d,%d,%d,%d,%d,%d,%d,%d,%d]", medianFilter, movingAverage, kalmanFilter, hysteresis, deadZone, lowPass, dynamicLinePid, speedProfiling, turnDirection);
+    return buf;
+  }
+
+  // Deserialize from command like "0,1,0,1,1,1,0,1,1"
+  bool deserialize(const char* cmd) {
+    // Parse comma separated values
+    char temp[18];
+    strcpy(temp, cmd);
+    char* token = strtok(temp, ",");
+    uint8_t idx = 0;  // Cambiado de int a uint8_t
+    while(token && idx < 9) {
+      if(*token == '1') {
+        setFeature(idx, true);
+      } else if(*token == '0') {
+        setFeature(idx, false);
+      } else {
+        return false; // Invalid
+      }
+      token = strtok(NULL, ",");
+      idx++;
+    }
+    return idx == 9;
+  }
+
+  void setFeature(uint8_t idx, bool value) {  // Cambiado de int a uint8_t
+    switch(idx) {
+      case 0: medianFilter = value; break;
+      case 1: movingAverage = value; break;
+      case 2: kalmanFilter = value; break;
+      case 3: hysteresis = value; break;
+      case 4: deadZone = value; break;
+      case 5: lowPass = value; break;
+      case 6: dynamicLinePid = value; break;
+      case 7: speedProfiling = value; break;
+      case 8: turnDirection = value; break;
+    }
+  }
+
+  bool getFeature(uint8_t idx) {  // Cambiado de int a uint8_t
+    switch(idx) {
+      case 0: return medianFilter;
+      case 1: return movingAverage;
+      case 2: return kalmanFilter;
+      case 3: return hysteresis;
+      case 4: return deadZone;
+      case 5: return lowPass;
+      case 6: return dynamicLinePid;
+      case 7: return speedProfiling;
+      case 8: return turnDirection;
+      default: return false;
+    }
+  }
+};
+
+// =============================================================================
+// VALORES POR DEFECTO
+// =============================================================================
+
 const int16_t DEFAULT_BASE_SPEED = 200;
 const bool DEFAULT_CASCADE = true;
 const bool DEFAULT_TELEMETRY_ENABLED = true;
-const bool DEFAULT_FEATURE_ENABLES[11] = {false, false, false, false, false, false, false, false, true, true, false}; // For initializing features struct
-#define DEFAULT_OPERATION_MODE MODE_IDLE
+const FeaturesConfig DEFAULT_FEATURES = {false, false, false, false, false, false, true, true, false};
+const OperationMode DEFAULT_OPERATION_MODE = MODE_IDLE;
 const float DEFAULT_BASE_RPM = 120.0f;
-const int DEFAULT_MAX_SPEED = 0;
+const int16_t DEFAULT_MAX_SPEED = 230;
+
+
+// =============================================================================
+// CONFIGURACIÓN EEPROM
+// =============================================================================
+
+class RobotConfig {
+public:
+   // PID para línea
+   float lineKp;                         // Ganancia proporcional PID línea
+   float lineKi;                         // Ganancia integral PID línea
+   float lineKd;                         // Ganancia derivativa PID línea
+   // PID para motor izquierdo
+   float leftKp;                         // Ganancia proporcional PID motor izq
+   float leftKi;                         // Ganancia integral PID motor izq
+   float leftKd;                         // Ganancia derivativa PID motor izq
+   // PID para motor derecho
+   float rightKp;                        // Ganancia proporcional PID motor der
+   float rightKi;                         // Ganancia integral PID motor der
+   float rightKd;                         // Ganancia derivativa PID motor der
+   int16_t baseSpeed;                    // Velocidad base
+   float wheelDiameter;                  // Diámetro de rueda en mm
+   float wheelDistance;                  // Distancia entre ruedas en mm
+   int16_t sensorMin[6];                 // Valores mínimos de sensores
+   int16_t sensorMax[6];                 // Valores máximos de sensores
+   int16_t rcDeadzone;                   // Zona muerta control remoto
+   int16_t rcMaxThrottle;                // Throttle máximo control remoto
+   int16_t rcMaxSteering;                // Steering máximo control remoto
+   bool cascadeMode;                     // Modo cascada activado/desactivado
+   bool telemetry;                // Habilitar/deshabilitar telemetry (0=deshabilitado, 1=habilitado)
+   // Features configuration
+   FeaturesConfig features;
+   OperationMode operationMode;          // Cambiado de OperationMode a uint8_t
+   float baseRPM;                        // RPM base para control de velocidad
+   int16_t maxSpeed;                         // Cambiado de int a int16_t
+   int16_t pulsesPerRevolution;
+   uint16_t loopLineMs;
+   uint16_t loopSpeedMs;
+   unsigned long telemetryIntervalMs;
+   uint32_t checksum;                    // Checksum para verificación
+
+   void restoreDefaults();
+};
+
+void RobotConfig::restoreDefaults() {
+     lineKp = DEFAULT_LINE_KP;
+     lineKi = DEFAULT_LINE_KI;
+     lineKd = DEFAULT_LINE_KD;
+     leftKp = DEFAULT_LEFT_KP;
+     leftKi = DEFAULT_LEFT_KI;
+     leftKd = DEFAULT_LEFT_KD;
+     rightKp = DEFAULT_RIGHT_KP;
+     rightKi = DEFAULT_RIGHT_KI;
+     rightKd = DEFAULT_RIGHT_KD;
+     baseSpeed = DEFAULT_BASE_SPEED;
+     wheelDiameter = DEFAULT_WHEEL_DIAMETER_MM;
+     wheelDistance = DEFAULT_WHEEL_DISTANCE_MM;
+     rcDeadzone = DEFAULT_RC_DEADZONE;
+     rcMaxThrottle = DEFAULT_RC_MAX_THROTTLE;
+     rcMaxSteering = DEFAULT_RC_MAX_STEERING;
+     cascadeMode = DEFAULT_CASCADE;
+     telemetry = DEFAULT_TELEMETRY_ENABLED;
+     features = DEFAULT_FEATURES;
+     operationMode = DEFAULT_OPERATION_MODE;
+     baseRPM = DEFAULT_BASE_RPM;
+     maxSpeed = DEFAULT_MAX_SPEED;
+     pulsesPerRevolution = DEFAULT_PULSES_PER_REVOLUTION;
+     loopLineMs = DEFAULT_LOOP_LINE_MS;
+     loopSpeedMs = DEFAULT_LOOP_SPEED_MS;
+     telemetryIntervalMs = DEFAULT_TELEMTRY_INTERVAL_MS;
+     checksum = 1234567892;
+     for (int i = 0; i < NUM_SENSORS; i++) {
+         sensorMin[i] = 0;
+         sensorMax[i] = 1023;
+     }
+ }
+
+RobotConfig config;
 
 // =============================================================================
 // ENUMERACIONES

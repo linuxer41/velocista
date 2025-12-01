@@ -13,11 +13,13 @@ struct DebugData {
   // Posición y modo
   float linePos;
   bool cascade;
-  OperationMode mode;
+  uint8_t mode;  // Cambiado de OperationMode a uint8_t
+  float curvature;
+  uint8_t sensorState;
 
   // Sensores
-  int sensors[6];
-  unsigned long uptime;
+  int16_t sensors[6];  // Cambiado de int a int16_t
+  uint32_t uptime;  // Cambiado de unsigned long a uint32_t
 
   // PID de línea
   float lineKp, lineKi, lineKd;
@@ -33,28 +35,28 @@ struct DebugData {
 
   // Velocidades
   float lRpm, rRpm, lTargetRpm, rTargetRpm;
-  int lSpeed, rSpeed;
+  int16_t lSpeed, rSpeed;  // Cambiado de int a int16_t
 
   // Velocidades base
-  int baseSpeed;
+  int16_t baseSpeed;  // Cambiado de int a int16_t
   float baseRPM;
-  int maxSpeed;
+  int16_t maxSpeed;  // Cambiado de int a int16_t
 
   // Ruedas
   float wheelDiameter;
   float wheelDistance;
 
   // Contadores encoder
-  long encLBackward, encRBackward;
+  int32_t encLBackward, encRBackward;  // Cambiado de long a int32_t
 
   // Velocidades lineales (cm/s)
   float leftSpeedCms, rightSpeedCms;
 
   // Sistema
   float battery;
-  unsigned long loopTime;
-  int freeMem;
-  long encL, encR;
+  uint32_t loopTime;  // Cambiado de unsigned long a uint32_t
+  int16_t freeMem;  // Cambiado de int a int16_t
+  int32_t encL, encR;  // Cambiado de long a int32_t
 
 };
 
@@ -104,7 +106,6 @@ public:
     Serial.print(data.sensors[3]); Serial.print(F(","));
     Serial.print(data.sensors[4]); Serial.print(F(","));
     Serial.print(data.sensors[5]); Serial.print(F("]"));
-    Serial.print(F("|FEAT_VALUES:[]"));
     Serial.print(F("|BATT:"));
     Serial.print(data.battery, 2);
     Serial.print(F("|LOOP_US:"));

@@ -16,19 +16,19 @@ enum Location {
 
 class Motor {
 private:
-  int pin1, pin2;
-  int speed;
+  uint8_t pin1, pin2;  // Reducido de int a uint8_t para pines
+  int16_t speed;  // Cambiado de int a int16_t
   Location location;
-  volatile long forwardCount;
-  volatile long backwardCount;
-  long lastCount;
-  unsigned long lastSpeedCheck;
+  volatile int32_t forwardCount;  // Cambiado de long a int32_t
+  volatile int32_t backwardCount;  // Cambiado de long a int32_t
+  int32_t lastCount;  // Cambiado de long a int32_t
+  uint32_t lastSpeedCheck;  // Cambiado de unsigned long a uint32_t
   float currentRPM;
   float targetRPM;
-  int encoderAPin, encoderBPin;
+  uint8_t encoderAPin, encoderBPin;  // Reducido de int a uint8_t para pines
 
 public:
-  Motor(int p1, int p2, Location loc, int encA, int encB) : pin1(p1), pin2(p2), speed(0), location(loc), forwardCount(0), backwardCount(0), lastCount(0), lastSpeedCheck(0), currentRPM(0), targetRPM(0), encoderAPin(encA), encoderBPin(encB) {
+  Motor(uint8_t p1, uint8_t p2, Location loc, uint8_t encA, uint8_t encB) : pin1(p1), pin2(p2), speed(0), location(loc), forwardCount(0), backwardCount(0), lastCount(0), lastSpeedCheck(0), currentRPM(0), targetRPM(0), encoderAPin(encA), encoderBPin(encB) {
   }
 
   void init() {
@@ -39,7 +39,7 @@ public:
   }
 
   void setSpeed(int s) {
-    speed = constrain(s, -MAX_SPEED, MAX_SPEED);
+    speed = constrain(s, -config.maxSpeed, config.maxSpeed);
     if (location == LEFT) {
       if (speed >= 0) {
         analogWrite(pin1, speed);
@@ -70,7 +70,7 @@ public:
     long currentCount = forwardCount - backwardCount;
     long delta = currentCount - lastCount;
     float dt = (now - lastSpeedCheck) / 1000.0;
-    currentRPM = (delta / (float)PULSES_PER_REVOLUTION) * 60.0 / dt;
+    currentRPM = (delta / (float)config.pulsesPerRevolution) * 60.0 / dt;
     lastCount = currentCount;
     lastSpeedCheck = now;
     return currentRPM;

@@ -11,8 +11,8 @@
 
 class QTR {
 private:
-  int sensorValues[NUM_SENSORS];
-  int rawSensorValues[NUM_SENSORS];
+  int16_t sensorValues[NUM_SENSORS];  // Reducido de int a int16_t
+  int16_t rawSensorValues[NUM_SENSORS];  // Reducido de int a int16_t
   int16_t sensorMin[NUM_SENSORS];
   int16_t sensorMax[NUM_SENSORS];
 
@@ -96,11 +96,11 @@ public:
     saveConfig();
   }
 
-  int* getSensorValues() {
+  int16_t* getSensorValues() {
     return sensorValues;
   }
 
-  int* getRawSensorValues() {
+  int16_t* getRawSensorValues() {
     return rawSensorValues;
   }
 };

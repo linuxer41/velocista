@@ -9,6 +9,33 @@
 #include "features.h"
 
 // ==========================
+// ENUMS Y FUNCIONES AUXILIARES
+// ==========================
+enum SensorState { NORMAL, ALL_BLACK, ALL_WHITE };
+
+SensorState checkSensorState(int16_t* rawSensors) {
+    bool allBlack = true;
+    bool allWhite = true;
+    for(int i = 0; i < NUM_SENSORS; i++) {
+        int range = config.sensorMax[i] - config.sensorMin[i];
+        if(range > 0) {
+            if(rawSensors[i] > config.sensorMin[i] + 0.3 * range) {
+                allBlack = false;
+            }
+            if(rawSensors[i] < config.sensorMax[i] - 0.3 * range) {
+                allWhite = false;
+            }
+        } else {
+            allBlack = false;
+            allWhite = false;
+        }
+    }
+    if(allBlack) return ALL_BLACK;
+    if(allWhite) return ALL_WHITE;
+    return NORMAL;
+}
+
+// ==========================
 // INSTANCIAS DE CLASES
 // ==========================
 Motor leftMotor(MOTOR_LEFT_PIN1, MOTOR_LEFT_PIN2, LEFT, ENCODER_LEFT_A, ENCODER_LEFT_B);
@@ -25,26 +52,22 @@ Features features;
 // ==========================
 // VARIABLES GLOBALES
 // ==========================
-OperationMode currentMode;
-bool telemetry= false;
 float lastPidOutput = 0;
 unsigned long lastTelemetryTime = 0;
 unsigned long lastLineTime = 0;
 unsigned long lastSpeedTime = 0;
-int lastLinePosition = 0;
+int16_t lastLinePosition = 0;
 unsigned long loopTime = 0;
 unsigned long loopStartTime = 0;
 float leftTargetRPM = 0;
 float rightTargetRPM = 0;
-int throttle = 0;
-int steering = 0;
+int16_t throttle = 0;
+int16_t steering = 0;
 // LED indication
 unsigned long lastLedTime = 0;
 bool ledState = false;
 // Variables para mejoras dinámicas
 float previousLinePosition = 0;
-float dynamicBaseRPM = DEFAULT_BASE_RPM;
-int dynamicBaseSpeed = DEFAULT_BASE_SPEED;
 
 
 // ==========================
@@ -52,12 +75,6 @@ int dynamicBaseSpeed = DEFAULT_BASE_SPEED;
 // ==========================
 void printDebugInfo();
 void printTelemetryInfo();
-
-int freeMemory() {
-  extern int __heap_start, *__brkval;
-  int v;
-  return (int) &v - (__brkval == 0 ? (int) &__heap_start : (int) __brkval);
-}
 
 
 // ==========================
@@ -89,14 +106,12 @@ void setup() {
   // Cargar configuración (EEPROMManager ya carga valores por defecto si inválidos)
 
   eeprom.load();
-  currentMode = config.operationMode;
   // Configurar ganancias PID después de cargar
   linePid.setGains(config.lineKp, config.lineKi, config.lineKd);
   leftPid.setGains(config.leftKp, config.leftKi, config.leftKd);
   rightPid.setGains(config.rightKp, config.rightKi, config.rightKd);
   // Configurar features
-  features.setEnables(config.features);
-  telemetry = config.telemetry;
+  features.setConfig(config.features);
 
   qtr.setCalibration(config.sensorMin, config.sensorMax);
 
@@ -104,8 +119,8 @@ void setup() {
   qtr.calibrate();
 
 
-  char msg[50];
-  sprintf(msg, "Robot iniciado. Modo: %d", currentMode);
+  char msg[20];  // Reducido de 30 a 20
+  sprintf(msg, "Robot iniciado. Modo: %d", config.operationMode);
   debugger.systemMessage(msg);
   lastLineTime = millis();
   lastSpeedTime = millis();
@@ -117,41 +132,15 @@ void setup() {
 void loop() {
   unsigned long currentMillis = millis();
 
-  if (currentMillis - lastLineTime >= LOOP_LINE_MS) {
+  if (currentMillis - lastLineTime >= config.loopLineMs) {
     lastLineTime = currentMillis;
-    float dtLine = LOOP_LINE_MS / 1000.0;
+    float dtLine = config.loopLineMs / 1000.0;
 
-    if (currentMode == MODE_LINE_FOLLOWING) {
+    if (config.operationMode == MODE_LINE_FOLLOWING) {
        qtr.read();
-       int* rawSensors = qtr.getRawSensorValues();
-       // Verificar si todos los sensores están casi en negro (70% negro)
-       bool allBlack = true;
-       for(int i = 0; i < NUM_SENSORS; i++) {
-         int range = config.sensorMax[i] - config.sensorMin[i];
-         if(range > 0) {
-           if(rawSensors[i] > config.sensorMin[i] + 0.3 * range) {
-             allBlack = false;
-             break;
-           }
-         } else {
-           allBlack = false;
-           break;
-         }
-       }
-       // Verificar si todos los sensores están casi en blanco (30% blanco)
-       bool allWhite = true;
-       for(int i = 0; i < NUM_SENSORS; i++) {
-         int range = config.sensorMax[i] - config.sensorMin[i];
-         if(range > 0) {
-           if(rawSensors[i] < config.sensorMax[i] - 0.3 * range) {
-             allWhite = false;
-             break;
-           }
-         } else {
-           allWhite = false;
-           break;
-         }
-       }
+        int16_t* rawSensors = qtr.getRawSensorValues();
+        // Verificar estado de sensores
+       SensorState state = checkSensorState(rawSensors);
 
        // Calcular curvatura para ajustes dinámicos
        float currentPosition = features.applySignalFilters(qtr.linePosition);
@@ -159,17 +148,22 @@ void loop() {
        previousLinePosition = currentPosition;
 
        // Ajustes dinámicos de velocidad base
-       dynamicBaseRPM = config.baseRPM;
-       dynamicBaseSpeed = config.baseSpeed;
-       if(config.features.variableSpeed && (curvature > 500 || allBlack)) {  // Alta curvatura o pérdida de línea
-         dynamicBaseRPM = max(60.0f, dynamicBaseRPM - 30.0f);
-         dynamicBaseSpeed = max(100, dynamicBaseSpeed - 50);
+       float applyBaseRPM = config.baseRPM;
+       int applyBaseSpeed = config.baseSpeed;
+       if(config.features.speedProfiling) {
+         if(curvature > 500 || state == ALL_BLACK) {  // Alta curvatura o pérdida de línea
+           applyBaseRPM = max(60.0f, applyBaseRPM - 30.0f);
+           applyBaseSpeed = max(100, applyBaseSpeed - 50);
+         } else if(curvature < 100) {  // Baja curvatura (recta)
+           applyBaseRPM = min(config.baseRPM + 20.0f, applyBaseRPM + 10.0f);
+           applyBaseSpeed = min(config.maxSpeed, applyBaseSpeed + 20);
+         }
        }
 
        float pidOutput;
-       if(allBlack) {
+       if(state == ALL_BLACK) {
          pidOutput = config.features.turnDirection ? 200 : -200;  // girar según feature: derecha o izquierda
-       } else if(allWhite) {
+       } else if(state == ALL_WHITE) {
          pidOutput = 200;   // girar a la derecha rápidamente cuando todos los sensores están en blanco
        } else {
          lastLinePosition = currentPosition;
@@ -189,40 +183,40 @@ void loop() {
       if (config.cascadeMode) {
          // Set target RPMs for cascade control
          float rpmAdjustment = pidOutput * 0.5;
-         leftTargetRPM = dynamicBaseRPM + rpmAdjustment;
-         rightTargetRPM = dynamicBaseRPM - rpmAdjustment;
+         leftTargetRPM = applyBaseRPM + rpmAdjustment;
+         rightTargetRPM = applyBaseRPM - rpmAdjustment;
        } else {
         // Open-loop control
-        int leftSpeed = dynamicBaseSpeed + pidOutput;
-        int rightSpeed = dynamicBaseSpeed - pidOutput;
-        leftSpeed = constrain(leftSpeed, -MAX_SPEED, MAX_SPEED);
-        rightSpeed = constrain(rightSpeed, -MAX_SPEED, MAX_SPEED);
+        int leftSpeed = applyBaseSpeed + pidOutput;
+        int rightSpeed = applyBaseSpeed - pidOutput;
+        leftSpeed = constrain(leftSpeed, -config.maxSpeed, config.maxSpeed);
+        rightSpeed = constrain(rightSpeed, -config.maxSpeed, config.maxSpeed);
         leftMotor.setSpeed(leftSpeed);
         rightMotor.setSpeed(rightSpeed);
       }
     }
   }
 
-  if (currentMillis - lastSpeedTime >= LOOP_SPEED_MS) {
+  if (currentMillis - lastSpeedTime >= config.loopSpeedMs) {
     lastSpeedTime = currentMillis;
     loopStartTime = micros();
-    float dtSpeed = LOOP_SPEED_MS / 1000.0;
+    float dtSpeed = config.loopSpeedMs / 1000.0;
 
-    if (currentMode == MODE_REMOTE_CONTROL) {
+    if (config.operationMode == MODE_REMOTE_CONTROL) {
       // Always cascade for remote control
       leftTargetRPM = throttle - steering;
       rightTargetRPM = throttle + steering;
-    } else if (currentMode == MODE_LINE_FOLLOWING && config.cascadeMode) {
+    } else if (config.operationMode == MODE_LINE_FOLLOWING && config.cascadeMode) {
       // targetRPMs already set in line loop
     }
 
-    if (currentMode == MODE_REMOTE_CONTROL || (currentMode == MODE_LINE_FOLLOWING && config.cascadeMode)) {
+    if (config.operationMode == MODE_REMOTE_CONTROL || (config.operationMode == MODE_LINE_FOLLOWING && config.cascadeMode)) {
        // Calculate PID for each motor
        int leftSpeed = leftPid.calculate(leftTargetRPM, leftMotor.getRPM(), dtSpeed);
        int rightSpeed = rightPid.calculate(rightTargetRPM, rightMotor.getRPM(), dtSpeed);
 
-       leftSpeed = constrain(leftSpeed, -MAX_SPEED, MAX_SPEED);
-       rightSpeed = constrain(rightSpeed, -MAX_SPEED, MAX_SPEED);
+       leftSpeed = constrain(leftSpeed, -config.maxSpeed, config.maxSpeed);
+       rightSpeed = constrain(rightSpeed, -config.maxSpeed, config.maxSpeed);
 
        // Actualizar velocidad máxima registrada
        int currentMax = max(abs(leftSpeed), abs(rightSpeed));
@@ -235,7 +229,7 @@ void loop() {
        rightMotor.setSpeed(rightSpeed);
      }
 
-     if (currentMode == MODE_IDLE) {
+     if (config.operationMode == MODE_IDLE) {
        leftMotor.setSpeed(0);
        rightMotor.setSpeed(0);
      }
@@ -244,19 +238,19 @@ void loop() {
    }
 
    // Telemetry Print (Non-blocking)
-   if (telemetry&& (millis() - lastTelemetryTime > REALTIME_INTERVAL_MS)) {
+   if (config.telemetry && (millis() - lastTelemetryTime > config.telemetryIntervalMs)) {
      printTelemetryInfo();
      lastTelemetryTime = millis();
    }
 
    // LED Mode Indication
-   if (currentMode == MODE_LINE_FOLLOWING) {
+   if (config.operationMode == MODE_LINE_FOLLOWING) {
      if (currentMillis - lastLedTime >= 100) {
        ledState = !ledState;
        digitalWrite(MODE_LED_PIN, ledState);
        lastLedTime = currentMillis;
      }
-   } else if (currentMode == MODE_REMOTE_CONTROL) {
+   } else if (config.operationMode == MODE_REMOTE_CONTROL) {
      if (currentMillis - lastLedTime >= 500) {
        ledState = !ledState;
        digitalWrite(MODE_LED_PIN, ledState);
@@ -301,33 +295,7 @@ void loop() {
 
      } else if (strcmp(cmd, "reset") == 0) {
        // restaurar valores por defecto
-       config.lineKp = DEFAULT_LINE_KP;
-       config.lineKi = DEFAULT_LINE_KI;
-       config.lineKd = DEFAULT_LINE_KD;
-       config.leftKp  = DEFAULT_LEFT_KP;
-       config.leftKi  = DEFAULT_LEFT_KI;
-       config.leftKd  = DEFAULT_LEFT_KD;
-       config.rightKp = DEFAULT_RIGHT_KP;
-       config.rightKi = DEFAULT_RIGHT_KI;
-       config.rightKd = DEFAULT_RIGHT_KD;
-       config.baseSpeed      = DEFAULT_BASE_SPEED;
-       config.baseRPM        = DEFAULT_BASE_RPM;
-       config.cascadeMode    = DEFAULT_CASCADE;
-       config.telemetry = DEFAULT_TELEMETRY_ENABLED;
-       config.features.medianFilter = DEFAULT_FEATURE_ENABLES[0];
-       config.features.movingAverage = DEFAULT_FEATURE_ENABLES[1];
-       config.features.kalmanFilter = DEFAULT_FEATURE_ENABLES[2];
-       config.features.hysteresis = DEFAULT_FEATURE_ENABLES[3];
-       config.features.deadZone = DEFAULT_FEATURE_ENABLES[4];
-       config.features.lowPass = DEFAULT_FEATURE_ENABLES[5];
-       config.features.adaptivePid = DEFAULT_FEATURE_ENABLES[6];
-       config.features.speedProfiling = DEFAULT_FEATURE_ENABLES[7];
-       config.features.dynamicLinePid = DEFAULT_FEATURE_ENABLES[8];
-       config.features.variableSpeed = DEFAULT_FEATURE_ENABLES[9];
-       config.features.turnDirection = DEFAULT_FEATURE_ENABLES[10];
-       config.operationMode  = DEFAULT_OPERATION_MODE;
-       config.maxSpeed = DEFAULT_MAX_SPEED;
-       config.checksum       = 1234567891;
+       config.restoreDefaults();
        saveConfig();
        linePid.setGains(config.lineKp, config.lineKi, config.lineKd);
        leftPid.setGains(config.leftKp, config.leftKi, config.leftKd);
@@ -337,7 +305,7 @@ void loop() {
      } else if (strcmp(cmd, "help") == 0) {
        debugger.systemMessage("Comandos: calibrate, save, get debug, get telemetry, get config, reset, help");
        debugger.systemMessage("set telemetry 0/1  |  set mode 0/1/2  |  set cascade 0/1");
-       debugger.systemMessage("set feature <idx 0-10> 0/1  |  set features 0,1,0,...  |  set line kp,ki,kd  |  set left kp,ki,kd  |  set right kp,ki,kd");
+       debugger.systemMessage("set feature <idx 0-8> 0/1  |  set features 0,1,0,...  |  set line kp,ki,kd  |  set left kp,ki,kd  |  set right kp,ki,kd");
        debugger.systemMessage("set base speed <value>  |  set base rpm <value>");
        debugger.systemMessage("set pwm <derecha>,<izquierda>  (solo en modo idle)");
 
@@ -346,8 +314,7 @@ void loop() {
        char* end;
        int val = strtol(cmd + 14, &end, 10);
        if (end == cmd + 14 || *end != '\0') { debugger.systemMessage("Falta argumento"); return; }
-       telemetry = (val == 1);
-       config.telemetry = telemetry;
+       config.telemetry = (val == 1);
        saveConfig();
        success = true;
 
@@ -355,15 +322,11 @@ void loop() {
        char* end;
        int m = strtol(cmd + 9, &end, 10);
        if (end == cmd + 9 || *end != '\0') { debugger.systemMessage("Falta argumento"); return; }
-       if (m == 0) currentMode = MODE_IDLE;
-       else if (m == 1) currentMode = MODE_LINE_FOLLOWING;
-       else if (m == 2) currentMode = MODE_REMOTE_CONTROL;
-       else { debugger.systemMessage("Modo inválido: 0=idle, 1=line, 2=remote"); return; }
-       config.operationMode = currentMode;
-       if (currentMode == MODE_REMOTE_CONTROL) {
+       config.operationMode = (OperationMode)m;
+       if (config.operationMode == MODE_REMOTE_CONTROL) {
          throttle = 0; steering = 0;
          leftMotor.setSpeed(0); rightMotor.setSpeed(0);
-       } else if (currentMode == MODE_IDLE) {
+       } else if (config.operationMode == MODE_IDLE) {
          leftMotor.setSpeed(0); rightMotor.setSpeed(0);
        }
        success = true;
@@ -382,18 +345,18 @@ void loop() {
        if (end1 == p || *end1 != ' ') { debugger.systemMessage("Formato: set feature <idx> <0/1>"); return; }
        char* end2;
        int val = strtol(end1 + 1, &end2, 10);
-       if (end2 == end1 + 1 || *end2 != '\0' || idx < 0 || idx > 10) { debugger.systemMessage("Formato: set feature <idx> <0/1>"); return; }
+       if (end2 == end1 + 1 || *end2 != '\0' || idx < 0 || idx > 8) { debugger.systemMessage("Formato: set feature <idx> <0/1>"); return; }
        config.features.setFeature(idx, val == 1);
-       features.setEnables(config.features);
+       features.setConfig(config.features);
        success = true;
 
      } else if (strncmp(cmd, "set features ", 13) == 0) {
        const char* params = cmd + 13;
        if (config.features.deserialize(params)) {
-         features.setEnables(config.features);
+         features.setConfig(config.features);
          success = true;
        } else {
-         debugger.systemMessage("Formato: set features 0,1,0,1,... (11 valores)");
+         debugger.systemMessage("Formato: set features 0,1,0,1,... (9 valores)");
          return;
        }
 
@@ -470,12 +433,12 @@ void loop() {
        char* end2;
        int s = strtol(comma + 1, &end2, 10);
        if (*end2 != '\0') { debugger.systemMessage("Formato: rc throttle,steering"); return; }
-       throttle  = constrain(t, -MAX_SPEED, MAX_SPEED);
-       steering  = constrain(s, -MAX_SPEED, MAX_SPEED);
+       throttle  = constrain(t, -config.maxSpeed, config.maxSpeed);
+       steering  = constrain(s, -config.maxSpeed, config.maxSpeed);
        success = true;
 
      } else if (strncmp(cmd, "set pwm ", 8) == 0) {
-       if (currentMode != MODE_IDLE) {
+       if (config.operationMode != MODE_IDLE) {
          debugger.systemMessage("Comando solo disponible en modo idle");
          return;
        }
@@ -517,12 +480,12 @@ void loop() {
 // ==========================
 void printDebugInfo() {
   DebugData data;
-  int* sensors = qtr.getSensorValues();
+  int16_t* sensors = qtr.getSensorValues();
   memcpy(data.sensors, sensors, sizeof(data.sensors));
 
   data.linePos = qtr.linePosition;
   data.cascade = config.cascadeMode;
-  data.mode = currentMode;
+  data.mode = config.operationMode;
   data.uptime = millis();
 
   // PID línea
@@ -563,7 +526,7 @@ void printDebugInfo() {
   // Sistema
   data.battery = analogRead(BATTERY_PIN) * BATTERY_FACTOR;
   data.loopTime = loopTime;
-  data.freeMem = freeMemory();
+  data.freeMem = 0;  // freeMemory removed for optimization
   data.encL = leftMotor.getEncoderCount();
   data.encR = rightMotor.getEncoderCount();
 
@@ -577,7 +540,7 @@ void printDebugInfo() {
 void printTelemetryInfo() {
   DebugData data;
   qtr.read();  // Read sensors even in non-line-follower modes
-  int* sensors = qtr.getSensorValues();
+  int16_t* sensors = qtr.getSensorValues();
   memcpy(data.sensors, sensors, sizeof(data.sensors));
 
   data.linePos = qtr.linePosition;
@@ -606,9 +569,9 @@ void printTelemetryInfo() {
   data.rightSpeedCms = (data.rRpm * PI * (config.wheelDiameter / 10.0)) / 60.0;
   data.battery = analogRead(BATTERY_PIN) * BATTERY_FACTOR;
   data.loopTime = loopTime;
-  data.freeMem = freeMemory();
+  data.freeMem = 0;  // freeMemory removed for optimization
   data.cascade = config.cascadeMode;
-  data.mode = currentMode;
+  data.mode = config.operationMode;
 
   debugger.telemetryData(data);
 }
