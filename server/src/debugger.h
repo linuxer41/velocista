@@ -104,12 +104,6 @@ public:
     Serial.print(data.sensors[3]); Serial.print(F(","));
     Serial.print(data.sensors[4]); Serial.print(F(","));
     Serial.print(data.sensors[5]); Serial.print(F("]"));
-    Serial.print(F("|FEAT_CONFIG:["));
-    for(int i=0; i<8; i++) {
-      Serial.print(config.featureEnables[i] ? F("1") : F("0"));
-      if(i<7) Serial.print(F(","));
-    }
-    Serial.print(F("]"));
     Serial.print(F("|FEAT_VALUES:[]"));
     Serial.print(F("|BATT:"));
     Serial.print(data.battery, 2);
@@ -150,6 +144,8 @@ public:
     Serial.print(config.cascadeMode ? F("1") : F("0"));
     Serial.print(F("|TELEMETRY:"));
     Serial.print(config.telemetry ? F("1") : F("0"));
+    Serial.print(F("|FEAT_CONFIG:"));
+    Serial.print(config.features.serialize());
     if (endLine) Serial.println();
   }
 

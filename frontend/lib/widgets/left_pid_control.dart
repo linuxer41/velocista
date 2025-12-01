@@ -24,27 +24,27 @@ class _LeftPidControlState extends State<LeftPidControl> {
     _kiController = TextEditingController(text: '0.5');
     _kdController = TextEditingController(text: '0.1');
 
-    // Listen to telemetry data changes
-    widget.appState.currentData.addListener(_updateFromTelemetry);
-    _updateFromTelemetry(); // Initial update
+    // Listen to config data changes only
+    widget.appState.configData.addListener(_updateFromConfig);
+    _updateFromConfig(); // Initial update
   }
 
   @override
   void dispose() {
-    widget.appState.currentData.removeListener(_updateFromTelemetry);
+    widget.appState.configData.removeListener(_updateFromConfig);
     _kpController.dispose();
     _kiController.dispose();
     _kdController.dispose();
     super.dispose();
   }
 
-  void _updateFromTelemetry() {
-    final data = widget.appState.currentData.value;
-    if (data is ConfigData &&
-        data.leftKPid != null &&
-        data.leftKPid!.length >= 3) {
+  void _updateFromConfig() {
+    final config = widget.appState.configData.value;
+    if (config != null &&
+        config.leftKPid != null &&
+        config.leftKPid!.length >= 3) {
       // Update controllers with config left PID values only when ConfigData arrives
-      final leftKPid = data.leftKPid!;
+      final leftKPid = config.leftKPid!;
       _kpController.text = leftKPid[0].toStringAsFixed(2);
       _kiController.text = leftKPid[1].toStringAsFixed(3);
       _kdController.text = leftKPid[2].toStringAsFixed(2);

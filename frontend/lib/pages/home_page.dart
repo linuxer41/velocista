@@ -24,6 +24,7 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   late TextEditingController _baseSpeedController;
   late TextEditingController _baseRpmController;
+  late TextEditingController _maxSpeedController;
 
   late TextEditingController _lineKpController;
   late TextEditingController _lineKiController;
@@ -38,6 +39,7 @@ class _HomePageState extends State<HomePage> {
     // Initialize controllers
     _baseSpeedController = TextEditingController(text: '200');
     _baseRpmController = TextEditingController(text: '120.0');
+    _maxSpeedController = TextEditingController(text: '230');
     _lineKpController = TextEditingController(text: '2.0');
     _lineKiController = TextEditingController(text: '0.05');
     _lineKdController = TextEditingController(text: '0.75');
@@ -48,9 +50,7 @@ class _HomePageState extends State<HomePage> {
       if (appState != null) {
         appState.isConnected.addListener(_onConnectionChanged);
         appState.lastAck.addListener(_onAckReceived);
-        appState.baseSpeed.addListener(_updateBaseControllers);
-        appState.baseRpm.addListener(_updateBaseControllers);
-        appState.pidConfig.addListener(_updateLinePidControllers);
+        appState.configData.addListener(_updateControllersFromConfig);
         _checkConnectionAndShowModal();
       }
     });
@@ -62,12 +62,11 @@ class _HomePageState extends State<HomePage> {
     if (appState != null) {
       appState.isConnected.removeListener(_onConnectionChanged);
       appState.lastAck.removeListener(_onAckReceived);
-      appState.baseSpeed.removeListener(_updateBaseControllers);
-      appState.baseRpm.removeListener(_updateBaseControllers);
-      appState.pidConfig.removeListener(_updateLinePidControllers);
+      appState.configData.removeListener(_updateControllersFromConfig);
     }
     _baseSpeedController.dispose();
     _baseRpmController.dispose();
+    _maxSpeedController.dispose();
     _lineKpController.dispose();
     _lineKiController.dispose();
     _lineKdController.dispose();
@@ -79,10 +78,23 @@ class _HomePageState extends State<HomePage> {
     if (appState != null && appState.lastAck.value != null) {
       // Only show snackbar for commands that start with "set"
       if (appState.lastAck.value!.startsWith('set')) {
+        // Build enhanced acknowledgment message
+        String ackMessage = appState.lastAck.value!;
+
+        // Add features status if available
+        if (appState.configData.value?.featConfig != null &&
+            appState.configData.value!.featConfig!.length >= 6) {
+          final featConfig = appState.configData.value!.featConfig!;
+          final features =
+              'FEAT_CONFIG:[${featConfig.sublist(0, 6).join(',')}]';
+          ackMessage += '|$features';
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Guardado: ${appState.lastAck.value}'),
-            duration: const Duration(seconds: 2),
+            content: Text('Guardado: $ackMessage'),
+            duration: const Duration(
+                seconds: 3), // Extended duration for longer message
           ),
         );
       }
@@ -91,25 +103,31 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  void _updateBaseControllers() {
+  void _updateControllersFromConfig() {
     final appState = AppInheritedWidget.of(context);
     if (appState != null) {
-      if (appState.baseSpeed.value != null) {
-        _baseSpeedController.text = appState.baseSpeed.value!.toStringAsFixed(0);
-      }
-      if (appState.baseRpm.value != null) {
-        _baseRpmController.text = appState.baseRpm.value!.toStringAsFixed(1);
-      }
-    }
-  }
+      final config = appState.configData.value;
+      if (config != null) {
+        // Update base speed controllers
+        if (config.base != null) {
+          if (config.base!.length >= 1) {
+            _baseSpeedController.text = config.base![0].toStringAsFixed(0);
+          }
+          if (config.base!.length >= 2) {
+            _baseRpmController.text = config.base![1].toStringAsFixed(1);
+          }
+          if (config.base!.length >= 3) {
+            _maxSpeedController.text = config.base![2].toStringAsFixed(0);
+          }
+        }
 
-  void _updateLinePidControllers() {
-    final appState = AppInheritedWidget.of(context);
-    if (appState != null) {
-      final config = appState.pidConfig.value;
-      _lineKpController.text = config.kp.toStringAsFixed(2);
-      _lineKiController.text = config.ki.toStringAsFixed(3);
-      _lineKdController.text = config.kd.toStringAsFixed(2);
+        // Update PID controllers
+        if (config.lineKPid != null && config.lineKPid!.length >= 3) {
+          _lineKpController.text = config.lineKPid![0].toStringAsFixed(2);
+          _lineKiController.text = config.lineKPid![1].toStringAsFixed(3);
+          _lineKdController.text = config.lineKPid![2].toStringAsFixed(2);
+        }
+      }
     }
   }
 
@@ -290,18 +308,22 @@ class _HomePageState extends State<HomePage> {
                 Theme.of(context).colorScheme.onSurfaceVariant,
           ),
           SizedBox(
-            height: 250, // Reduced height since filters moved outside
+            
+            height: 150,
             child: TabBarView(
               children: [
                 SingleChildScrollView(child: _buildLinePidTab(appState)),
-                SingleChildScrollView(child: LeftPidControl(appState: appState)),
-                SingleChildScrollView(child: RightPidControl(appState: appState)),
+                SingleChildScrollView(
+                    child: LeftPidControl(appState: appState)),
+                SingleChildScrollView(
+                    child: RightPidControl(appState: appState)),
               ],
             ),
           ),
-          const SizedBox(height: 4), // Reduced spacing between tabs and filters
-          // Filters Control Board - Outside the tabs
-          _buildFiltersControlBoard(appState),
+          const SizedBox(
+              height: 4), // Reduced spacing between tabs and features
+          // Features Control Board - Outside the tabs
+          _buildFeaturesControlBoard(appState),
         ],
       ),
     );
@@ -332,22 +354,28 @@ class _HomePageState extends State<HomePage> {
                           style: TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.w500,
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
                         ),
                         Transform.scale(
                           scale: 0.8,
-                          child: ValueListenableBuilder<bool>(
-                            valueListenable: appState.cascadeEnabled,
-                            builder: (context, enabled, child) {
+                          child: ValueListenableBuilder<ConfigData?>(
+                            valueListenable: appState.configData,
+                            builder: (context, config, child) {
+                              final enabled = config?.cascade == 1;
                               return Switch(
                                 value: enabled,
-                                onChanged: (value) {
-                                  appState.cascadeEnabled.value = value;
+                                onChanged: (value) async {
                                   final cascadeCommand = CascadeCommand(value);
-                                  appState.sendCommand(cascadeCommand.toCommand());
+                                  await appState
+                                      .sendCommand(cascadeCommand.toCommand());
+                                  // Refresh config data
+                                  await appState.sendCommand(
+                                      ConfigRequestCommand().toCommand());
                                 },
-                                activeColor: Theme.of(context).colorScheme.primary,
+                                activeColor:
+                                    Theme.of(context).colorScheme.primary,
                                 materialTapTargetSize:
                                     MaterialTapTargetSize.shrinkWrap,
                               );
@@ -367,24 +395,51 @@ class _HomePageState extends State<HomePage> {
                           style: TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.w500,
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
                         ),
                         Transform.scale(
                           scale: 0.8,
-                          child: ValueListenableBuilder<bool>(
-                            valueListenable: appState.telemetryEnabled,
-                            builder: (context, enabled, child) {
+                          child: ValueListenableBuilder<ConfigData?>(
+                            valueListenable: appState.configData,
+                            builder: (context, config, child) {
+                              final enabled = config?.telemetry == 1;
                               return Switch(
                                 value: enabled,
-                                onChanged: (value) {
-                                  appState.telemetryEnabled.value = value;
+                                onChanged: (value) async {
+                                  // Update configData locally for immediate UI feedback
+                                  final currentConfig =
+                                      appState.configData.value;
+                                  if (currentConfig != null) {
+                                    final updatedConfig = ConfigData(
+                                      lineKPid: currentConfig.lineKPid,
+                                      leftKPid: currentConfig.leftKPid,
+                                      rightKPid: currentConfig.rightKPid,
+                                      base: currentConfig.base,
+                                      wheels: currentConfig.wheels,
+                                      mode: currentConfig.mode,
+                                      cascade: currentConfig.cascade,
+                                      telemetry: value ? 1 : 0,
+                                      featConfig: currentConfig.featConfig,
+                                    );
+                                    appState.configData.value = updatedConfig;
+                                  }
+
                                   final telemetryCommand =
-                                      TelemetryEnableCommand(value);
-                                  appState.sendCommand(telemetryCommand.toCommand());
+                                      TelemetryChangeCommand(value);
+                                  await appState.sendCommand(
+                                      telemetryCommand.toCommand());
+                                  // Small delay to allow Arduino to process the command
+                                  await Future.delayed(const Duration(milliseconds: 100));
+                                  // Refresh config data to confirm
+                                  await appState.sendCommand(
+                                      ConfigRequestCommand().toCommand());
                                 },
-                                activeColor: Theme.of(context).colorScheme.secondary,
-                                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                activeColor:
+                                    Theme.of(context).colorScheme.secondary,
+                                materialTapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
                               );
                             },
                           ),
@@ -407,26 +462,30 @@ class _HomePageState extends State<HomePage> {
                           style: TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.w500,
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
                         ),
                         Container(
                           width: 32,
                           height: 32,
                           decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.primaryContainer,
+                            color:
+                                Theme.of(context).colorScheme.primaryContainer,
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: IconButton(
                             onPressed: () async {
                               // Call get config to get config data including FEAT_CONFIG
                               final configCommand = ConfigRequestCommand();
-                              await appState.sendCommand(configCommand.toCommand());
+                              await appState
+                                  .sendCommand(configCommand.toCommand());
                             },
                             icon: Icon(
                               Icons.sync,
-                              color:
-                                  Theme.of(context).colorScheme.onPrimaryContainer,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onPrimaryContainer,
                               size: 16,
                             ),
                             tooltip: 'Sincronizar con Telemetry',
@@ -447,26 +506,32 @@ class _HomePageState extends State<HomePage> {
                           style: TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.w500,
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
                         ),
                         Container(
                           width: 32,
                           height: 32,
                           decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.secondaryContainer,
+                            color: Theme.of(context)
+                                .colorScheme
+                                .secondaryContainer,
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: IconButton(
                             onPressed: () async {
-                              await appState.sendCommand(ConfigRequestCommand().toCommand());
+                              await appState.sendCommand(
+                                  ConfigRequestCommand().toCommand());
                               final calibrateCommand = CalibrateQtrCommand();
-                              appState.sendCommand(calibrateCommand.toCommand());
+                              appState
+                                  .sendCommand(calibrateCommand.toCommand());
                             },
                             icon: Icon(
                               Icons.tune,
-                              color:
-                                  Theme.of(context).colorScheme.onSecondaryContainer,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSecondaryContainer,
                               size: 16,
                             ),
                             tooltip: 'Calibrar Sensores',
@@ -487,14 +552,16 @@ class _HomePageState extends State<HomePage> {
                           style: TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.w500,
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
                         ),
                         Container(
                           width: 32,
                           height: 32,
                           decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.tertiaryContainer,
+                            color:
+                                Theme.of(context).colorScheme.tertiaryContainer,
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: IconButton(
@@ -509,11 +576,13 @@ class _HomePageState extends State<HomePage> {
                                   ),
                                   actions: [
                                     TextButton(
-                                      onPressed: () => Navigator.of(context).pop(false),
+                                      onPressed: () =>
+                                          Navigator.of(context).pop(false),
                                       child: const Text('Cancelar'),
                                     ),
                                     TextButton(
-                                      onPressed: () => Navigator.of(context).pop(true),
+                                      onPressed: () =>
+                                          Navigator.of(context).pop(true),
                                       child: const Text('Grabar'),
                                     ),
                                   ],
@@ -521,15 +590,17 @@ class _HomePageState extends State<HomePage> {
                               );
 
                               if (confirmed == true) {
-                                await appState.sendCommand(ConfigRequestCommand().toCommand());
+                                await appState.sendCommand(
+                                    ConfigRequestCommand().toCommand());
                                 final saveCommand = EepromSaveCommand();
                                 appState.sendCommand(saveCommand.toCommand());
                               }
                             },
                             icon: Icon(
                               Icons.save,
-                              color:
-                                  Theme.of(context).colorScheme.onTertiaryContainer,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onTertiaryContainer,
                               size: 16,
                             ),
                             tooltip: 'Grabar Configuración',
@@ -550,7 +621,8 @@ class _HomePageState extends State<HomePage> {
                           style: TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.w500,
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
                         ),
                         Container(
@@ -572,11 +644,13 @@ class _HomePageState extends State<HomePage> {
                                   ),
                                   actions: [
                                     TextButton(
-                                      onPressed: () => Navigator.of(context).pop(false),
+                                      onPressed: () =>
+                                          Navigator.of(context).pop(false),
                                       child: const Text('Cancelar'),
                                     ),
                                     TextButton(
-                                      onPressed: () => Navigator.of(context).pop(true),
+                                      onPressed: () =>
+                                          Navigator.of(context).pop(true),
                                       child: const Text('Resetear'),
                                     ),
                                   ],
@@ -584,15 +658,17 @@ class _HomePageState extends State<HomePage> {
                               );
 
                               if (confirmed == true) {
-                                await appState.sendCommand(ConfigRequestCommand().toCommand());
+                                await appState.sendCommand(
+                                    ConfigRequestCommand().toCommand());
                                 final resetCommand = FactoryResetCommand();
                                 appState.sendCommand(resetCommand.toCommand());
                               }
                             },
                             icon: Icon(
                               Icons.refresh,
-                              color:
-                                  Theme.of(context).colorScheme.onErrorContainer,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onErrorContainer,
                               size: 16,
                             ),
                             tooltip: 'Resetear Valores',
@@ -608,27 +684,59 @@ class _HomePageState extends State<HomePage> {
             ],
           ),
           const SizedBox(height: 8),
-          // Base speed inputs below the buttons
-          Row(
+          // Base speed inputs below the buttons - 3 columns layout
+          Column(
             children: [
-              Expanded(
-                child: _buildBaseSpeedInput('Velocidad Base', _baseSpeedController, () async {
-                  final value = double.tryParse(_baseSpeedController.text) ?? 200.0;
-                  final baseSpeedCommand = BaseSpeedCommand(value);
-                  await appState.sendCommand(baseSpeedCommand.toCommand());
-                  // Request fresh config data to sync UI
-                  await appState.sendCommand(ConfigRequestCommand().toCommand());
-                }),
+              Row(
+                children: [
+                  Expanded(
+                    child:
+                        _buildBaseSpeedInput('VEL. base', _baseSpeedController),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _buildBaseSpeedInput('RPM base', _baseRpmController),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child:
+                        _buildBaseSpeedInput('VEL. max', _maxSpeedController),
+                  ),
+                ],
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildBaseSpeedInput('RPM Base', _baseRpmController, () async {
-                  final value = double.tryParse(_baseRpmController.text) ?? 120.0;
-                  final baseRpmCommand = BaseRpmCommand(value);
-                  await appState.sendCommand(baseRpmCommand.toCommand());
-                  // Request fresh config data to sync UI
-                  await appState.sendCommand(ConfigRequestCommand().toCommand());
-                }),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                height: 32,
+                child: ElevatedButton(
+                  onPressed: () async {
+                    // Send all three values
+                    final baseSpeedValue =
+                        double.tryParse(_baseSpeedController.text) ?? 200.0;
+                    final baseRpmValue =
+                        double.tryParse(_baseRpmController.text) ?? 120.0;
+                    final maxSpeedValue =
+                        double.tryParse(_maxSpeedController.text) ?? 230.0;
+
+                    final baseSpeedCommand = BaseSpeedCommand(baseSpeedValue);
+                    final baseRpmCommand = BaseRpmCommand(baseRpmValue);
+                    final maxSpeedCommand = MaxSpeedCommand(maxSpeedValue);
+
+                    await appState.sendCommand(baseSpeedCommand.toCommand());
+                    await appState.sendCommand(baseRpmCommand.toCommand());
+                    await appState.sendCommand(maxSpeedCommand.toCommand());
+
+                    // Request fresh config data to sync UI
+                    await appState
+                        .sendCommand(ConfigRequestCommand().toCommand());
+                  },
+                  child: const Text('Enviar Velocidades',
+                      style: TextStyle(fontSize: 12)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                  ),
+                ),
               ),
             ],
           ),
@@ -637,73 +745,49 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildBaseSpeedInput(
-      String label, TextEditingController controller, VoidCallback onSend) {
+  Widget _buildBaseSpeedInput(String label, TextEditingController controller) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label,
           style: TextStyle(
-            fontSize: 12,
+            fontSize: 10,
             fontWeight: FontWeight.w500,
             color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
         ),
         const SizedBox(height: 4),
-        Row(
-          children: [
-            Expanded(
-              child: SizedBox(
-                height: 32,
-                child: TextField(
-                  controller: controller,
-                  keyboardType: TextInputType.numberWithOptions(decimal: true),
-                  decoration: InputDecoration(
-                    hintText: controller.text,
-                    hintStyle: TextStyle(
-                      fontSize: 12,
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurfaceVariant
-                          .withOpacity(0.5),
-                    ),
-                    filled: true,
-                    fillColor: Theme.of(context).colorScheme.surface,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(6),
-                      borderSide: BorderSide(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .outline
-                            .withOpacity(0.3),
-                      ),
-                    ),
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  ),
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Theme.of(context).colorScheme.onSurface,
-                  ),
+        SizedBox(
+          height: 32,
+          child: TextField(
+            controller: controller,
+            keyboardType: TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              hintText: controller.text,
+              hintStyle: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurfaceVariant
+                    .withOpacity(0.5),
+              ),
+              filled: true,
+              fillColor: Theme.of(context).colorScheme.surface,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(6),
+                borderSide: BorderSide(
+                  color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
                 ),
               ),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             ),
-            const SizedBox(width: 4),
-            SizedBox(
-              width: 60,
-              height: 32,
-              child: ElevatedButton(
-                onPressed: onSend,
-                child: const Text('Enviar', style: TextStyle(fontSize: 10)),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  backgroundColor: Theme.of(context).colorScheme.primary,
-                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                ),
-              ),
+            style: TextStyle(
+              fontSize: 12,
+              color: Theme.of(context).colorScheme.onSurface,
             ),
-          ],
+          ),
         ),
       ],
     );
@@ -778,14 +862,15 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
 
-
           // Current Values Display
           ValueListenableBuilder<SerialData?>(
             valueListenable: appState.currentData,
             builder: (context, data, child) {
               if (data is! DebugData) return const SizedBox.shrink();
 
-              final position = data.line != null && data.line!.isNotEmpty ? data.line![0] : 0.0;
+              final position = data.line != null && data.line!.isNotEmpty
+                  ? data.line![0]
+                  : 0.0;
 
               return Container(
                 padding: const EdgeInsets.all(6),
@@ -826,6 +911,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+
   Widget _buildFeaturesTab(AppState appState) {
     const featureNames = ['MED', 'MA', 'KAL', 'HYS', 'DZ', 'LP', 'APID', 'SP'];
     const featureDescriptions = [
@@ -858,9 +944,10 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           const SizedBox(height: 8),
-          ValueListenableBuilder<List<int>?>(
-            valueListenable: appState.featConfig,
-            builder: (context, featConfig, child) {
+          ValueListenableBuilder<ConfigData?>(
+            valueListenable: appState.configData,
+            builder: (context, configData, child) {
+              final featConfig = configData?.featConfig;
               if (featConfig == null || featConfig.length != 8) {
                 return const Text('Cargando features...');
               }
@@ -880,14 +967,17 @@ class _HomePageState extends State<HomePage> {
                                 style: TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w600,
-                                  color: Theme.of(context).colorScheme.onSurface,
+                                  color:
+                                      Theme.of(context).colorScheme.onSurface,
                                 ),
                               ),
                               Text(
                                 featureDescriptions[index],
                                 style: TextStyle(
                                   fontSize: 10,
-                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
                                 ),
                               ),
                             ],
@@ -895,17 +985,17 @@ class _HomePageState extends State<HomePage> {
                         ),
                         Switch(
                           value: featConfig[index] == 1,
-                          onChanged: (value) {
+                          onChanged: (value) async {
                             final newValue = value ? 1 : 0;
-                            if (appState.featConfig.value != null && appState.featConfig.value!.length > index) {
-                              appState.featConfig.value![index] = newValue;
-                              appState.featConfig.notifyListeners();
-                              final featureCommand = FeatureCommand(index, newValue);
-                              appState.sendCommand(featureCommand.toCommand());
-                            }
+                            final featureCommand =
+                                FeatureCommand(index, newValue);
+                            await appState.sendCommand(featureCommand.toCommand());
+                            // Request fresh config data to sync UI
+                            await appState.sendCommand(ConfigRequestCommand().toCommand());
                           },
                           activeColor: Theme.of(context).colorScheme.primary,
-                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
                         ),
                       ],
                     ),
@@ -919,7 +1009,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildFiltersControlBoard(AppState appState) {
+  Widget _buildFeaturesControlBoard(AppState appState) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -930,7 +1020,7 @@ class _HomePageState extends State<HomePage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Filtros de Seguimiento de Línea',
+            'Funciones de Seguimiento de Línea',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
@@ -939,11 +1029,11 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           const SizedBox(height: 12),
-          ValueListenableBuilder<List<int>?>(
-            valueListenable: appState.featConfig,
-            builder: (context, featConfig, child) {
+          ValueListenableBuilder<ConfigData?>(
+            valueListenable: appState.configData,
+            builder: (context, configData, child) {
               // Always show labels, use default values if featConfig is null
-              final currentFeatures = featConfig ?? [1, 1, 1, 1, 1, 1];
+              final currentFeatures = configData?.featConfig ?? [1, 1, 1, 1, 1, 1];
 
               const featureNames = ['MED', 'MA', 'KAL', 'HYS', 'DZ', 'LP'];
               const featureDescriptions = [
@@ -970,7 +1060,8 @@ class _HomePageState extends State<HomePage> {
                                 style: TextStyle(
                                   fontSize: 10,
                                   fontWeight: FontWeight.w600,
-                                  color: Theme.of(context).colorScheme.onSurface,
+                                  color:
+                                      Theme.of(context).colorScheme.onSurface,
                                 ),
                                 textAlign: TextAlign.center,
                               ),
@@ -978,7 +1069,9 @@ class _HomePageState extends State<HomePage> {
                                 featureDescriptions[index],
                                 style: TextStyle(
                                   fontSize: 7,
-                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
                                 ),
                                 textAlign: TextAlign.center,
                               ),
@@ -987,18 +1080,39 @@ class _HomePageState extends State<HomePage> {
                                 value: currentFeatures[index] == 1,
                                 onChanged: (value) async {
                                   final newValue = value ? 1 : 0;
-                                  if (appState.featConfig.value != null && appState.featConfig.value!.length > index) {
-                                    appState.featConfig.value![index] = newValue;
-                                    appState.featConfig.notifyListeners();
-                                    // Send all 6 filter values at once
-                                    final filtersCommand = arduino_data.FiltersCommand(appState.featConfig.value!.sublist(0, 6));
-                                    await appState.sendCommand(filtersCommand.toCommand());
-                                    // Request fresh config data to sync UI
-                                    await appState.sendCommand(ConfigRequestCommand().toCommand());
+                                  // Update configData locally for immediate UI feedback
+                                  final currentConfig = appState.configData.value;
+                                  if (currentConfig != null && currentConfig.featConfig != null) {
+                                    final updatedFeatConfig = List<int>.from(currentConfig.featConfig!);
+                                    updatedFeatConfig[index] = newValue;
+                                    final updatedConfig = ConfigData(
+                                      lineKPid: currentConfig.lineKPid,
+                                      leftKPid: currentConfig.leftKPid,
+                                      rightKPid: currentConfig.rightKPid,
+                                      base: currentConfig.base,
+                                      wheels: currentConfig.wheels,
+                                      mode: currentConfig.mode,
+                                      cascade: currentConfig.cascade,
+                                      telemetry: currentConfig.telemetry,
+                                      featConfig: updatedFeatConfig,
+                                    );
+                                    appState.configData.value = updatedConfig;
                                   }
+
+                                  final featureCommand =
+                                      FeatureCommand(index, newValue);
+                                  await appState.sendCommand(
+                                      featureCommand.toCommand());
+                                  // Small delay to allow Arduino to process the command
+                                  await Future.delayed(const Duration(milliseconds: 100));
+                                  // Request fresh config data to sync UI
+                                  await appState.sendCommand(
+                                      ConfigRequestCommand().toCommand());
                                 },
-                                activeColor: Theme.of(context).colorScheme.primary,
-                                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                activeColor:
+                                    Theme.of(context).colorScheme.primary,
+                                materialTapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
                               ),
                             ],
                           ),
@@ -1021,7 +1135,8 @@ class _HomePageState extends State<HomePage> {
                                 style: TextStyle(
                                   fontSize: 10,
                                   fontWeight: FontWeight.w600,
-                                  color: Theme.of(context).colorScheme.onSurface,
+                                  color:
+                                      Theme.of(context).colorScheme.onSurface,
                                 ),
                                 textAlign: TextAlign.center,
                               ),
@@ -1029,7 +1144,9 @@ class _HomePageState extends State<HomePage> {
                                 featureDescriptions[actualIndex],
                                 style: TextStyle(
                                   fontSize: 7,
-                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
                                 ),
                                 textAlign: TextAlign.center,
                               ),
@@ -1038,18 +1155,39 @@ class _HomePageState extends State<HomePage> {
                                 value: currentFeatures[actualIndex] == 1,
                                 onChanged: (value) async {
                                   final newValue = value ? 1 : 0;
-                                  if (appState.featConfig.value != null && appState.featConfig.value!.length > actualIndex) {
-                                    appState.featConfig.value![actualIndex] = newValue;
-                                    appState.featConfig.notifyListeners();
-                                    // Send all 6 filter values at once
-                                    final filtersCommand = FiltersCommand(appState.featConfig.value!.sublist(0, 6));
-                                    await appState.sendCommand(filtersCommand.toCommand());
-                                    // Request fresh config data to sync UI
-                                    await appState.sendCommand(ConfigRequestCommand().toCommand());
+                                  // Update configData locally for immediate UI feedback
+                                  final currentConfig = appState.configData.value;
+                                  if (currentConfig != null && currentConfig.featConfig != null) {
+                                    final updatedFeatConfig = List<int>.from(currentConfig.featConfig!);
+                                    updatedFeatConfig[actualIndex] = newValue;
+                                    final updatedConfig = ConfigData(
+                                      lineKPid: currentConfig.lineKPid,
+                                      leftKPid: currentConfig.leftKPid,
+                                      rightKPid: currentConfig.rightKPid,
+                                      base: currentConfig.base,
+                                      wheels: currentConfig.wheels,
+                                      mode: currentConfig.mode,
+                                      cascade: currentConfig.cascade,
+                                      telemetry: currentConfig.telemetry,
+                                      featConfig: updatedFeatConfig,
+                                    );
+                                    appState.configData.value = updatedConfig;
                                   }
+
+                                  final featureCommand =
+                                      FeatureCommand(actualIndex, newValue);
+                                  await appState.sendCommand(
+                                      featureCommand.toCommand());
+                                  // Small delay to allow Arduino to process the command
+                                  await Future.delayed(const Duration(milliseconds: 100));
+                                  // Request fresh config data to sync UI
+                                  await appState.sendCommand(
+                                      ConfigRequestCommand().toCommand());
                                 },
-                                activeColor: Theme.of(context).colorScheme.primary,
-                                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                activeColor:
+                                    Theme.of(context).colorScheme.primary,
+                                materialTapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
                               ),
                             ],
                           ),
@@ -1156,8 +1294,9 @@ class _HomePageState extends State<HomePage> {
                             data.speedCms!.length >= 2)
                         ? data.speedCms![1] / 100 // cm/s to m/s
                         : rightRpm * 0.036 / 3.6; // RPM to m/s
-                    final averageSpeed =
-                        (leftSpeed + rightSpeed) / 2 * 3.6; // Average speed in km/h
+                    final averageSpeed = (leftSpeed + rightSpeed) /
+                        2 *
+                        3.6; // Average speed in km/h
 
                     return Column(
                       children: [
@@ -1197,7 +1336,8 @@ class _HomePageState extends State<HomePage> {
                           child: ValueListenableBuilder<SerialData?>(
                             valueListenable: appState.currentData,
                             builder: (context, data, child) {
-                              final distance = '0.0'; // Not available in new format
+                              final distance =
+                                  '0.0'; // Not available in new format
                               return Row(
                                 children: [
                                   Expanded(
@@ -1315,8 +1455,8 @@ class _HomePageState extends State<HomePage> {
                                         // Reverse order: sensor 1 on right, sensor 8 on left
                                         final reversedIndex = 7 - index;
                                         // Only sensors 1-6 (indices 1-6) are active, telemetry sends values for sensors
-                                        final isActive =
-                                            reversedIndex >= 1 && reversedIndex <= 6;
+                                        final isActive = reversedIndex >= 1 &&
+                                            reversedIndex <= 6;
                                         final sensorIndex = isActive
                                             ? reversedIndex - 1
                                             : -1; // Map to telemetry array (0-5)
@@ -1426,7 +1566,8 @@ class _HomePageState extends State<HomePage> {
                         ),
                         // Motor and Line Following Information
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
                           child: ValueListenableBuilder<OperationMode>(
                             valueListenable: appState.currentMode,
                             builder: (context, mode, child) {
@@ -1437,41 +1578,105 @@ class _HomePageState extends State<HomePage> {
                                     valueListenable: appState.debugData,
                                     builder: (context, debugData, child) {
                                       // Extract data with defaults
-                                      final leftData = telemetryData?.left ?? [0.0, 0.0, 0.0, 0, 0.0, 0.0, 0.0, 0.0];
-                                      final rightData = telemetryData?.right ?? [0.0, 0.0, 0.0, 0, 0.0, 0.0, 0.0, 0.0];
-                                      final lineData = telemetryData?.line ?? [0.0, 0.0, 0.0, 0.0, 0.0];
-                                      final lineKPid = debugData?.lineKPid ?? [2.0, 0.05, 0.75];
-                                      final leftKPid = debugData?.leftKPid ?? [1.0, 0.0, 0.0];
-                                      final rightKPid = debugData?.rightKPid ?? [1.0, 0.0, 0.0];
-                                      final baseData = debugData?.base ?? [200.0, 120.0];
-                                      final wheelsData = debugData?.wheels ?? [0.0, 0.0];
-                                      final modeData = debugData?.mode ?? 0;
-                                      final cascadeData = debugData?.cascade ?? 1;
+                                      final leftData = telemetryData?.left ??
+                                          [
+                                            0.0,
+                                            0.0,
+                                            0.0,
+                                            0,
+                                            0.0,
+                                            0.0,
+                                            0.0,
+                                            0.0
+                                          ];
+                                      final rightData = telemetryData?.right ??
+                                          [
+                                            0.0,
+                                            0.0,
+                                            0.0,
+                                            0,
+                                            0.0,
+                                            0.0,
+                                            0.0,
+                                            0.0
+                                          ];
+                                      final lineData = telemetryData?.line ??
+                                          [0.0, 0.0, 0.0, 0.0, 0.0];
+                                      final config = appState.configData.value;
+                                      final lineKPid = config?.lineKPid ?? [2.0, 0.05, 0.75];
+                                      final leftKPid = config?.leftKPid ?? [1.0, 0.0, 0.0];
+                                      final rightKPid = config?.rightKPid ?? [1.0, 0.0, 0.0];
+                                      final baseData = config?.base ?? [200.0, 120.0, 230.0];
+                                      final wheelsData = config?.wheels ?? [0.0, 0.0];
+                                      final modeData = config?.mode ?? 0;
+                                      final cascadeData = config?.cascade ?? 1;
+                                      final telemetryConfig = config?.telemetry ?? 0;
 
                                       // Left motor
-                                      final leftRpm = leftData.isNotEmpty ? leftData[0] : 0.0;
-                                      final leftTargetRpm = leftData.length > 1 ? leftData[1] : 0.0;
-                                      final leftPwm = leftData.length > 2 ? leftData[2] : 0.0;
-                                      final leftEncoder = leftData.length > 3 ? leftData[3].toInt() : 0;
-                                      final leftDirection = leftData.length > 4 ? leftData[4] : 0.0;
-                                      final leftIntegral = leftData.length > 5 ? leftData[5] : 0.0;
-                                      final leftDerivative = leftData.length > 6 ? leftData[6] : 0.0;
-                                      final leftError = leftData.length > 7 ? leftData[7] : 0.0;
+                                      final leftRpm = leftData.isNotEmpty
+                                          ? leftData[0]
+                                          : 0.0;
+                                      final leftTargetRpm = leftData.length > 1
+                                          ? leftData[1]
+                                          : 0.0;
+                                      final leftPwm = leftData.length > 2
+                                          ? leftData[2]
+                                          : 0.0;
+                                      final leftEncoder = leftData.length > 3
+                                          ? leftData[3].toInt()
+                                          : 0;
+                                      final leftDirection = leftData.length > 4
+                                          ? leftData[4]
+                                          : 0.0;
+                                      final leftIntegral = leftData.length > 5
+                                          ? leftData[5]
+                                          : 0.0;
+                                      final leftDerivative = leftData.length > 6
+                                          ? leftData[6]
+                                          : 0.0;
+                                      final leftError = leftData.length > 7
+                                          ? leftData[7]
+                                          : 0.0;
 
                                       // Right motor
-                                      final rightRpm = rightData.isNotEmpty ? rightData[0] : 0.0;
-                                      final rightTargetRpm = rightData.length > 1 ? rightData[1] : 0.0;
-                                      final rightPwm = rightData.length > 2 ? rightData[2] : 0.0;
-                                      final rightEncoder = rightData.length > 3 ? rightData[3].toInt() : 0;
-                                      final rightDirection = rightData.length > 4 ? rightData[4] : 0.0;
-                                      final rightIntegral = rightData.length > 5 ? rightData[5] : 0.0;
-                                      final rightDerivative = rightData.length > 6 ? rightData[6] : 0.0;
-                                      final rightError = rightData.length > 7 ? rightData[7] : 0.0;
+                                      final rightRpm = rightData.isNotEmpty
+                                          ? rightData[0]
+                                          : 0.0;
+                                      final rightTargetRpm =
+                                          rightData.length > 1
+                                              ? rightData[1]
+                                              : 0.0;
+                                      final rightPwm = rightData.length > 2
+                                          ? rightData[2]
+                                          : 0.0;
+                                      final rightEncoder = rightData.length > 3
+                                          ? rightData[3].toInt()
+                                          : 0;
+                                      final rightDirection =
+                                          rightData.length > 4
+                                              ? rightData[4]
+                                              : 0.0;
+                                      final rightIntegral = rightData.length > 5
+                                          ? rightData[5]
+                                          : 0.0;
+                                      final rightDerivative =
+                                          rightData.length > 6
+                                              ? rightData[6]
+                                              : 0.0;
+                                      final rightError = rightData.length > 7
+                                          ? rightData[7]
+                                          : 0.0;
 
                                       // Line following
-                                      final lineError = lineData.length > 1 ? lineData[1] : 0.0;
-                                      final lineIntegral = lineData.length > 2 ? lineData[2] : 0.0;
-                                      final lineDerivative = lineData.length > 3 ? lineData[3] : 0.0;
+                                      final lineError = lineData.length > 1
+                                          ? lineData[1]
+                                          : 0.0;
+                                      final lineIntegral = lineData.length > 2
+                                          ? lineData[2]
+                                          : 0.0;
+                                      final lineDerivative = lineData.length > 3
+                                          ? lineData[3]
+                                          : 0.0;
 
                                       return Column(
                                         children: [
@@ -1481,22 +1686,36 @@ class _HomePageState extends State<HomePage> {
                                               // Left Motor
                                               Expanded(
                                                 child: Container(
-                                                  padding: const EdgeInsets.all(8),
-                                                  margin: const EdgeInsets.only(right: 2),
+                                                  padding:
+                                                      const EdgeInsets.all(8),
+                                                  margin: const EdgeInsets.only(
+                                                      right: 2),
                                                   decoration: BoxDecoration(
-                                                    color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
-                                                    borderRadius: BorderRadius.circular(8),
+                                                    color: Theme.of(context)
+                                                        .colorScheme
+                                                        .surfaceVariant
+                                                        .withOpacity(0.5),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            8),
                                                   ),
                                                   child: Column(
-                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .start,
                                                     children: [
                                                       Text(
                                                         'Motor Izquierdo',
                                                         style: TextStyle(
                                                           fontSize: 11,
-                                                          fontWeight: FontWeight.w600,
-                                                          color: Theme.of(context).colorScheme.onSurface,
-                                                          fontFamily: 'Space Grotesk',
+                                                          fontWeight:
+                                                              FontWeight.w600,
+                                                          color:
+                                                              Theme.of(context)
+                                                                  .colorScheme
+                                                                  .onSurface,
+                                                          fontFamily:
+                                                              'Space Grotesk',
                                                         ),
                                                       ),
                                                       const SizedBox(height: 3),
@@ -1504,28 +1723,40 @@ class _HomePageState extends State<HomePage> {
                                                         'RPM: ${leftRpm.toStringAsFixed(1)} / ${leftTargetRpm.toStringAsFixed(1)}',
                                                         style: TextStyle(
                                                           fontSize: 9,
-                                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                          color: Theme.of(
+                                                                  context)
+                                                              .colorScheme
+                                                              .onSurfaceVariant,
                                                         ),
                                                       ),
                                                       Text(
                                                         'PWM: ${leftPwm.toStringAsFixed(0)}',
                                                         style: TextStyle(
                                                           fontSize: 9,
-                                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                          color: Theme.of(
+                                                                  context)
+                                                              .colorScheme
+                                                              .onSurfaceVariant,
                                                         ),
                                                       ),
                                                       Text(
                                                         'Encoder: $leftEncoder ${leftError > 0 ? '(atrasado)' : leftError < 0 ? '(adelantado)' : ''}',
                                                         style: TextStyle(
                                                           fontSize: 9,
-                                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                          color: Theme.of(
+                                                                  context)
+                                                              .colorScheme
+                                                              .onSurfaceVariant,
                                                         ),
                                                       ),
                                                       Text(
                                                         'Dirección: ${leftDirection > 0 ? 'Adelante' : leftDirection < 0 ? 'Atrás' : 'Detenido'}',
                                                         style: TextStyle(
                                                           fontSize: 9,
-                                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                          color: Theme.of(
+                                                                  context)
+                                                              .colorScheme
+                                                              .onSurfaceVariant,
                                                         ),
                                                       ),
                                                       const SizedBox(height: 3),
@@ -1533,7 +1764,10 @@ class _HomePageState extends State<HomePage> {
                                                         'PID - I: ${leftIntegral.toStringAsFixed(1)}, D: ${leftDerivative.toStringAsFixed(1)}, E: ${leftError.toStringAsFixed(1)}',
                                                         style: TextStyle(
                                                           fontSize: 8,
-                                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                          color: Theme.of(
+                                                                  context)
+                                                              .colorScheme
+                                                              .onSurfaceVariant,
                                                         ),
                                                       ),
                                                     ],
@@ -1543,22 +1777,36 @@ class _HomePageState extends State<HomePage> {
                                               // Right Motor
                                               Expanded(
                                                 child: Container(
-                                                  padding: const EdgeInsets.all(8),
-                                                  margin: const EdgeInsets.only(left: 2),
+                                                  padding:
+                                                      const EdgeInsets.all(8),
+                                                  margin: const EdgeInsets.only(
+                                                      left: 2),
                                                   decoration: BoxDecoration(
-                                                    color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
-                                                    borderRadius: BorderRadius.circular(8),
+                                                    color: Theme.of(context)
+                                                        .colorScheme
+                                                        .surfaceVariant
+                                                        .withOpacity(0.5),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            8),
                                                   ),
                                                   child: Column(
-                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .start,
                                                     children: [
                                                       Text(
                                                         'Motor Derecho',
                                                         style: TextStyle(
                                                           fontSize: 11,
-                                                          fontWeight: FontWeight.w600,
-                                                          color: Theme.of(context).colorScheme.onSurface,
-                                                          fontFamily: 'Space Grotesk',
+                                                          fontWeight:
+                                                              FontWeight.w600,
+                                                          color:
+                                                              Theme.of(context)
+                                                                  .colorScheme
+                                                                  .onSurface,
+                                                          fontFamily:
+                                                              'Space Grotesk',
                                                         ),
                                                       ),
                                                       const SizedBox(height: 3),
@@ -1566,28 +1814,40 @@ class _HomePageState extends State<HomePage> {
                                                         'RPM: ${rightRpm.toStringAsFixed(1)} / ${rightTargetRpm.toStringAsFixed(1)}',
                                                         style: TextStyle(
                                                           fontSize: 9,
-                                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                          color: Theme.of(
+                                                                  context)
+                                                              .colorScheme
+                                                              .onSurfaceVariant,
                                                         ),
                                                       ),
                                                       Text(
                                                         'PWM: ${rightPwm.toStringAsFixed(0)}',
                                                         style: TextStyle(
                                                           fontSize: 9,
-                                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                          color: Theme.of(
+                                                                  context)
+                                                              .colorScheme
+                                                              .onSurfaceVariant,
                                                         ),
                                                       ),
                                                       Text(
                                                         'Encoder: $rightEncoder ${rightError > 0 ? '(atrasado)' : rightError < 0 ? '(adelantado)' : ''}',
                                                         style: TextStyle(
                                                           fontSize: 9,
-                                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                          color: Theme.of(
+                                                                  context)
+                                                              .colorScheme
+                                                              .onSurfaceVariant,
                                                         ),
                                                       ),
                                                       Text(
                                                         'Dirección: ${rightDirection > 0 ? 'Adelante' : rightDirection < 0 ? 'Atrás' : 'Detenido'}',
                                                         style: TextStyle(
                                                           fontSize: 9,
-                                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                          color: Theme.of(
+                                                                  context)
+                                                              .colorScheme
+                                                              .onSurfaceVariant,
                                                         ),
                                                       ),
                                                       const SizedBox(height: 3),
@@ -1595,7 +1855,10 @@ class _HomePageState extends State<HomePage> {
                                                         'PID - I: ${rightIntegral.toStringAsFixed(1)}, D: ${rightDerivative.toStringAsFixed(1)}, E: ${rightError.toStringAsFixed(1)}',
                                                         style: TextStyle(
                                                           fontSize: 8,
-                                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                          color: Theme.of(
+                                                                  context)
+                                                              .colorScheme
+                                                              .onSurfaceVariant,
                                                         ),
                                                       ),
                                                     ],
@@ -1605,24 +1868,36 @@ class _HomePageState extends State<HomePage> {
                                             ],
                                           ),
                                           // Line Following below motors
-                                          if (mode == OperationMode.lineFollowing)
+                                          if (mode ==
+                                              OperationMode.lineFollowing)
                                             Container(
                                               padding: const EdgeInsets.all(8),
-                                              margin: const EdgeInsets.symmetric(vertical: 4),
+                                              margin:
+                                                  const EdgeInsets.symmetric(
+                                                      vertical: 4),
                                               decoration: BoxDecoration(
-                                                color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
-                                                borderRadius: BorderRadius.circular(8),
+                                                color: Theme.of(context)
+                                                    .colorScheme
+                                                    .surfaceVariant
+                                                    .withOpacity(0.5),
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
                                               ),
                                               child: Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
                                                 children: [
                                                   Text(
                                                     'Seguimiento',
                                                     style: TextStyle(
                                                       fontSize: 11,
-                                                      fontWeight: FontWeight.w600,
-                                                      color: Theme.of(context).colorScheme.onSurface,
-                                                      fontFamily: 'Space Grotesk',
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                      color: Theme.of(context)
+                                                          .colorScheme
+                                                          .onSurface,
+                                                      fontFamily:
+                                                          'Space Grotesk',
                                                     ),
                                                   ),
                                                   const SizedBox(height: 3),
@@ -1633,7 +1908,10 @@ class _HomePageState extends State<HomePage> {
                                                           'Posición: ${lineData[0].toStringAsFixed(1)}',
                                                           style: TextStyle(
                                                             fontSize: 9,
-                                                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                            color: Theme.of(
+                                                                    context)
+                                                                .colorScheme
+                                                                .onSurfaceVariant,
                                                           ),
                                                         ),
                                                       ),
@@ -1642,7 +1920,10 @@ class _HomePageState extends State<HomePage> {
                                                           'Corrección: ${lineData.length > 4 ? lineData[4].toStringAsFixed(1) : '0.0'}',
                                                           style: TextStyle(
                                                             fontSize: 9,
-                                                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                            color: Theme.of(
+                                                                    context)
+                                                                .colorScheme
+                                                                .onSurfaceVariant,
                                                           ),
                                                         ),
                                                       ),
@@ -1653,31 +1934,59 @@ class _HomePageState extends State<HomePage> {
                                                     'PID - I: ${lineData[2].toStringAsFixed(1)}, D: ${lineData[3].toStringAsFixed(1)}, E: ${lineData[1].toStringAsFixed(1)}',
                                                     style: TextStyle(
                                                       fontSize: 9,
-                                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                      color: Theme.of(context)
+                                                          .colorScheme
+                                                          .onSurfaceVariant,
                                                     ),
                                                   ),
                                                   const SizedBox(height: 2),
                                                   // Features status
-                                                  ValueListenableBuilder<List<int>?>(
-                                                    valueListenable: appState.featConfig,
-                                                    builder: (context, featConfig, child) {
-                                                      if (featConfig == null || featConfig.length != 8) return const SizedBox.shrink();
+                                                  ValueListenableBuilder<
+                                                      ConfigData?>(
+                                                    valueListenable:
+                                                        appState.configData,
+                                                    builder: (context,
+                                                        configData, child) {
+                                                      final featConfig = configData?.featConfig;
+                                                      if (featConfig == null ||
+                                                          featConfig.length !=
+                                                              8)
+                                                        return const SizedBox
+                                                            .shrink();
 
-                                                      final featureNames = ['MED', 'MA', 'KAL', 'HYS', 'DZ', 'LP', 'APID', 'SP'];
-                                                      final activeFeatures = <String>[];
+                                                      final featureNames = [
+                                                        'MED',
+                                                        'MA',
+                                                        'KAL',
+                                                        'HYS',
+                                                        'DZ',
+                                                        'LP',
+                                                        'APID',
+                                                        'SP'
+                                                      ];
+                                                      final activeFeatures =
+                                                          <String>[];
 
-                                                      for (int i = 0; i < featConfig.length; i++) {
-                                                        if (featConfig[i] == 1) {
-                                                          activeFeatures.add(featureNames[i]);
+                                                      for (int i = 0;
+                                                          i < featConfig.length;
+                                                          i++) {
+                                                        if (featConfig[i] ==
+                                                            1) {
+                                                          activeFeatures.add(
+                                                              featureNames[i]);
                                                         }
                                                       }
 
-                                                      if (activeFeatures.isEmpty) {
+                                                      if (activeFeatures
+                                                          .isEmpty) {
                                                         return Text(
                                                           'Features: ninguno activo',
                                                           style: TextStyle(
                                                             fontSize: 8,
-                                                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                            color: Theme.of(
+                                                                    context)
+                                                                .colorScheme
+                                                                .onSurfaceVariant,
                                                           ),
                                                         );
                                                       }
@@ -1686,7 +1995,10 @@ class _HomePageState extends State<HomePage> {
                                                         'Features: ${activeFeatures.join(', ')}',
                                                         style: TextStyle(
                                                           fontSize: 8,
-                                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                          color: Theme.of(
+                                                                  context)
+                                                              .colorScheme
+                                                              .onSurfaceVariant,
                                                         ),
                                                       );
                                                     },
@@ -1699,21 +2011,30 @@ class _HomePageState extends State<HomePage> {
                                           Container(
                                             width: double.infinity,
                                             decoration: BoxDecoration(
-                                              color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
-                                              borderRadius: BorderRadius.circular(8),
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .surfaceVariant
+                                                  .withOpacity(0.5),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
                                             ),
                                             child: ExpansionTile(
-                                              shape: Border.all(width: 0, color: Colors.transparent),
+                                              shape: Border.all(
+                                                  width: 0,
+                                                  color: Colors.transparent),
                                               title: Text(
                                                 'Datos de Configuración',
                                                 style: TextStyle(
                                                   fontSize: 12,
                                                   fontWeight: FontWeight.w600,
-                                                  color: Theme.of(context).colorScheme.onSurface,
+                                                  color: Theme.of(context)
+                                                      .colorScheme
+                                                      .onSurface,
                                                   fontFamily: 'Space Grotesk',
                                                 ),
                                               ),
-                                              initiallyExpanded: _configExpanded,
+                                              initiallyExpanded:
+                                                  _configExpanded,
                                               onExpansionChanged: (expanded) {
                                                 setState(() {
                                                   _configExpanded = expanded;
@@ -1721,7 +2042,8 @@ class _HomePageState extends State<HomePage> {
                                               },
                                               children: [
                                                 Padding(
-                                                  padding: const EdgeInsets.all(12),
+                                                  padding:
+                                                      const EdgeInsets.all(12),
                                                   child: Column(
                                                     children: [
                                                       // 3 Column PID Layout
@@ -1730,44 +2052,84 @@ class _HomePageState extends State<HomePage> {
                                                           // Línea Column
                                                           Expanded(
                                                             child: Container(
-                                                              padding: const EdgeInsets.all(8),
-                                                              margin: const EdgeInsets.only(right: 2),
-                                                              decoration: BoxDecoration(
-                                                                color: Theme.of(context).colorScheme.surface,
-                                                                borderRadius: BorderRadius.circular(6),
+                                                              padding:
+                                                                  const EdgeInsets
+                                                                      .all(8),
+                                                              margin:
+                                                                  const EdgeInsets
+                                                                      .only(
+                                                                      right: 2),
+                                                              decoration:
+                                                                  BoxDecoration(
+                                                                color: Theme.of(
+                                                                        context)
+                                                                    .colorScheme
+                                                                    .surface,
+                                                                borderRadius:
+                                                                    BorderRadius
+                                                                        .circular(
+                                                                            6),
                                                               ),
                                                               child: Column(
-                                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                                crossAxisAlignment:
+                                                                    CrossAxisAlignment
+                                                                        .start,
                                                                 children: [
                                                                   Text(
                                                                     'Línea',
-                                                                    style: TextStyle(
-                                                                      fontSize: 11,
-                                                                      fontWeight: FontWeight.w600,
-                                                                      color: Theme.of(context).colorScheme.onSurface,
+                                                                    style:
+                                                                        TextStyle(
+                                                                      fontSize:
+                                                                          11,
+                                                                      fontWeight:
+                                                                          FontWeight
+                                                                              .w600,
+                                                                      color: Theme.of(
+                                                                              context)
+                                                                          .colorScheme
+                                                                          .onSurface,
                                                                     ),
-                                                                    textAlign: TextAlign.center,
+                                                                    textAlign:
+                                                                        TextAlign
+                                                                            .center,
                                                                   ),
-                                                                  const SizedBox(height: 4),
+                                                                  const SizedBox(
+                                                                      height:
+                                                                          4),
                                                                   Text(
                                                                     'KP: ${lineKPid[0].toStringAsFixed(2)}',
-                                                                    style: TextStyle(
-                                                                      fontSize: 9,
-                                                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                                    style:
+                                                                        TextStyle(
+                                                                      fontSize:
+                                                                          9,
+                                                                      color: Theme.of(
+                                                                              context)
+                                                                          .colorScheme
+                                                                          .onSurfaceVariant,
                                                                     ),
                                                                   ),
                                                                   Text(
                                                                     'KI: ${lineKPid[1].toStringAsFixed(3)}',
-                                                                    style: TextStyle(
-                                                                      fontSize: 9,
-                                                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                                    style:
+                                                                        TextStyle(
+                                                                      fontSize:
+                                                                          9,
+                                                                      color: Theme.of(
+                                                                              context)
+                                                                          .colorScheme
+                                                                          .onSurfaceVariant,
                                                                     ),
                                                                   ),
                                                                   Text(
                                                                     'KD: ${lineKPid[2].toStringAsFixed(2)}',
-                                                                    style: TextStyle(
-                                                                      fontSize: 9,
-                                                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                                    style:
+                                                                        TextStyle(
+                                                                      fontSize:
+                                                                          9,
+                                                                      color: Theme.of(
+                                                                              context)
+                                                                          .colorScheme
+                                                                          .onSurfaceVariant,
                                                                     ),
                                                                   ),
                                                                 ],
@@ -1777,44 +2139,85 @@ class _HomePageState extends State<HomePage> {
                                                           // Izquierdo Column
                                                           Expanded(
                                                             child: Container(
-                                                              padding: const EdgeInsets.all(8),
-                                                              margin: const EdgeInsets.symmetric(horizontal: 2),
-                                                              decoration: BoxDecoration(
-                                                                color: Theme.of(context).colorScheme.surface,
-                                                                borderRadius: BorderRadius.circular(6),
+                                                              padding:
+                                                                  const EdgeInsets
+                                                                      .all(8),
+                                                              margin:
+                                                                  const EdgeInsets
+                                                                      .symmetric(
+                                                                      horizontal:
+                                                                          2),
+                                                              decoration:
+                                                                  BoxDecoration(
+                                                                color: Theme.of(
+                                                                        context)
+                                                                    .colorScheme
+                                                                    .surface,
+                                                                borderRadius:
+                                                                    BorderRadius
+                                                                        .circular(
+                                                                            6),
                                                               ),
                                                               child: Column(
-                                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                                crossAxisAlignment:
+                                                                    CrossAxisAlignment
+                                                                        .start,
                                                                 children: [
                                                                   Text(
                                                                     'Izquierdo',
-                                                                    style: TextStyle(
-                                                                      fontSize: 11,
-                                                                      fontWeight: FontWeight.w600,
-                                                                      color: Theme.of(context).colorScheme.onSurface,
+                                                                    style:
+                                                                        TextStyle(
+                                                                      fontSize:
+                                                                          11,
+                                                                      fontWeight:
+                                                                          FontWeight
+                                                                              .w600,
+                                                                      color: Theme.of(
+                                                                              context)
+                                                                          .colorScheme
+                                                                          .onSurface,
                                                                     ),
-                                                                    textAlign: TextAlign.center,
+                                                                    textAlign:
+                                                                        TextAlign
+                                                                            .center,
                                                                   ),
-                                                                  const SizedBox(height: 4),
+                                                                  const SizedBox(
+                                                                      height:
+                                                                          4),
                                                                   Text(
                                                                     'KP: ${leftKPid[0].toStringAsFixed(2)}',
-                                                                    style: TextStyle(
-                                                                      fontSize: 9,
-                                                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                                    style:
+                                                                        TextStyle(
+                                                                      fontSize:
+                                                                          9,
+                                                                      color: Theme.of(
+                                                                              context)
+                                                                          .colorScheme
+                                                                          .onSurfaceVariant,
                                                                     ),
                                                                   ),
                                                                   Text(
                                                                     'KI: ${leftKPid[1].toStringAsFixed(3)}',
-                                                                    style: TextStyle(
-                                                                      fontSize: 9,
-                                                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                                    style:
+                                                                        TextStyle(
+                                                                      fontSize:
+                                                                          9,
+                                                                      color: Theme.of(
+                                                                              context)
+                                                                          .colorScheme
+                                                                          .onSurfaceVariant,
                                                                     ),
                                                                   ),
                                                                   Text(
                                                                     'KD: ${leftKPid[2].toStringAsFixed(2)}',
-                                                                    style: TextStyle(
-                                                                      fontSize: 9,
-                                                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                                    style:
+                                                                        TextStyle(
+                                                                      fontSize:
+                                                                          9,
+                                                                      color: Theme.of(
+                                                                              context)
+                                                                          .colorScheme
+                                                                          .onSurfaceVariant,
                                                                     ),
                                                                   ),
                                                                 ],
@@ -1824,44 +2227,84 @@ class _HomePageState extends State<HomePage> {
                                                           // Derecho Column
                                                           Expanded(
                                                             child: Container(
-                                                              padding: const EdgeInsets.all(8),
-                                                              margin: const EdgeInsets.only(left: 2),
-                                                              decoration: BoxDecoration(
-                                                                color: Theme.of(context).colorScheme.surface,
-                                                                borderRadius: BorderRadius.circular(6),
+                                                              padding:
+                                                                  const EdgeInsets
+                                                                      .all(8),
+                                                              margin:
+                                                                  const EdgeInsets
+                                                                      .only(
+                                                                      left: 2),
+                                                              decoration:
+                                                                  BoxDecoration(
+                                                                color: Theme.of(
+                                                                        context)
+                                                                    .colorScheme
+                                                                    .surface,
+                                                                borderRadius:
+                                                                    BorderRadius
+                                                                        .circular(
+                                                                            6),
                                                               ),
                                                               child: Column(
-                                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                                crossAxisAlignment:
+                                                                    CrossAxisAlignment
+                                                                        .start,
                                                                 children: [
                                                                   Text(
                                                                     'Derecho',
-                                                                    style: TextStyle(
-                                                                      fontSize: 11,
-                                                                      fontWeight: FontWeight.w600,
-                                                                      color: Theme.of(context).colorScheme.onSurface,
+                                                                    style:
+                                                                        TextStyle(
+                                                                      fontSize:
+                                                                          11,
+                                                                      fontWeight:
+                                                                          FontWeight
+                                                                              .w600,
+                                                                      color: Theme.of(
+                                                                              context)
+                                                                          .colorScheme
+                                                                          .onSurface,
                                                                     ),
-                                                                    textAlign: TextAlign.center,
+                                                                    textAlign:
+                                                                        TextAlign
+                                                                            .center,
                                                                   ),
-                                                                  const SizedBox(height: 4),
+                                                                  const SizedBox(
+                                                                      height:
+                                                                          4),
                                                                   Text(
                                                                     'KP: ${rightKPid[0].toStringAsFixed(2)}',
-                                                                    style: TextStyle(
-                                                                      fontSize: 9,
-                                                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                                    style:
+                                                                        TextStyle(
+                                                                      fontSize:
+                                                                          9,
+                                                                      color: Theme.of(
+                                                                              context)
+                                                                          .colorScheme
+                                                                          .onSurfaceVariant,
                                                                     ),
                                                                   ),
                                                                   Text(
                                                                     'KI: ${rightKPid[1].toStringAsFixed(3)}',
-                                                                    style: TextStyle(
-                                                                      fontSize: 9,
-                                                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                                    style:
+                                                                        TextStyle(
+                                                                      fontSize:
+                                                                          9,
+                                                                      color: Theme.of(
+                                                                              context)
+                                                                          .colorScheme
+                                                                          .onSurfaceVariant,
                                                                     ),
                                                                   ),
                                                                   Text(
                                                                     'KD: ${rightKPid[2].toStringAsFixed(2)}',
-                                                                    style: TextStyle(
-                                                                      fontSize: 9,
-                                                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                                    style:
+                                                                        TextStyle(
+                                                                      fontSize:
+                                                                          9,
+                                                                      color: Theme.of(
+                                                                              context)
+                                                                          .colorScheme
+                                                                          .onSurfaceVariant,
                                                                     ),
                                                                   ),
                                                                 ],
@@ -1876,36 +2319,81 @@ class _HomePageState extends State<HomePage> {
                                                         children: [
                                                           Expanded(
                                                             child: Container(
-                                                              padding: const EdgeInsets.all(8),
-                                                              margin: const EdgeInsets.only(right: 2),
-                                                              decoration: BoxDecoration(
-                                                                color: Theme.of(context).colorScheme.surface,
-                                                                borderRadius: BorderRadius.circular(6),
+                                                              padding:
+                                                                  const EdgeInsets
+                                                                      .all(8),
+                                                              margin:
+                                                                  const EdgeInsets
+                                                                      .only(
+                                                                      right: 2),
+                                                              decoration:
+                                                                  BoxDecoration(
+                                                                color: Theme.of(
+                                                                        context)
+                                                                    .colorScheme
+                                                                    .surface,
+                                                                borderRadius:
+                                                                    BorderRadius
+                                                                        .circular(
+                                                                            6),
                                                               ),
                                                               child: Column(
-                                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                                crossAxisAlignment:
+                                                                    CrossAxisAlignment
+                                                                        .start,
                                                                 children: [
                                                                   Text(
                                                                     'Base',
-                                                                    style: TextStyle(
-                                                                      fontSize: 11,
-                                                                      fontWeight: FontWeight.w600,
-                                                                      color: Theme.of(context).colorScheme.onSurface,
+                                                                    style:
+                                                                        TextStyle(
+                                                                      fontSize:
+                                                                          11,
+                                                                      fontWeight:
+                                                                          FontWeight
+                                                                              .w600,
+                                                                      color: Theme.of(
+                                                                              context)
+                                                                          .colorScheme
+                                                                          .onSurface,
                                                                     ),
                                                                   ),
-                                                                  const SizedBox(height: 4),
+                                                                  const SizedBox(
+                                                                      height:
+                                                                          4),
                                                                   Text(
                                                                     'Velocidad: ${baseData[0].toStringAsFixed(0)}',
-                                                                    style: TextStyle(
-                                                                      fontSize: 9,
-                                                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                                    style:
+                                                                        TextStyle(
+                                                                      fontSize:
+                                                                          9,
+                                                                      color: Theme.of(
+                                                                              context)
+                                                                          .colorScheme
+                                                                          .onSurfaceVariant,
                                                                     ),
                                                                   ),
                                                                   Text(
                                                                     'RPM: ${baseData[1].toStringAsFixed(1)}',
-                                                                    style: TextStyle(
-                                                                      fontSize: 9,
-                                                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                                    style:
+                                                                        TextStyle(
+                                                                      fontSize:
+                                                                          9,
+                                                                      color: Theme.of(
+                                                                              context)
+                                                                          .colorScheme
+                                                                          .onSurfaceVariant,
+                                                                    ),
+                                                                  ),
+                                                                  Text(
+                                                                    'Máx: ${baseData.length > 2 ? baseData[2].toStringAsFixed(0) : '230'}',
+                                                                    style:
+                                                                        TextStyle(
+                                                                      fontSize:
+                                                                          9,
+                                                                      color: Theme.of(
+                                                                              context)
+                                                                          .colorScheme
+                                                                          .onSurfaceVariant,
                                                                     ),
                                                                   ),
                                                                 ],
@@ -1914,36 +2402,69 @@ class _HomePageState extends State<HomePage> {
                                                           ),
                                                           Expanded(
                                                             child: Container(
-                                                              padding: const EdgeInsets.all(8),
-                                                              margin: const EdgeInsets.only(left: 2),
-                                                              decoration: BoxDecoration(
-                                                                color: Theme.of(context).colorScheme.surface,
-                                                                borderRadius: BorderRadius.circular(6),
+                                                              padding:
+                                                                  const EdgeInsets
+                                                                      .all(8),
+                                                              margin:
+                                                                  const EdgeInsets
+                                                                      .only(
+                                                                      left: 2),
+                                                              decoration:
+                                                                  BoxDecoration(
+                                                                color: Theme.of(
+                                                                        context)
+                                                                    .colorScheme
+                                                                    .surface,
+                                                                borderRadius:
+                                                                    BorderRadius
+                                                                        .circular(
+                                                                            6),
                                                               ),
                                                               child: Column(
-                                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                                crossAxisAlignment:
+                                                                    CrossAxisAlignment
+                                                                        .start,
                                                                 children: [
                                                                   Text(
                                                                     'Ruedas',
-                                                                    style: TextStyle(
-                                                                      fontSize: 11,
-                                                                      fontWeight: FontWeight.w600,
-                                                                      color: Theme.of(context).colorScheme.onSurface,
+                                                                    style:
+                                                                        TextStyle(
+                                                                      fontSize:
+                                                                          11,
+                                                                      fontWeight:
+                                                                          FontWeight
+                                                                              .w600,
+                                                                      color: Theme.of(
+                                                                              context)
+                                                                          .colorScheme
+                                                                          .onSurface,
                                                                     ),
                                                                   ),
-                                                                  const SizedBox(height: 4),
+                                                                  const SizedBox(
+                                                                      height:
+                                                                          4),
                                                                   Text(
                                                                     'Diámetro: ${wheelsData[0].toStringAsFixed(2)}',
-                                                                    style: TextStyle(
-                                                                      fontSize: 9,
-                                                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                                    style:
+                                                                        TextStyle(
+                                                                      fontSize:
+                                                                          9,
+                                                                      color: Theme.of(
+                                                                              context)
+                                                                          .colorScheme
+                                                                          .onSurfaceVariant,
                                                                     ),
                                                                   ),
                                                                   Text(
                                                                     'Separación: ${wheelsData[1].toStringAsFixed(2)}',
-                                                                    style: TextStyle(
-                                                                      fontSize: 9,
-                                                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                                    style:
+                                                                        TextStyle(
+                                                                      fontSize:
+                                                                          9,
+                                                                      color: Theme.of(
+                                                                              context)
+                                                                          .colorScheme
+                                                                          .onSurfaceVariant,
                                                                     ),
                                                                   ),
                                                                 ],
@@ -1956,79 +2477,149 @@ class _HomePageState extends State<HomePage> {
                                                       // Operation and Control
                                                       Container(
                                                         width: double.infinity,
-                                                        padding: const EdgeInsets.all(8),
-                                                        decoration: BoxDecoration(
-                                                          color: Theme.of(context).colorScheme.surface,
-                                                          borderRadius: BorderRadius.circular(6),
+                                                        padding:
+                                                            const EdgeInsets
+                                                                .all(8),
+                                                        decoration:
+                                                            BoxDecoration(
+                                                          color:
+                                                              Theme.of(context)
+                                                                  .colorScheme
+                                                                  .surface,
+                                                          borderRadius:
+                                                              BorderRadius
+                                                                  .circular(6),
                                                         ),
                                                         child: Column(
-                                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                                          crossAxisAlignment:
+                                                              CrossAxisAlignment
+                                                                  .start,
                                                           children: [
                                                             Text(
                                                               'Operación y Control',
                                                               style: TextStyle(
                                                                 fontSize: 11,
-                                                                fontWeight: FontWeight.w600,
-                                                                color: Theme.of(context).colorScheme.onSurface,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w600,
+                                                                color: Theme.of(
+                                                                        context)
+                                                                    .colorScheme
+                                                                    .onSurface,
                                                               ),
                                                             ),
-                                                            const SizedBox(height: 4),
+                                                            const SizedBox(
+                                                                height: 4),
                                                             Row(
                                                               children: [
                                                                 Expanded(
                                                                   child: Text(
                                                                     'Modo: ${modeData == 0 ? 'Reposo' : modeData == 1 ? 'Seguimiento' : 'Remoto'}',
-                                                                    style: TextStyle(
-                                                                      fontSize: 9,
-                                                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                                    style:
+                                                                        TextStyle(
+                                                                      fontSize:
+                                                                          9,
+                                                                      color: Theme.of(
+                                                                              context)
+                                                                          .colorScheme
+                                                                          .onSurfaceVariant,
                                                                     ),
                                                                   ),
                                                                 ),
                                                                 Expanded(
                                                                   child: Text(
                                                                     'Cascada: ${cascadeData == 1 ? 'Activada' : 'Desactivada'}',
-                                                                    style: TextStyle(
-                                                                      fontSize: 9,
-                                                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                                    style:
+                                                                        TextStyle(
+                                                                      fontSize:
+                                                                          9,
+                                                                      color: Theme.of(
+                                                                              context)
+                                                                          .colorScheme
+                                                                          .onSurfaceVariant,
                                                                     ),
                                                                   ),
                                                                 ),
                                                               ],
+                                                            ),
+                                                            const SizedBox(height: 2),
+                                                            Text(
+                                                              'Telemetría: ${telemetryConfig == 1 ? 'Activada' : 'Desactivada'}',
+                                                              style: TextStyle(
+                                                                fontSize: 9,
+                                                                color: Theme.of(context)
+                                                                    .colorScheme
+                                                                    .onSurfaceVariant,
+                                                              ),
                                                             ),
                                                           ],
                                                         ),
                                                       ),
                                                       const SizedBox(height: 8),
                                                       // Features Status
-                                                      ValueListenableBuilder<List<int>?>(
-                                                        valueListenable: appState.featConfig,
-                                                        builder: (context, featConfig, child) {
-                                                          if (featConfig == null || featConfig.length != 8) return const SizedBox.shrink();
+                                                      ValueListenableBuilder<
+                                                          ConfigData?>(
+                                                        valueListenable:
+                                                            appState.configData,
+                                                        builder: (context,
+                                                            configData, child) {
+                                                          final featConfig = configData?.featConfig;
+                                                          if (featConfig ==
+                                                                  null ||
+                                                              featConfig
+                                                                      .length !=
+                                                                  8)
+                                                            return const SizedBox
+                                                                .shrink();
 
                                                           return Container(
-                                                            width: double.infinity,
-                                                            padding: const EdgeInsets.all(8),
-                                                            decoration: BoxDecoration(
-                                                              color: Theme.of(context).colorScheme.surface,
-                                                              borderRadius: BorderRadius.circular(6),
+                                                            width:
+                                                                double.infinity,
+                                                            padding:
+                                                                const EdgeInsets
+                                                                    .all(8),
+                                                            decoration:
+                                                                BoxDecoration(
+                                                              color: Theme.of(
+                                                                      context)
+                                                                  .colorScheme
+                                                                  .surface,
+                                                              borderRadius:
+                                                                  BorderRadius
+                                                                      .circular(
+                                                                          6),
                                                             ),
                                                             child: Column(
-                                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                                              crossAxisAlignment:
+                                                                  CrossAxisAlignment
+                                                                      .start,
                                                               children: [
                                                                 Text(
                                                                   'Features',
-                                                                  style: TextStyle(
-                                                                    fontSize: 11,
-                                                                    fontWeight: FontWeight.w600,
-                                                                    color: Theme.of(context).colorScheme.onSurface,
+                                                                  style:
+                                                                      TextStyle(
+                                                                    fontSize:
+                                                                        11,
+                                                                    fontWeight:
+                                                                        FontWeight
+                                                                            .w600,
+                                                                    color: Theme.of(
+                                                                            context)
+                                                                        .colorScheme
+                                                                        .onSurface,
                                                                   ),
                                                                 ),
-                                                                const SizedBox(height: 4),
+                                                                const SizedBox(
+                                                                    height: 4),
                                                                 Text(
                                                                   'MED:${featConfig[0]} MA:${featConfig[1]} KAL:${featConfig[2]} HYS:${featConfig[3]} DZ:${featConfig[4]} LP:${featConfig[5]} APID:${featConfig[6]} SP:${featConfig[7]}',
-                                                                  style: TextStyle(
+                                                                  style:
+                                                                      TextStyle(
                                                                     fontSize: 9,
-                                                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                                    color: Theme.of(
+                                                                            context)
+                                                                        .colorScheme
+                                                                        .onSurfaceVariant,
                                                                   ),
                                                                 ),
                                                               ],

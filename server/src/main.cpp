@@ -95,7 +95,8 @@ void setup() {
   leftPid.setGains(config.leftKp, config.leftKi, config.leftKd);
   rightPid.setGains(config.rightKp, config.rightKi, config.rightKd);
   // Configurar features
-  features.setEnables(config.featureEnables);
+  features.setEnables(config.features);
+  telemetry = config.telemetry;
 
   qtr.setCalibration(config.sensorMin, config.sensorMax);
 
@@ -160,23 +161,27 @@ void loop() {
        // Ajustes dinámicos de velocidad base
        dynamicBaseRPM = config.baseRPM;
        dynamicBaseSpeed = config.baseSpeed;
-       if(curvature > 500 || allBlack) {  // Alta curvatura o pérdida de línea
+       if(config.features.variableSpeed && (curvature > 500 || allBlack)) {  // Alta curvatura o pérdida de línea
          dynamicBaseRPM = max(60.0f, dynamicBaseRPM - 30.0f);
          dynamicBaseSpeed = max(100, dynamicBaseSpeed - 50);
        }
 
        float pidOutput;
        if(allBlack) {
-         pidOutput = -200;  // girar a la izquierda rápidamente cuando todos los sensores están en negro
+         pidOutput = config.features.turnDirection ? 200 : -200;  // girar según feature: derecha o izquierda
        } else if(allWhite) {
          pidOutput = 200;   // girar a la derecha rápidamente cuando todos los sensores están en blanco
        } else {
          lastLinePosition = currentPosition;
          float error = 0 - lastLinePosition;
          // Ajuste dinámico de ganancias PID basado en curvatura
-         float dynamicKp = config.lineKp + curvature * 0.001;  // Factor pequeño para ajuste
-         float dynamicKd = config.lineKd + curvature * 0.0005;
-         linePid.setGains(dynamicKp, config.lineKi, dynamicKd);
+         if(config.features.dynamicLinePid) {
+           float dynamicKp = config.lineKp + curvature * 0.001;  // Factor pequeño para ajuste
+           float dynamicKd = config.lineKd + curvature * 0.0005;
+           linePid.setGains(dynamicKp, config.lineKi, dynamicKd);
+         } else {
+           linePid.setGains(config.lineKp, config.lineKi, config.lineKd);
+         }
          pidOutput = linePid.calculate(0, error, dtLine);
        }
        lastPidOutput = pidOutput;
@@ -212,28 +217,28 @@ void loop() {
     }
 
     if (currentMode == MODE_REMOTE_CONTROL || (currentMode == MODE_LINE_FOLLOWING && config.cascadeMode)) {
-      // Calculate PID for each motor
-      int leftSpeed = leftPid.calculate(leftTargetRPM, leftMotor.getRPM(), dtSpeed);
-      int rightSpeed = rightPid.calculate(rightTargetRPM, rightMotor.getRPM(), dtSpeed);
+       // Calculate PID for each motor
+       int leftSpeed = leftPid.calculate(leftTargetRPM, leftMotor.getRPM(), dtSpeed);
+       int rightSpeed = rightPid.calculate(rightTargetRPM, rightMotor.getRPM(), dtSpeed);
 
-      leftSpeed = constrain(leftSpeed, -MAX_SPEED, MAX_SPEED);
-      rightSpeed = constrain(rightSpeed, -MAX_SPEED, MAX_SPEED);
+       leftSpeed = constrain(leftSpeed, -MAX_SPEED, MAX_SPEED);
+       rightSpeed = constrain(rightSpeed, -MAX_SPEED, MAX_SPEED);
 
-      // Actualizar velocidad máxima registrada
-      int currentMax = max(abs(leftSpeed), abs(rightSpeed));
-      if(currentMax > config.maxSpeed) {
-        config.maxSpeed = currentMax;
-        saveConfig();
-      }
+       // Actualizar velocidad máxima registrada
+       int currentMax = max(abs(leftSpeed), abs(rightSpeed));
+       if(currentMax > config.maxSpeed) {
+         config.maxSpeed = currentMax;
+         saveConfig();
+       }
 
-      leftMotor.setSpeed(leftSpeed);
-      rightMotor.setSpeed(rightSpeed);
-    }
+       leftMotor.setSpeed(leftSpeed);
+       rightMotor.setSpeed(rightSpeed);
+     }
 
-    if (currentMode == MODE_IDLE) {
-      leftMotor.setSpeed(0);
-      rightMotor.setSpeed(0);
-    }
+     if (currentMode == MODE_IDLE) {
+       leftMotor.setSpeed(0);
+       rightMotor.setSpeed(0);
+     }
 
     loopTime = micros() - loopStartTime;
    }
@@ -309,7 +314,17 @@ void loop() {
        config.baseRPM        = DEFAULT_BASE_RPM;
        config.cascadeMode    = DEFAULT_CASCADE;
        config.telemetry = DEFAULT_TELEMETRY_ENABLED;
-       memcpy(config.featureEnables, DEFAULT_FEATURE_ENABLES, sizeof(DEFAULT_FEATURE_ENABLES));
+       config.features.medianFilter = DEFAULT_FEATURE_ENABLES[0];
+       config.features.movingAverage = DEFAULT_FEATURE_ENABLES[1];
+       config.features.kalmanFilter = DEFAULT_FEATURE_ENABLES[2];
+       config.features.hysteresis = DEFAULT_FEATURE_ENABLES[3];
+       config.features.deadZone = DEFAULT_FEATURE_ENABLES[4];
+       config.features.lowPass = DEFAULT_FEATURE_ENABLES[5];
+       config.features.adaptivePid = DEFAULT_FEATURE_ENABLES[6];
+       config.features.speedProfiling = DEFAULT_FEATURE_ENABLES[7];
+       config.features.dynamicLinePid = DEFAULT_FEATURE_ENABLES[8];
+       config.features.variableSpeed = DEFAULT_FEATURE_ENABLES[9];
+       config.features.turnDirection = DEFAULT_FEATURE_ENABLES[10];
        config.operationMode  = DEFAULT_OPERATION_MODE;
        config.maxSpeed = DEFAULT_MAX_SPEED;
        config.checksum       = 1234567891;
@@ -322,8 +337,9 @@ void loop() {
      } else if (strcmp(cmd, "help") == 0) {
        debugger.systemMessage("Comandos: calibrate, save, get debug, get telemetry, get config, reset, help");
        debugger.systemMessage("set telemetry 0/1  |  set mode 0/1/2  |  set cascade 0/1");
-       debugger.systemMessage("set feature <idx> 0/1  |  set line kp,ki,kd  |  set left kp,ki,kd  |  set right kp,ki,kd");
+       debugger.systemMessage("set feature <idx 0-10> 0/1  |  set features 0,1,0,...  |  set line kp,ki,kd  |  set left kp,ki,kd  |  set right kp,ki,kd");
        debugger.systemMessage("set base speed <value>  |  set base rpm <value>");
+       debugger.systemMessage("set pwm <derecha>,<izquierda>  (solo en modo idle)");
 
      // ---------- comandos con parámetros ------------------------------
      } else if (strncmp(cmd, "set telemetry ", 14) == 0) {
@@ -331,6 +347,8 @@ void loop() {
        int val = strtol(cmd + 14, &end, 10);
        if (end == cmd + 14 || *end != '\0') { debugger.systemMessage("Falta argumento"); return; }
        telemetry = (val == 1);
+       config.telemetry = telemetry;
+       saveConfig();
        success = true;
 
      } else if (strncmp(cmd, "set mode ", 9) == 0) {
@@ -364,10 +382,20 @@ void loop() {
        if (end1 == p || *end1 != ' ') { debugger.systemMessage("Formato: set feature <idx> <0/1>"); return; }
        char* end2;
        int val = strtol(end1 + 1, &end2, 10);
-       if (end2 == end1 + 1 || *end2 != '\0' || idx < 0 || idx > 7) { debugger.systemMessage("Formato: set feature <idx> <0/1>"); return; }
-       config.featureEnables[idx] = (val == 1);
-       features.setEnables(config.featureEnables);
+       if (end2 == end1 + 1 || *end2 != '\0' || idx < 0 || idx > 10) { debugger.systemMessage("Formato: set feature <idx> <0/1>"); return; }
+       config.features.setFeature(idx, val == 1);
+       features.setEnables(config.features);
        success = true;
+
+     } else if (strncmp(cmd, "set features ", 13) == 0) {
+       const char* params = cmd + 13;
+       if (config.features.deserialize(params)) {
+         features.setEnables(config.features);
+         success = true;
+       } else {
+         debugger.systemMessage("Formato: set features 0,1,0,1,... (11 valores)");
+         return;
+       }
 
      } else if (strncmp(cmd, "set line ", 9) == 0) {
        const char* p = cmd + 9;
@@ -444,6 +472,33 @@ void loop() {
        if (*end2 != '\0') { debugger.systemMessage("Formato: rc throttle,steering"); return; }
        throttle  = constrain(t, -MAX_SPEED, MAX_SPEED);
        steering  = constrain(s, -MAX_SPEED, MAX_SPEED);
+       success = true;
+
+     } else if (strncmp(cmd, "set pwm ", 8) == 0) {
+       if (currentMode != MODE_IDLE) {
+         debugger.systemMessage("Comando solo disponible en modo idle");
+         return;
+       }
+       const char* params = cmd + 8;
+       char* comma = strchr(params, ',');
+       if (!comma) {
+         debugger.systemMessage("Formato: set pwm <derecha>,<izquierda>");
+         return;
+       }
+       char* end1;
+       int rightVal = strtol(params, &end1, 10);
+       if (end1 != comma) {
+         debugger.systemMessage("Formato: set pwm <derecha>,<izquierda>");
+         return;
+       }
+       char* end2;
+       int leftVal = strtol(comma + 1, &end2, 10);
+       if (*end2 != '\0') {
+         debugger.systemMessage("Formato: set pwm <derecha>,<izquierda>");
+         return;
+       }
+       rightMotor.setSpeed(rightVal);
+       leftMotor.setSpeed(leftVal);
        success = true;
      }
 

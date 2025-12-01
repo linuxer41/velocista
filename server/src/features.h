@@ -8,10 +8,11 @@
 
 #include <Arduino.h>
 #include <string.h>
+#include "config.h"
 
 class Features {
 private:
-    bool enables[8];
+    bool enables[11];
     // Median filter (reduced size since not enabled by default)
     float medianBuffer[3];
     int medianCount;
@@ -46,8 +47,23 @@ public:
         memset(enables, 0, sizeof(enables));
     }
 
-    void setEnables(bool e[8]) {
+    void setEnables(bool e[11]) {
         memcpy(enables, e, sizeof(enables));
+    }
+
+    // For new FeaturesConfig struct
+    void setEnables(RobotConfig::FeaturesConfig& f) {
+        enables[0] = f.medianFilter;
+        enables[1] = f.movingAverage;
+        enables[2] = f.kalmanFilter;
+        enables[3] = f.hysteresis;
+        enables[4] = f.deadZone;
+        enables[5] = f.lowPass;
+        enables[6] = f.adaptivePid;
+        enables[7] = f.speedProfiling;
+        enables[8] = f.dynamicLinePid;
+        enables[9] = f.variableSpeed;
+        enables[10] = f.turnDirection;
     }
 
     float applySignalFilters(float raw) {

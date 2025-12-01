@@ -43,9 +43,20 @@ public:
       config.rcMaxSteering = RC_MAX_STEERING;
       config.cascadeMode = DEFAULT_CASCADE;
       config.telemetry= DEFAULT_TELEMETRY_ENABLED;
-      memcpy(config.featureEnables, DEFAULT_FEATURE_ENABLES, sizeof(DEFAULT_FEATURE_ENABLES));
+      config.features.medianFilter = DEFAULT_FEATURE_ENABLES[0];
+      config.features.movingAverage = DEFAULT_FEATURE_ENABLES[1];
+      config.features.kalmanFilter = DEFAULT_FEATURE_ENABLES[2];
+      config.features.hysteresis = DEFAULT_FEATURE_ENABLES[3];
+      config.features.deadZone = DEFAULT_FEATURE_ENABLES[4];
+      config.features.lowPass = DEFAULT_FEATURE_ENABLES[5];
+      config.features.adaptivePid = DEFAULT_FEATURE_ENABLES[6];
+      config.features.speedProfiling = DEFAULT_FEATURE_ENABLES[7];
+      config.features.dynamicLinePid = DEFAULT_FEATURE_ENABLES[8];
+      config.features.variableSpeed = DEFAULT_FEATURE_ENABLES[9];
+      config.features.turnDirection = DEFAULT_FEATURE_ENABLES[10];
       config.operationMode = DEFAULT_OPERATION_MODE;
       config.baseRPM = DEFAULT_BASE_RPM;
+      config.maxSpeed = DEFAULT_MAX_SPEED;
       for (int i = 0; i < NUM_SENSORS; i++) {
         config.sensorMin[i] = 0;
         config.sensorMax[i] = 1023;

@@ -24,27 +24,27 @@ class _RightPidControlState extends State<RightPidControl> {
     _kiController = TextEditingController(text: '0.5');
     _kdController = TextEditingController(text: '0.1');
 
-    // Listen to telemetry data changes
-    widget.appState.currentData.addListener(_updateFromTelemetry);
-    _updateFromTelemetry(); // Initial update
+    // Listen to config data changes only
+    widget.appState.configData.addListener(_updateFromConfig);
+    _updateFromConfig(); // Initial update
   }
 
   @override
   void dispose() {
-    widget.appState.currentData.removeListener(_updateFromTelemetry);
+    widget.appState.configData.removeListener(_updateFromConfig);
     _kpController.dispose();
     _kiController.dispose();
     _kdController.dispose();
     super.dispose();
   }
 
-  void _updateFromTelemetry() {
-    final data = widget.appState.currentData.value;
-    if (data is ConfigData &&
-        data.rightKPid != null &&
-        data.rightKPid!.length >= 3) {
+  void _updateFromConfig() {
+    final config = widget.appState.configData.value;
+    if (config != null &&
+        config.rightKPid != null &&
+        config.rightKPid!.length >= 3) {
       // Update controllers with config right PID values only when ConfigData arrives
-      final rightKPid = data.rightKPid!;
+      final rightKPid = config.rightKPid!;
       _kpController.text = rightKPid[0].toStringAsFixed(2);
       _kiController.text = rightKPid[1].toStringAsFixed(3);
       _kdController.text = rightKPid[2].toStringAsFixed(2);

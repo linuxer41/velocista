@@ -237,7 +237,8 @@ class DebugData extends SerialData {
     final pid = _parseDoubleArray(dataMap['PID']);
     final speedCms = _parseDoubleArray(dataMap['SPEED_CMS']);
     final qtr = _parseIntArray(dataMap['QTR']);
-    final featConfig = _parseIntArray(dataMap['FEAT_CONFIG']) ?? _parseIntArray(dataMap['FILTERS']);
+    final featConfig = _parseIntArray(dataMap['FEAT_CONFIG']) ??
+        _parseIntArray(dataMap['FILTERS']);
     final featValues = _parseDynamicArray(dataMap['FEAT_VALUES']);
 
     // Parse simple values
@@ -372,7 +373,6 @@ class TelemetryData extends SerialData {
     final pid = _parseDoubleArray(dataMap['PID']);
     final speedCms = _parseDoubleArray(dataMap['SPEED_CMS']);
     final qtr = _parseIntArray(dataMap['QTR']);
-    final featConfig = _parseIntArray(dataMap['FEAT_CONFIG']) ?? _parseIntArray(dataMap['FILTERS']);
     final featValues = _parseDynamicArray(dataMap['FEAT_VALUES']);
 
     // Parse simple values
@@ -384,8 +384,10 @@ class TelemetryData extends SerialData {
     // Extract encoder values
     final leftRpm = left != null && left.isNotEmpty ? left[0] : 0.0;
     final rightRpm = right != null && right.isNotEmpty ? right[0] : 0.0;
-    final leftEncoderCount = left != null && left.length > 3 ? left[3].toInt() : 0;
-    final rightEncoderCount = right != null && right.length > 3 ? right[3].toInt() : 0;
+    final leftEncoderCount =
+        left != null && left.length > 3 ? left[3].toInt() : 0;
+    final rightEncoderCount =
+        right != null && right.length > 3 ? right[3].toInt() : 0;
 
     return TelemetryData(
       operationMode: mode,
@@ -407,7 +409,8 @@ class TelemetryData extends SerialData {
       batt: batt,
       loopUs: loopUs,
       freeMem: freeMem,
-      featConfig: featConfig,
+      featConfig:
+          null, // FEAT_CONFIG removed from telemetry, now only in config
       featValues: featValues,
     );
   }
@@ -483,10 +486,10 @@ class DebugRequestCommand {
   }
 }
 
-class TelemetryEnableCommand {
+class TelemetryChangeCommand {
   final bool enable;
 
-  TelemetryEnableCommand(this.enable);
+  TelemetryChangeCommand(this.enable);
 
   String toCommand() {
     return 'set telemetry ${enable ? 1 : 0}';
@@ -573,6 +576,16 @@ class BaseRpmCommand {
   }
 }
 
+class MaxSpeedCommand {
+  final double value;
+
+  MaxSpeedCommand(this.value);
+
+  String toCommand() {
+    return 'set max speed ${value.toStringAsFixed(0)}';
+  }
+}
+
 class RelationCommand {
   final bool enable;
 
@@ -582,6 +595,7 @@ class RelationCommand {
     return 'set relation ${enable ? 1 : 0}';
   }
 }
+
 
 class FeatureCommand {
   final int index; // Feature index (0-7)
@@ -598,20 +612,6 @@ class FeatureCommand {
 
   String toCommand() {
     return 'set feature $index $value';
-  }
-}
-
-class FiltersCommand {
-  final List<int> filters; // List of 6 filter states (0 or 1)
-
-  FiltersCommand(this.filters) {
-    if (filters.length != 6) {
-      throw ArgumentError('Filters list must contain exactly 6 elements');
-    }
-  }
-
-  String toCommand() {
-    return 'set filters ${filters.join(',')}';
   }
 }
 

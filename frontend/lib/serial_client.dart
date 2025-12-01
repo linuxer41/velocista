@@ -202,7 +202,7 @@ class SerialClient {
     }
 
     try {
-      final commandString = command + '\n';
+      final commandString = command + '\r\n';
 
       // Add sent command to terminal
       onCommandSent?.call(commandString);

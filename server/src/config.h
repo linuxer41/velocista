@@ -76,7 +76,94 @@ struct RobotConfig {
    int16_t rcMaxSteering;                // Steering máximo control remoto
    bool cascadeMode;                     // Modo cascada activado/desactivado
    bool telemetry;                // Habilitar/deshabilitar telemetry (0=deshabilitado, 1=habilitado)
-   bool featureEnables[8];               // Enable/disable advanced features
+   // Features configuration
+   class FeaturesConfig {
+   public:
+     bool medianFilter : 1;      // 0
+     bool movingAverage : 1;     // 1
+     bool kalmanFilter : 1;      // 2
+     bool hysteresis : 1;        // 3
+     bool deadZone : 1;          // 4
+     bool lowPass : 1;           // 5
+     bool adaptivePid : 1;       // 6
+     bool speedProfiling : 1;    // 7
+     bool dynamicLinePid : 1;     // 8
+     bool variableSpeed : 1;     // 9
+     bool turnDirection : 1;     // 10
+     uint16_t : 5; // padding
+
+     // Serialize to string [0,1,0,...]
+     String serialize() {
+       String s = F("[");
+       s += medianFilter ? F("1") : F("0"); s += F(",");
+       s += movingAverage ? F("1") : F("0"); s += F(",");
+       s += kalmanFilter ? F("1") : F("0"); s += F(",");
+       s += hysteresis ? F("1") : F("0"); s += F(",");
+       s += deadZone ? F("1") : F("0"); s += F(",");
+       s += lowPass ? F("1") : F("0"); s += F(",");
+       s += adaptivePid ? F("1") : F("0"); s += F(",");
+       s += speedProfiling ? F("1") : F("0"); s += F(",");
+       s += dynamicLinePid ? F("1") : F("0"); s += F(",");
+       s += variableSpeed ? F("1") : F("0"); s += F(",");
+       s += turnDirection ? F("1") : F("0");
+       s += F("]");
+       return s;
+     }
+
+     // Deserialize from command like "0,1,0,1,1,1,0,1,1,1,0"
+     bool deserialize(const char* cmd) {
+       // Parse comma separated values
+       char temp[24];
+       strcpy(temp, cmd);
+       char* token = strtok(temp, ",");
+       int idx = 0;
+       while(token && idx < 11) {
+         if(*token == '1') {
+           setFeature(idx, true);
+         } else if(*token == '0') {
+           setFeature(idx, false);
+         } else {
+           return false; // Invalid
+         }
+         token = strtok(NULL, ",");
+         idx++;
+       }
+       return idx == 11;
+     }
+
+     void setFeature(int idx, bool value) {
+       switch(idx) {
+         case 0: medianFilter = value; break;
+         case 1: movingAverage = value; break;
+         case 2: kalmanFilter = value; break;
+         case 3: hysteresis = value; break;
+         case 4: deadZone = value; break;
+         case 5: lowPass = value; break;
+         case 6: adaptivePid = value; break;
+         case 7: speedProfiling = value; break;
+         case 8: dynamicLinePid = value; break;
+         case 9: variableSpeed = value; break;
+         case 10: turnDirection = value; break;
+       }
+     }
+
+     bool getFeature(int idx) {
+       switch(idx) {
+         case 0: return medianFilter;
+         case 1: return movingAverage;
+         case 2: return kalmanFilter;
+         case 3: return hysteresis;
+         case 4: return deadZone;
+         case 5: return lowPass;
+         case 6: return adaptivePid;
+         case 7: return speedProfiling;
+         case 8: return dynamicLinePid;
+         case 9: return variableSpeed;
+         case 10: return turnDirection;
+         default: return false;
+       }
+     }
+   } features;
    OperationMode operationMode;          // Modo de operación actual
    float baseRPM;                        // RPM base para control de velocidad
    int maxSpeed;                         // Velocidad máxima registrada
@@ -139,7 +226,7 @@ const float DEFAULT_RIGHT_KD = 0.01;
 const int16_t DEFAULT_BASE_SPEED = 200;
 const bool DEFAULT_CASCADE = true;
 const bool DEFAULT_TELEMETRY_ENABLED = true;
-const bool DEFAULT_FEATURE_ENABLES[8] = {false, false, false, false, false, false, false, false}; // [MED, MA, KAL, HYS, DZ, LP, APID, SP]
+const bool DEFAULT_FEATURE_ENABLES[11] = {false, false, false, false, false, false, false, false, true, true, false}; // For initializing features struct
 #define DEFAULT_OPERATION_MODE MODE_IDLE
 const float DEFAULT_BASE_RPM = 120.0f;
 const int DEFAULT_MAX_SPEED = 0;

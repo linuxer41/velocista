@@ -51,10 +51,16 @@ set base rpm <value>    - Configura RPM base (ej: set base rpm 120.0)
 rc throttle,steering - Control remoto (ej: rc 200,50)
 ```
 
+### Pruebas en Modo Idle
+```
+set pwm <derecha>,<izquierda> - Establecer PWM directo para pruebas (solo en modo idle, ej: set pwm 220,150)
+```
+
 ### Debug y Telemetría
 ```
 set telemetry 0/1    - Desactiva/activa salida continua de telemetry
-set feature 0 1 - Configura habilitación individual de features (0-7)
+set feature <idx> 0/1 - Configura habilitación individual de features (0-10)
+set features 0,1,0,1,... - Configura todos los features a la vez (11 valores separados por coma)
 get debug           - Envía datos de debug completos una sola vez
 get telemetry        - Envía datos de telemetry una sola vez
 get config          - Envía configuración actual (PID y velocidades base)
@@ -85,14 +91,14 @@ type:2|ack:save
 Configuración actual del robot (PID, velocidades base, modo, cascada):
 
 ```
-type:3|LINE_K_PID:[2.00,0.05,0.75]|LEFT_K_PID:[5.00,0.50,0.10]|RIGHT_K_PID:[5.00,0.50,0.10]|BASE:[200,120.00]|WHEELS:[32.0,85.0]|MODE:1|CASCADE:1|TELEMETRY:1
+type:3|LINE_K_PID:[2.00,0.05,0.75]|LEFT_K_PID:[5.00,0.50,0.10]|RIGHT_K_PID:[5.00,0.50,0.10]|BASE:[200,120.00]|WHEELS:[32.0,85.0]|FEAT_CONFIG:[0,1,0,0,1,0,0,0]|MODE:1|CASCADE:1|TELEMETRY:1
 ```
 
 ### type:4 - Datos de Telemetry
 Datos en tiempo real del robot (línea, motores, sensores):
 
 ```
-type:4|LINE:[429.30,-225.00,150.50,5.25,150.00]|LEFT:[120.00,232.50,166,1234,567]|RIGHT:[-85.50,7.50,-53,4567,890]|PID:[150.00,166.00,53.00]|SPEED_CMS:[15.08,-10.68]|QTR:[687,292,0,0,0,0]|FEAT_CONFIG:[0,1,0,0,1,0,0,0]|FEAT_VALUES:[]|BATT:7.85|LOOP_US:45|FREE_MEM:1024|UPTIME:5000
+type:4|LINE:[429.30,-225.00,150.50,5.25,150.00]|LEFT:[120.00,232.50,166,1234,567]|RIGHT:[-85.50,7.50,-53,4567,890]|PID:[150.00,166.00,53.00]|SPEED_CMS:[15.08,-10.68]|QTR:[687,292,0,0,0,0]|FEAT_VALUES:[]|BATT:7.85|LOOP_US:45|FREE_MEM:1024|UPTIME:5000
 ```
 
 ### type:5 - Datos Completos de Debug
@@ -110,6 +116,7 @@ type:5|LINE_K_PID:[2.00,0.05,0.75]|LEFT_K_PID:[5.00,0.50,0.10]|RIGHT_K_PID:[5.00
 - **MODE**: Modo actual (0=IDLE, 1=LINE_FOLLOWING, 2=REMOTE_CONTROL)
 - **CASCADE**: Control en cascada (1=activado, 0=desactivado)
 - **TELEMETRY**: Estado de telemetría continua (1=activada, 0=desactivada)
+- **FEAT_CONFIG**: [f0,f1,f2,f3,f4,f5,f6,f7] configuración de features (1=habilitado, 0=deshabilitado)
 
 **Telemetry (igual que type:4):**
 - **LINE**: [posicion_linea,error,integral,derivada,correccion_aplicada] de la línea
@@ -117,7 +124,6 @@ type:5|LINE_K_PID:[2.00,0.05,0.75]|LEFT_K_PID:[5.00,0.50,0.10]|RIGHT_K_PID:[5.00
 - **PID**: [output_line,output_izquierdo,output_derecho] salidas PID
 - **SPEED_CMS**: [velocidad_izquierda_cm_s,velocidad_derecha_cm_s] velocidades lineales
 - **QTR**: [A0,A1,A2,A3,A4,A5] valores calibrados de los 6 sensores QTR (0-1000)
-- **FEAT_CONFIG**: [f0,f1,f2,f3,f4,f5,f6,f7] configuración de features (1=habilitado, 0=deshabilitado)
 - **FEAT_VALUES**: [] valores actuales de features (reservado para futuras implementaciones)
 - **BATT**: Voltaje de batería en V
 - **LOOP_US**: Tiempo de ejecución del último ciclo PID en microsegundos
@@ -268,9 +274,12 @@ El robot incluye 8 features configurables para optimizar el rendimiento:
 5. **Zona Muerta (4)**: Ignora errores menores a 5 unidades para reducir oscilaciones
 6. **Filtro Pasa Bajos (5)**: Suaviza el error final con factor alpha de 0.8
 
-#### Features Avanzadas (Features 6-7)
+#### Features Avanzadas (Features 6-10)
 7. **PID Adaptativo (6)**: Ajusta automáticamente las ganancias PID basándose en la velocidad actual
 8. **Perfilado de Velocidad (7)**: Implementa rampas de aceleración/desaceleración para transiciones suaves
+9. **PID Dinámico de Línea (8)**: Ajusta ganancias PID de línea basado en curvatura detectada
+10. **Velocidad Variable (9)**: Reduce velocidad en curvas cerradas o pérdida de línea
+11. **Dirección de Giro (10)**: Elige dirección de giro cuando se pierde la línea (0=izquierda, 1=derecha)
 
 El PID de línea incluye anti-windup integrado. Los features se aplican únicamente donde corresponde, manteniendo compatibilidad.
 
