@@ -9,11 +9,9 @@
 #include <Arduino.h>
 
 // Struct para datos de debug
-struct DebugData {
+struct TelemetryData {
   // Posición y modo
   float linePos;
-  bool cascade;
-  uint8_t mode;  // Cambiado de OperationMode a uint8_t
   float curvature;
   uint8_t sensorState;
 
@@ -22,32 +20,20 @@ struct DebugData {
   uint32_t uptime;  // Cambiado de unsigned long a uint32_t
 
   // PID de línea
-  float lineKp, lineKi, lineKd;
   float linePidOut, lineError, lineIntegral, lineDeriv;
 
   // PID izquierdo
-  float leftKp, leftKi, leftKd;
   float lPidOut, lError, lIntegral, lDeriv;
 
   // PID derecho
-  float rightKp, rightKi, rightKd;
   float rPidOut, rError, rIntegral, rDeriv;
 
   // Velocidades
   float lRpm, rRpm, lTargetRpm, rTargetRpm;
   int16_t lSpeed, rSpeed;  // Cambiado de int a int16_t
 
-  // Velocidades base
-  int16_t baseSpeed;  // Cambiado de int a int16_t
-  float baseRPM;
-  int16_t maxSpeed;  // Cambiado de int a int16_t
-
-  // Ruedas
-  float wheelDiameter;
-  float wheelDistance;
-
   // Contadores encoder
-  int32_t encLBackward, encRBackward;  // Cambiado de long a int32_t
+  int32_t encL, encR, encLBackward, encRBackward;  // Cambiado de long a int32_t
 
   // Velocidades lineales (cm/s)
   float leftSpeedCms, rightSpeedCms;
@@ -55,8 +41,6 @@ struct DebugData {
   // Sistema
   float battery;
   uint32_t loopTime;  // Cambiado de unsigned long a uint32_t
-  int16_t freeMem;  // Cambiado de int a int16_t
-  int32_t encL, encR;  // Cambiado de long a int32_t
 
 };
 
@@ -70,9 +54,14 @@ public:
     Serial.println(msg);
   }
 
+  void systemMessage(const String& msg) {
+    Serial.print(F("type:1|"));
+    Serial.println(msg);
+  }
+
 
   // Datos de debug telemetry (telemetría reducida)
-  void telemetryData(DebugData& data, bool endLine = true) {
+  void sendTelemetryData(TelemetryData& data, bool endLine = true) {
     if (endLine) Serial.print(F("type:4|"));
     Serial.print(F("LINE:["));
     Serial.print(data.linePos, 2); Serial.print(F(","));
@@ -85,13 +74,19 @@ public:
     Serial.print(data.lTargetRpm, 2); Serial.print(F(","));
     Serial.print(data.lSpeed); Serial.print(F(","));
     Serial.print(data.encL); Serial.print(F(","));
-    Serial.print(data.encLBackward); Serial.print(F("]"));
+    Serial.print(data.encLBackward); Serial.print(F(","));
+    Serial.print(data.lError, 2); Serial.print(F(","));
+    Serial.print(data.lIntegral, 2); Serial.print(F(","));
+    Serial.print(data.lDeriv, 2); Serial.print(F("]"));
     Serial.print(F("|RIGHT:["));
     Serial.print(data.rRpm, 2); Serial.print(F(","));
     Serial.print(data.rTargetRpm, 2); Serial.print(F(","));
     Serial.print(data.rSpeed); Serial.print(F(","));
     Serial.print(data.encR); Serial.print(F(","));
-    Serial.print(data.encRBackward); Serial.print(F("]"));
+    Serial.print(data.encRBackward); Serial.print(F(","));
+    Serial.print(data.rError, 2); Serial.print(F(","));
+    Serial.print(data.rIntegral, 2); Serial.print(F(","));
+    Serial.print(data.rDeriv, 2); Serial.print(F("]"));
     Serial.print(F("|PID:["));
     Serial.print(data.linePidOut, 2); Serial.print(F(","));
     Serial.print(data.lPidOut, 2); Serial.print(F(","));
@@ -110,15 +105,22 @@ public:
     Serial.print(data.battery, 2);
     Serial.print(F("|LOOP_US:"));
     Serial.print(data.loopTime);
-    Serial.print(F("|FREE_MEM:"));
-    Serial.print(data.freeMem);
     Serial.print(F("|UPTIME:"));
     Serial.print(data.uptime);
+    Serial.print(F("|CURV:"));
+    Serial.print(data.curvature, 2);
+    Serial.print(F("|STATE:"));
+    Serial.print(data.sensorState);
     if (endLine) Serial.println();
   }
 
+  void sendDebugData(TelemetryData& data, RobotConfig& config) {
+    sendConfigData(config, false);
+    sendTelemetryData(data);
+  }
+
   // Datos de configuración
-  void configData(bool endLine = true) {
+  void sendConfigData(RobotConfig& config, bool endLine = true) {
     if (endLine) Serial.print(F("type:3|"));
     Serial.print(F("LINE_K_PID:["));
     Serial.print(config.lineKp, 2); Serial.print(F(","));
@@ -150,12 +152,6 @@ public:
     if (endLine) Serial.println();
   }
 
-    // Datos de debug (config + telemetry + debug extra)
-  void debugData(DebugData& data) {
-    Serial.print(F("type:5|"));
-    configData(false);
-    telemetryData(data, false);
-  }
 
   
   // Confirmación de comando procesado

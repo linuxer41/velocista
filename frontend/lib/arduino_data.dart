@@ -615,6 +615,34 @@ class FeatureCommand {
   }
 }
 
+class SetPwmCommand {
+  final int rightPwm;
+  final int leftPwm;
+
+  SetPwmCommand({
+    required this.rightPwm,
+    required this.leftPwm,
+  });
+
+  String toCommand() {
+    return 'set pwm $rightPwm,$leftPwm';
+  }
+}
+
+class SetRpmCommand {
+  final int leftRpm;
+  final int rightRpm;
+
+  SetRpmCommand({
+    required this.leftRpm,
+    required this.rightRpm,
+  });
+
+  String toCommand() {
+    return 'set rpm $leftRpm,$rightRpm';
+  }
+}
+
 /// PID Configuration for Arduino Line Follower
 class ArduinoPIDConfig {
   final double kp; // Proportional gain

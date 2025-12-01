@@ -68,13 +68,13 @@ const float DEFAULT_LINE_KI = 0.05;
 const float DEFAULT_LINE_KD = 0.75;
 
 // PID para motores (más agresivo para alcanzar RPM objetivo)
-const float DEFAULT_LEFT_KP = 0.5;
-const float DEFAULT_LEFT_KI = 0.0;
-const float DEFAULT_LEFT_KD = 0.01;
+const float DEFAULT_LEFT_KP = 0.29;
+const float DEFAULT_LEFT_KI = 0.01;
+const float DEFAULT_LEFT_KD = 0.0025;
 
-const float DEFAULT_RIGHT_KP = 0.5;
-const float DEFAULT_RIGHT_KI = 0.0;
-const float DEFAULT_RIGHT_KD = 0.01;
+const float DEFAULT_RIGHT_KP = 0.29;
+const float DEFAULT_RIGHT_KI = 0.01;
+const float DEFAULT_RIGHT_KD = 0.0025;
 
 // =============================================================================
 // ENUMERACIONES
@@ -164,7 +164,7 @@ public:
 const int16_t DEFAULT_BASE_SPEED = 200;
 const bool DEFAULT_CASCADE = true;
 const bool DEFAULT_TELEMETRY_ENABLED = true;
-const FeaturesConfig DEFAULT_FEATURES = {false, false, false, false, false, false, true, true, false};
+const FeaturesConfig DEFAULT_FEATURES = {false, false, false, false, false, false, false, false, false};
 const OperationMode DEFAULT_OPERATION_MODE = MODE_IDLE;
 const float DEFAULT_BASE_RPM = 120.0f;
 const int16_t DEFAULT_MAX_SPEED = 230;

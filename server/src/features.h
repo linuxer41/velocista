@@ -15,10 +15,10 @@ private:
     FeaturesConfig config;
 
     // Median filter
-    int16_t medianBuffer[2];
+    int16_t medianBuffer[3];
     uint8_t medianCount;
     // Moving average
-    int16_t movingBuffer[2];
+    int16_t movingBuffer[3];
     int32_t movingSum;
     uint8_t movingCount;
     // Kalman
@@ -54,29 +54,24 @@ public:
     float applySignalFilters(float raw) {
         float current = raw;
 
-        // 0: Median filter (2 samples)
+        // 0: Median filter (3 samples)
         if (config.medianFilter) {
             medianBuffer[medianCount] = raw * 100;
-            medianCount = (medianCount + 1) % 2;
+            medianCount = (medianCount + 1) % 3;
             if (medianCount == 0) { // buffer full
-                int16_t a = medianBuffer[0];
-                int16_t b = medianBuffer[1];
-                if (a > b) {
-                    int16_t temp = a;
-                    a = b;
-                    b = temp;
-                }
-                current = (a + b) / 2.0 / 100.0;
+                float arr[3] = {medianBuffer[0] / 100.0, medianBuffer[1] / 100.0, medianBuffer[2] / 100.0};
+                sort(arr, 3);
+                current = arr[1]; // median
             }
         }
 
-        // 1: Moving average (2 samples)
+        // 1: Moving average (3 samples)
         if (config.movingAverage) {
             movingSum -= movingBuffer[movingCount];
             movingBuffer[movingCount] = current * 100;
             movingSum += movingBuffer[movingCount];
-            movingCount = (movingCount + 1) % 2;
-            current = movingSum / 2.0 / 100.0;
+            movingCount = (movingCount + 1) % 3;
+            current = movingSum / 3.0 / 100.0;
         }
 
         // 2: Kalman filter

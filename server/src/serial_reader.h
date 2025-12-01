@@ -10,7 +10,7 @@
 
 class SerialReader {
 private:
-    char serBuf[16];
+    char serBuf[64];
     bool lineReady;
     uint8_t idx;
 

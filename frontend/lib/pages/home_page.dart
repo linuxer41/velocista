@@ -30,6 +30,11 @@ class _HomePageState extends State<HomePage> {
   late TextEditingController _lineKiController;
   late TextEditingController _lineKdController;
 
+  double _leftPwm = 0.0;
+  double _rightPwm = 0.0;
+  double _leftRpm = 0.0;
+  double _rightRpm = 0.0;
+
   bool _configExpanded = false;
 
   @override
@@ -283,6 +288,201 @@ class _HomePageState extends State<HomePage> {
               ),
             ],
           ),
+          const SizedBox(height: 16),
+          Text(
+            'Debug Motores',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Theme.of(context).colorScheme.onSurface,
+              fontFamily: 'Space Grotesk',
+            ),
+          ),
+          const SizedBox(height: 8),
+          DefaultTabController(
+            length: 2,
+            child: Column(
+              children: [
+                TabBar(
+                  tabs: const [
+                    Tab(text: 'PWM'),
+                    Tab(text: 'RPM'),
+                  ],
+                  labelStyle: const TextStyle(
+                      fontSize: 12, fontFamily: 'Space Grotesk'),
+                  indicatorColor: Theme.of(context).colorScheme.primary,
+                  labelColor: Theme.of(context).colorScheme.primary,
+                  unselectedLabelColor:
+                      Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+                SizedBox(
+                  height: 140, // Fixed height for tab content
+                  child: TabBarView(
+                    children: [
+                      // PWM Tab
+                      Column(
+                        children: [
+                          const SizedBox(height: 8),
+                          // Left PWM Slider
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'PWM Izquierdo: ${_leftPwm.toInt()}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                                ),
+                              ),
+                              Slider(
+                                value: _leftPwm,
+                                min: -230,
+                                max: 230,
+                                divisions: 460,
+                                onChanged: (value) {
+                                  setState(() {
+                                    _leftPwm = value;
+                                  });
+                                },
+                                onChangeEnd: (value) {
+                                  final pwmCommand = SetPwmCommand(
+                                    rightPwm: _rightPwm.toInt(),
+                                    leftPwm: _leftPwm.toInt(),
+                                  );
+                                  print(
+                                      'Sending PWM command: ${pwmCommand.toCommand()}');
+                                  appState.sendCommand(pwmCommand.toCommand());
+                                },
+                                activeColor: Theme.of(context).colorScheme.primary,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          // Right PWM Slider
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'PWM Derecho: ${_rightPwm.toInt()}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                                ),
+                              ),
+                              Slider(
+                                value: _rightPwm,
+                                min: -230,
+                                max: 230,
+                                divisions: 460,
+                                onChanged: (value) {
+                                  setState(() {
+                                    _rightPwm = value;
+                                  });
+                                },
+                                onChangeEnd: (value) {
+                                  final pwmCommand = SetPwmCommand(
+                                    rightPwm: _rightPwm.toInt(),
+                                    leftPwm: _leftPwm.toInt(),
+                                  );
+                                  print(
+                                      'Sending PWM command: ${pwmCommand.toCommand()}');
+                                  appState.sendCommand(pwmCommand.toCommand());
+                                },
+                                activeColor: Theme.of(context).colorScheme.primary,
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      // RPM Tab
+                      Column(
+                        children: [
+                          const SizedBox(height: 8),
+                          // Left RPM Slider
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'RPM Izquierdo: ${_leftRpm.toInt()}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                                ),
+                              ),
+                              Slider(
+                                value: _leftRpm,
+                                min: -300,
+                                max: 300,
+                                divisions: 600,
+                                onChanged: (value) {
+                                  setState(() {
+                                    _leftRpm = value;
+                                  });
+                                },
+                                onChangeEnd: (value) {
+                                  final rpmCommand = SetRpmCommand(
+                                    leftRpm: _leftRpm.toInt(),
+                                    rightRpm: _rightRpm.toInt(),
+                                  );
+                                  print(
+                                      'Sending RPM command: ${rpmCommand.toCommand()}');
+                                  appState.sendCommand(rpmCommand.toCommand());
+                                },
+                                activeColor: Theme.of(context).colorScheme.secondary,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          // Right RPM Slider
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'RPM Derecho: ${_rightRpm.toInt()}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                                ),
+                              ),
+                              Slider(
+                                value: _rightRpm,
+                                min: -300,
+                                max: 300,
+                                divisions: 600,
+                                onChanged: (value) {
+                                  setState(() {
+                                    _rightRpm = value;
+                                  });
+                                },
+                                onChangeEnd: (value) {
+                                  final rpmCommand = SetRpmCommand(
+                                    leftRpm: _leftRpm.toInt(),
+                                    rightRpm: _rightRpm.toInt(),
+                                  );
+                                  print(
+                                      'Sending RPM command: ${rpmCommand.toCommand()}');
+                                  appState.sendCommand(rpmCommand.toCommand());
+                                },
+                                activeColor: Theme.of(context).colorScheme.secondary,
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -307,16 +507,12 @@ class _HomePageState extends State<HomePage> {
             unselectedLabelColor:
                 Theme.of(context).colorScheme.onSurfaceVariant,
           ),
-          SizedBox(
-            
-            height: 150,
+          IntrinsicHeight(
             child: TabBarView(
               children: [
-                SingleChildScrollView(child: _buildLinePidTab(appState)),
-                SingleChildScrollView(
-                    child: LeftPidControl(appState: appState)),
-                SingleChildScrollView(
-                    child: RightPidControl(appState: appState)),
+                _buildLinePidTab(appState),
+                LeftPidControl(appState: appState),
+                RightPidControl(appState: appState),
               ],
             ),
           ),
@@ -1198,6 +1394,45 @@ class _HomePageState extends State<HomePage> {
                 ],
               );
             },
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Ajuste PID Motores',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Theme.of(context).colorScheme.onSurface,
+              fontFamily: 'Space Grotesk',
+            ),
+          ),
+          const SizedBox(height: 8),
+          DefaultTabController(
+            length: 2,
+            child: Column(
+              children: [
+                TabBar(
+                  tabs: const [
+                    Tab(text: 'PID Izquierdo'),
+                    Tab(text: 'PID Derecho'),
+                  ],
+                  labelStyle: const TextStyle(
+                      fontSize: 12, fontFamily: 'Space Grotesk'),
+                  indicatorColor: Theme.of(context).colorScheme.primary,
+                  labelColor: Theme.of(context).colorScheme.primary,
+                  unselectedLabelColor:
+                      Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+                SizedBox(
+                  height: 140,
+                  child: TabBarView(
+                    children: [
+                      LeftPidControl(appState: appState),
+                      RightPidControl(appState: appState),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),

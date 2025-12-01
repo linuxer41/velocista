@@ -36,8 +36,8 @@ set cascade 0/1      - Desactiva/activa control en cascada (solo en modo línea)
 ### Ajuste de PID
 ```
 set line kp,ki,kd   - Configura PID de línea (ej: set line 2.0,0.05,0.75)
-set left kp,ki,kd   - Configura PID motor izquierdo (ej: set left 5.0,0.5,0.1)
-set right kp,ki,kd  - Configura PID motor derecho (ej: set right 5.0,0.5,0.1)
+set left kp,ki,kd   - Configura PID motor izquierdo (ej: set left 0.29,0.01,0.0025)
+set right kp,ki,kd  - Configura PID motor derecho (ej: set right 0.29,0.01,0.0025)
 ```
 
 ### Configuración de Velocidad Base
@@ -54,13 +54,14 @@ rc throttle,steering - Control remoto (ej: rc 200,50)
 ### Pruebas en Modo Idle
 ```
 set pwm <derecha>,<izquierda> - Establecer PWM directo para pruebas (solo en modo idle, ej: set pwm 220,150)
+set rpm <izquierda>,<derecha> - Control RPM con PID para pruebas (solo en modo idle, ej: set rpm 60,60)
 ```
 
 ### Debug y Telemetría
 ```
 set telemetry 0/1    - Desactiva/activa salida continua de telemetry
-set feature <idx> 0/1 - Configura habilitación individual de features (0-10)
-set features 0,1,0,1,... - Configura todos los features a la vez (11 valores separados por coma)
+set feature <idx> 0/1 - Configura habilitación individual de features (0-8)
+set features 0,1,0,1,... - Configura todos los features a la vez (9 valores separados por coma)
 get debug           - Envía datos de debug completos una sola vez
 get telemetry        - Envía datos de telemetry una sola vez
 get config          - Envía configuración actual (PID y velocidades base)
@@ -91,45 +92,44 @@ type:2|ack:save
 Configuración actual del robot (PID, velocidades base, modo, cascada):
 
 ```
-type:3|LINE_K_PID:[2.00,0.05,0.75]|LEFT_K_PID:[5.00,0.50,0.10]|RIGHT_K_PID:[5.00,0.50,0.10]|BASE:[200,120.00]|WHEELS:[32.0,85.0]|FEAT_CONFIG:[0,1,0,0,1,0,0,0]|MODE:1|CASCADE:1|TELEMETRY:1
+type:3|LINE_K_PID:[2.00,0.05,0.75]|LEFT_K_PID:[5.00,0.50,0.10]|RIGHT_K_PID:[5.00,0.50,0.10]|BASE:[200,120.00,230]|WHEELS:[32.0,85.0]|FEAT_CONFIG:[0,1,0,0,1,0,1,1,0]|MODE:1|CASCADE:1|TELEMETRY:1
 ```
 
 ### type:4 - Datos de Telemetry
 Datos en tiempo real del robot (línea, motores, sensores):
 
 ```
-type:4|LINE:[429.30,-225.00,150.50,5.25,150.00]|LEFT:[120.00,232.50,166,1234,567]|RIGHT:[-85.50,7.50,-53,4567,890]|PID:[150.00,166.00,53.00]|SPEED_CMS:[15.08,-10.68]|QTR:[687,292,0,0,0,0]|FEAT_VALUES:[]|BATT:7.85|LOOP_US:45|FREE_MEM:1024|UPTIME:5000
+type:4|LINE:[429.30,-225.00,150.50,5.25,150.00]|LEFT:[120.00,232.50,166,1234,567,-2.50,15.25,0.75]|RIGHT:[-85.50,7.50,-53,4567,890,3.20,-8.10,1.45]|PID:[150.00,166.00,53.00]|SPEED_CMS:[15.08,-10.68]|QTR:[687,292,0,0,0,0]|BATT:7.85|LOOP_US:45|UPTIME:5000|CURV:150.25|STATE:0
 ```
 
 ### type:5 - Datos Completos de Debug
 Información completa de debugging (config + telemetry + datos PID detallados):
 
 ```
-type:5|LINE_K_PID:[2.00,0.05,0.75]|LEFT_K_PID:[5.00,0.50,0.10]|RIGHT_K_PID:[5.00,0.50,0.10]|BASE:[200,120.00]|WHEELS:[32.0,85.0]|MODE:1|CASCADE:1|TELEMETRY:1|LINE:[429.30,-225.00,150.50,5.25,150.00]|LEFT:[120.00,232.50,166,1234,567]|RIGHT:[-85.50,7.50,-53,4567,890]|PID:[150.00,166.00,53.00]|SPEED_CMS:[15.08,-10.68]|QTR:[687,292,0,0,0,0]|FEAT_CONFIG:[0,1,0,0,1,0,0,0]|FEAT_VALUES:[]|BATT:7.85|LOOP_US:45|FREE_MEM:1024|UPTIME:5000
+type:5|LINE_K_PID:[2.00,0.05,0.75]|LEFT_K_PID:[5.00,0.50,0.10]|RIGHT_K_PID:[5.00,0.50,0.10]|BASE:[200,120.00,230]|WHEELS:[32.0,85.0]|MODE:1|CASCADE:1|TELEMETRY:1|LINE:[429.30,-225.00,150.50,5.25,150.00]|LEFT:[120.00,232.50,166,1234,567]|RIGHT:[-85.50,7.50,-53,4567,890]|PID:[150.00,166.00,53.00]|SPEED_CMS:[15.08,-10.68]|QTR:[687,292,0,0,0,0]|BATT:7.85|LOOP_US:45|FREE_MEM:1024|UPTIME:5000|CURV:150.25|STATE:0
 ```
 
 **Configuración (igual que type:3):**
 - **LINE_K_PID**: [KP,KI,KD] ganancias PID de línea
 - **LEFT_K_PID/RIGHT_K_PID**: [KP,KI,KD] ganancias PID de motores
-- **BASE**: [PWM_base,RPM_base,max_speed] velocidades base y máxima configurda
+- **BASE**: [PWM_base,RPM_base,max_speed] velocidades base y máxima configurada
 - **WHEELS**: [diámetro_rueda_mm,distancia_ruedas_mm] dimensiones físicas
 - **MODE**: Modo actual (0=IDLE, 1=LINE_FOLLOWING, 2=REMOTE_CONTROL)
 - **CASCADE**: Control en cascada (1=activado, 0=desactivado)
 - **TELEMETRY**: Estado de telemetría continua (1=activada, 0=desactivada)
-- **FEAT_CONFIG**: [f0,f1,f2,f3,f4,f5,f6,f7] configuración de features (1=habilitado, 0=deshabilitado)
+- **FEAT_CONFIG**: [f0,f1,f2,f3,f4,f5,f6,f7,f8] configuración de features (1=habilitado, 0=deshabilitado)
 
 **Telemetry (igual que type:4):**
 - **LINE**: [posicion_linea,error,integral,derivada,correccion_aplicada] de la línea
-- **LEFT/RIGHT**: [RPM_actual,RPM_objetivo,PWM,encoder_count,encoder_backward] izquierdo/derecho
+- **LEFT/RIGHT**: [RPM_actual,RPM_objetivo,PWM,encoder_count,encoder_backward,error,integral,derivada] izquierdo/derecho
 - **PID**: [output_line,output_izquierdo,output_derecho] salidas PID
 - **SPEED_CMS**: [velocidad_izquierda_cm_s,velocidad_derecha_cm_s] velocidades lineales
 - **QTR**: [A0,A1,A2,A3,A4,A5] valores calibrados de los 6 sensores QTR (0-1000)
-- **FEAT_VALUES**: [] valores actuales de features (reservado para futuras implementaciones)
 - **BATT**: Voltaje de batería en V
 - **LOOP_US**: Tiempo de ejecución del último ciclo PID en microsegundos
-- **FREE_MEM**: Memoria libre en bytes
-- **MAX_SPEED_REC**: Velocidad máxima registrada durante la operación
 - **UPTIME**: Tiempo desde inicio en ms
+- **CURV**: Curvatura actual de la línea (unidades/segundo)
+- **STATE**: Estado de sensores (0=NORMAL, 1=ALL_BLACK, 2=ALL_WHITE)
 
 ### Campos de Debug (type:5)
 Contiene todos los campos de configuración, telemetry y datos adicionales de debugging:
@@ -144,7 +144,7 @@ Contiene todos los campos de configuración, telemetry y datos adicionales de de
 KP: 2.0, KI: 0.05, KD: 0.75
 
 // PID Motores
-KP: 5.0, KI: 0.5, KD: 0.1
+KP: 0.29, KI: 0.01, KD: 0.0025
 
 // Velocidad base: 200
 // Máxima velocidad: 230
@@ -211,12 +211,12 @@ function parseSerialMessage(line) {
     updateTelemetryUI(data);
   } else if (line.startsWith('type:5|')) {
     // type:5 - Datos completos de debug
-    const data = parseDebugData(line.substring(7));
+    const data = parseTelemetryData(line.substring(7));
     updateDebugUI(data);
   }
 }
 
-function parseDebugData(debugString) {
+function parseTelemetryData(debugString) {
   const data = {};
   debugString.split('|').forEach(field => {
     const [key, value] = field.split(':');
@@ -231,8 +231,8 @@ function parseDebugData(debugString) {
 }
 
 // Ejemplo:
-// Input: "type:4|LINE:[429.30,-225.00,150.50,5.25,150.00]|LEFT:[120.00,232.50,166,1234,567]|RIGHT:[-85.50,7.50,-53,4567,890]|PID:[150.00,166.00,53.00]|SPEED_CMS:[15.08,-10.68]|QTR:[687,292,0,0,0,0]|FEAT_CONFIG:[0,1,0,0,1,0,0,0]|FEAT_VALUES:[]|BATT:7.85|LOOP_US:45|FREE_MEM:1024|UPTIME:5000"
-// Output: { LINE: [429.3, -225, 150.5, 5.25, 150], LEFT: [120, 232.5, 166, 1234, 567], RIGHT: [-85.5, 7.5, -53, 4567, 890], PID: [150, 166, 53], SPEED_CMS: [15.08, -10.68], QTR: [687, 292, 0, 0, 0, 0], FEAT_CONFIG: [0,1,0,0,1,0,0,0], FEAT_VALUES: [], BATT: 7.85, LOOP_US: 45, FREE_MEM: 1024, UPTIME: 5000 }
+// Input: "type:4|LINE:[429.30,-225.00,150.50,5.25,150.00]|LEFT:[120.00,232.50,166,1234,567,-2.50,15.25,0.75]|RIGHT:[-85.50,7.50,-53,4567,890,3.20,-8.10,1.45]|PID:[150.00,166.00,53.00]|SPEED_CMS:[15.08,-10.68]|QTR:[687,292,0,0,0,0]|BATT:7.85|LOOP_US:45|UPTIME:5000|CURV:150.25|STATE:0"
+// Output: { LINE: [429.3, -225, 150.5, 5.25, 150], LEFT: [120, 232.5, 166, 1234, 567, -2.5, 15.25, 0.75], RIGHT: [-85.5, 7.5, -53, 4567, 890, 3.2, -8.1, 1.45], PID: [150, 166, 53], SPEED_CMS: [15.08, -10.68], QTR: [687, 292, 0, 0, 0, 0], BATT: 7.85, LOOP_US: 45, UPTIME: 5000, CURV: 150.25, STATE: 0 }
 ```
 
 ### Recomendaciones para UI
@@ -241,6 +241,7 @@ function parseDebugData(debugString) {
 - **Velocímetros**: RPM actual vs objetivo para cada motor
 - **Sensores QTR**: Barra de 6 valores para ver cobertura de línea
 - **Controles**: Joystick o sliders para throttle/steering en modo remoto
+- **Modo Idle**: Controles para PWM directo o RPM con PID para debugging
 - **Logs**: Área de texto para mensajes type:1 y confirmaciones
 
 ### Comandos Recomendados para UI
@@ -250,9 +251,10 @@ function parseDebugData(debugString) {
 4. **PID Tuning**: Sliders para KP/KI/KD con envío automático (`set line kp,ki,kd`, `set left kp,ki,kd`, `set right kp,ki,kd`)
 5. **Velocidad Base**: Sliders para base speed y base RPM (`set base speed <value>`, `set base rpm <value>`)
 6. **Telemetría**: Gráfico en tiempo real de posición, RPM, sensores (`set telemetry 1`)
-7. **Control Remoto**: Joystick virtual para enviar comandos `rc throttle,steering`
-8. **Calibración**: Botón para iniciar calibración con progreso (`calibrate`)
-9. **Configuración**: Guardar/cargar configuración (`save`, `reset`)
+7. **Control Remoto**: Joystick virtual para enviar comandos `rc throttle,steering` (RPM-based)
+8. **Modo Idle**: Controles PWM directo (`set pwm <derecha>,<izquierda>`) o RPM con PID (`set rpm <izquierda>,<derecha>`)
+9. **Calibración**: Botón para iniciar calibración con progreso (`calibrate`)
+10. **Configuración**: Guardar/cargar configuración (`save`, `reset`)
 
 ## Consideraciones Técnicas
 
@@ -264,7 +266,7 @@ function parseDebugData(debugString) {
 - **Saturación**: Salidas limitadas a ±230 PWM
 
 ### Features Avanzadas del Robot
-El robot incluye 8 features configurables para optimizar el rendimiento:
+El robot incluye 9 features configurables para optimizar el rendimiento:
 
 #### Filtros para Procesamiento de Señal (Features 0-5)
 1. **Filtro Mediano (0)**: Elimina valores atípicos usando una ventana de 3 muestras
@@ -274,19 +276,18 @@ El robot incluye 8 features configurables para optimizar el rendimiento:
 5. **Zona Muerta (4)**: Ignora errores menores a 5 unidades para reducir oscilaciones
 6. **Filtro Pasa Bajos (5)**: Suaviza el error final con factor alpha de 0.8
 
-#### Features Avanzadas (Features 6-10)
-7. **PID Adaptativo (6)**: Ajusta automáticamente las ganancias PID basándose en la velocidad actual
-8. **Perfilado de Velocidad (7)**: Implementa rampas de aceleración/desaceleración para transiciones suaves
-9. **PID Dinámico de Línea (8)**: Ajusta ganancias PID de línea basado en curvatura detectada
-10. **Velocidad Variable (9)**: Reduce velocidad en curvas cerradas o pérdida de línea
-11. **Dirección de Giro (10)**: Elige dirección de giro cuando se pierde la línea (0=izquierda, 1=derecha)
+#### Features Avanzadas (Features 6-8)
+7. **PID Dinámico de Línea (6)**: Ajusta ganancias PID de línea basado en curvatura detectada
+8. **Velocidad Variable (7)**: Reduce velocidad en curvas cerradas o pérdida de línea, aumenta en rectas
+9. **Dirección de Giro (8)**: Elige dirección de giro cuando se pierde la línea (0=izquierda, 1=derecha)
 
 El PID de línea incluye anti-windup integrado. Los features se aplican únicamente donde corresponde, manteniendo compatibilidad.
 
 ### Mejoras Dinámicas Recientes
 - **Ajuste Dinámico de PID**: Las ganancias Kp y Kd se ajustan automáticamente basado en la curvatura detectada de la línea para una respuesta más adaptativa.
-- **Control de Velocidad Variable**: La velocidad base se reduce en curvas cerradas o pérdida de línea para mejorar estabilidad y seguridad.
-- **Registro de Velocidad Máxima**: Se guarda en EEPROM la velocidad máxima alcanzada durante la operación, visible en telemetría.
+- **Control de Velocidad Variable**: La velocidad base se reduce en curvas cerradas o pérdida de línea, y aumenta en rectas para mayor velocidad promedio.
+- **Logging Avanzado**: Telemetría incluye curvatura y estado de sensores para monitoreo detallado.
+- **Optimización de Memoria**: Uso eficiente de tipos de datos (int16_t) y buffers minimalistas.
 
 ### Sensores
 - **Rango**: 0-1000 (normalizado)
@@ -334,7 +335,9 @@ pio run  # PlatformIO
 - `set cascade 0/1` para activar/desactivar control cascada
 - `set line/left/right kp,ki,kd` para ajustar PID
 - `set base speed <value>` y `set base rpm <value>` para configurar velocidad base
-- `rc throttle,steering` para control remoto
+- `rc throttle,steering` para control remoto (RPM-based)
+- `set pwm <derecha>,<izquierda>` para control PWM directo en modo idle
+- `set rpm <izquierda>,<derecha>` para control RPM con PID en modo idle
 - `save` para guardar configuración en EEPROM
 - `reset` para restaurar valores por defecto
 

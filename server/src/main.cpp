@@ -61,20 +61,27 @@ unsigned long loopTime = 0;
 unsigned long loopStartTime = 0;
 float leftTargetRPM = 0;
 float rightTargetRPM = 0;
-int16_t throttle = 0;
-int16_t steering = 0;
+float throttle = 0;
+float steering = 0;
 // LED indication
 unsigned long lastLedTime = 0;
 bool ledState = false;
 // Variables para mejoras dinámicas
 float previousLinePosition = 0;
+float currentCurvature = 0;
+SensorState currentSensorState = NORMAL;
+// Idle mode PWM
+int16_t idleLeftPWM = 0;
+int16_t idleRightPWM = 0;
+// Idle mode RPM targets
+float idleLeftTargetRPM = 0;
+float idleRightTargetRPM = 0;
 
 
 // ==========================
 // FUNCIONES AUXILIARES
 // ==========================
-void printDebugInfo();
-void printTelemetryInfo();
+TelemetryData buildTelemetryData();
 
 
 // ==========================
@@ -127,6 +134,58 @@ void setup() {
 }
 
 // ==========================
+// DEBUG Telemetry
+// ==========================
+TelemetryData buildTelemetryData() {
+  TelemetryData data;
+  qtr.read();  // Read sensors even in non-line-follower modes
+  int16_t* sensors = qtr.getSensorValues();
+  memcpy(data.sensors, sensors, sizeof(data.sensors));
+
+  data.linePos = qtr.linePosition;
+  data.lineError = linePid.getError();
+  data.linePidOut = lastPidOutput;
+  data.lineIntegral = linePid.getIntegral();
+  data.lineDeriv = linePid.getDerivative();
+  data.lPidOut = leftPid.getOutput();
+  data.lError = leftPid.getError();
+  data.lIntegral = leftPid.getIntegral();
+  data.lDeriv = leftPid.getDerivative();
+  data.rPidOut = rightPid.getOutput();
+  data.rError = rightPid.getError();
+  data.rIntegral = rightPid.getIntegral();
+  data.rDeriv = rightPid.getDerivative();
+  data.uptime = millis();
+  data.lRpm = leftMotor.getRPM();
+  data.rRpm = rightMotor.getRPM();
+  data.lTargetRpm = leftTargetRPM;
+  data.rTargetRpm = rightTargetRPM;
+  data.lSpeed = leftMotor.getSpeed();
+  data.rSpeed = rightMotor.getSpeed();
+  data.encL = leftMotor.getEncoderCount();
+  data.encR = rightMotor.getEncoderCount();
+  data.encLBackward = leftMotor.getBackwardCount();
+  data.encRBackward = rightMotor.getBackwardCount();
+  data.leftSpeedCms = (data.lRpm * PI * (config.wheelDiameter / 10.0)) / 60.0;
+  data.rightSpeedCms = (data.rRpm * PI * (config.wheelDiameter / 10.0)) / 60.0;
+  data.battery = analogRead(BATTERY_PIN) * BATTERY_FACTOR;
+  data.loopTime = loopTime;
+  data.curvature = currentCurvature;
+  data.sensorState = (uint8_t)currentSensorState;
+  return data;
+}
+
+void telemetry() {
+  TelemetryData data = buildTelemetryData();
+  debugger.sendTelemetryData(data);
+}
+
+void debug(){
+    TelemetryData data = buildTelemetryData();
+  debugger.sendDebugData(data, config);
+}
+
+// ==========================
 // LOOP PRINCIPAL
 // ==========================
 void loop() {
@@ -140,12 +199,14 @@ void loop() {
        qtr.read();
         int16_t* rawSensors = qtr.getRawSensorValues();
         // Verificar estado de sensores
-       SensorState state = checkSensorState(rawSensors);
+        SensorState state = checkSensorState(rawSensors);
+        currentSensorState = state;
 
-       // Calcular curvatura para ajustes dinámicos
+        // Calcular curvatura para ajustes dinámicos
        float currentPosition = features.applySignalFilters(qtr.linePosition);
        float curvature = abs(currentPosition - previousLinePosition) / dtLine;
        previousLinePosition = currentPosition;
+       currentCurvature = curvature;
 
        // Ajustes dinámicos de velocidad base
        float applyBaseRPM = config.baseRPM;
@@ -211,35 +272,46 @@ void loop() {
     }
 
     if (config.operationMode == MODE_REMOTE_CONTROL || (config.operationMode == MODE_LINE_FOLLOWING && config.cascadeMode)) {
-       // Calculate PID for each motor
-       int leftSpeed = leftPid.calculate(leftTargetRPM, leftMotor.getRPM(), dtSpeed);
-       int rightSpeed = rightPid.calculate(rightTargetRPM, rightMotor.getRPM(), dtSpeed);
+        // Calculate PID for each motor
+        int leftSpeed = leftPid.calculate(leftTargetRPM, leftMotor.getRPM(), dtSpeed);
+        int rightSpeed = rightPid.calculate(rightTargetRPM, rightMotor.getRPM(), dtSpeed);
 
-       leftSpeed = constrain(leftSpeed, -config.maxSpeed, config.maxSpeed);
-       rightSpeed = constrain(rightSpeed, -config.maxSpeed, config.maxSpeed);
+        leftSpeed = constrain(leftSpeed, -config.maxSpeed, config.maxSpeed);
+        rightSpeed = constrain(rightSpeed, -config.maxSpeed, config.maxSpeed);
 
-       // Actualizar velocidad máxima registrada
-       int currentMax = max(abs(leftSpeed), abs(rightSpeed));
-       if(currentMax > config.maxSpeed) {
-         config.maxSpeed = currentMax;
-         saveConfig();
-       }
+        // Actualizar velocidad máxima registrada
+        int currentMax = max(abs(leftSpeed), abs(rightSpeed));
+        if(currentMax > config.maxSpeed) {
+          config.maxSpeed = currentMax;
+          saveConfig();
+        }
 
-       leftMotor.setSpeed(leftSpeed);
-       rightMotor.setSpeed(rightSpeed);
-     }
+        leftMotor.setSpeed(leftSpeed);
+        rightMotor.setSpeed(rightSpeed);
+      } else if (config.operationMode == MODE_IDLE) {
+        if (idleLeftTargetRPM != 0 || idleRightTargetRPM != 0) {
+          // Idle RPM control with PID
+          int leftSpeed = leftPid.calculate(idleLeftTargetRPM, leftMotor.getRPM(), dtSpeed);
+          int rightSpeed = rightPid.calculate(idleRightTargetRPM, rightMotor.getRPM(), dtSpeed);
 
-     if (config.operationMode == MODE_IDLE) {
-       leftMotor.setSpeed(0);
-       rightMotor.setSpeed(0);
-     }
+          leftSpeed = constrain(leftSpeed, -config.maxSpeed, config.maxSpeed);
+          rightSpeed = constrain(rightSpeed, -config.maxSpeed, config.maxSpeed);
+
+          leftMotor.setSpeed(leftSpeed);
+          rightMotor.setSpeed(rightSpeed);
+        } else {
+          // Direct PWM control
+          leftMotor.setSpeed(idleLeftPWM);
+          rightMotor.setSpeed(idleRightPWM);
+        }
+      }
 
     loopTime = micros() - loopStartTime;
    }
 
    // Telemetry Print (Non-blocking)
    if (config.telemetry && (millis() - lastTelemetryTime > config.telemetryIntervalMs)) {
-     printTelemetryInfo();
+     telemetry();
      lastTelemetryTime = millis();
    }
 
@@ -282,15 +354,15 @@ void loop() {
        success = true;
 
      } else if (strcmp(cmd, "get debug") == 0) {
-       printDebugInfo();
+       debug();
        success = true;
 
      } else if (strcmp(cmd, "get telemetry") == 0) {
-       printTelemetryInfo();
+       telemetry();
        success = true;
 
      } else if (strcmp(cmd, "get config") == 0) {
-       debugger.configData();
+       telemetry();
        success = true;
 
      } else if (strcmp(cmd, "reset") == 0) {
@@ -303,11 +375,12 @@ void loop() {
        success = true;
 
      } else if (strcmp(cmd, "help") == 0) {
-       debugger.systemMessage("Comandos: calibrate, save, get debug, get telemetry, get config, reset, help");
-       debugger.systemMessage("set telemetry 0/1  |  set mode 0/1/2  |  set cascade 0/1");
-       debugger.systemMessage("set feature <idx 0-8> 0/1  |  set features 0,1,0,...  |  set line kp,ki,kd  |  set left kp,ki,kd  |  set right kp,ki,kd");
-       debugger.systemMessage("set base speed <value>  |  set base rpm <value>");
-       debugger.systemMessage("set pwm <derecha>,<izquierda>  (solo en modo idle)");
+       debugger.systemMessage(F("Comandos: calibrate, save, get debug, get telemetry, get config, reset, help"));
+       debugger.systemMessage(F("set telemetry 0/1  |  set mode 0/1/2  |  set cascade 0/1"));
+       debugger.systemMessage(F("set feature <idx 0-8> 0/1  |  set features 0,1,0,...  |  set line kp,ki,kd  |  set left kp,ki,kd  |  set right kp,ki,kd"));
+       debugger.systemMessage(F("set base speed <value>  |  set base rpm <value>"));
+       debugger.systemMessage(F("set pwm <derecha>,<izquierda>  (solo en modo idle)"));
+       debugger.systemMessage(F("set rpm <izquierda>,<derecha>  (solo en modo idle)"));
 
      // ---------- comandos con parámetros ------------------------------
      } else if (strncmp(cmd, "set telemetry ", 14) == 0) {
@@ -327,6 +400,10 @@ void loop() {
          throttle = 0; steering = 0;
          leftMotor.setSpeed(0); rightMotor.setSpeed(0);
        } else if (config.operationMode == MODE_IDLE) {
+         idleLeftPWM = 0;
+         idleRightPWM = 0;
+         idleLeftTargetRPM = 0;
+         idleRightTargetRPM = 0;
          leftMotor.setSpeed(0); rightMotor.setSpeed(0);
        }
        success = true;
@@ -427,14 +504,10 @@ void loop() {
        const char* params = cmd + 3;
        char* comma = strchr(params, ',');
        if (!comma) { debugger.systemMessage("Formato: rc throttle,steering"); return; }
-       char* end1;
-       int t = strtol(params, &end1, 10);
-       if (end1 != comma) { debugger.systemMessage("Formato: rc throttle,steering"); return; }
-       char* end2;
-       int s = strtol(comma + 1, &end2, 10);
-       if (*end2 != '\0') { debugger.systemMessage("Formato: rc throttle,steering"); return; }
-       throttle  = constrain(t, -config.maxSpeed, config.maxSpeed);
-       steering  = constrain(s, -config.maxSpeed, config.maxSpeed);
+       float t = atof(params);
+       float s = atof(comma + 1);
+       throttle = t;
+       steering = s;
        success = true;
 
      } else if (strncmp(cmd, "set pwm ", 8) == 0) {
@@ -460,8 +533,27 @@ void loop() {
          debugger.systemMessage("Formato: set pwm <derecha>,<izquierda>");
          return;
        }
-       rightMotor.setSpeed(rightVal);
-       leftMotor.setSpeed(leftVal);
+       idleRightPWM = rightVal;
+       idleLeftPWM = leftVal;
+       success = true;
+
+     } else if (strncmp(cmd, "set rpm ", 8) == 0) {
+       if (config.operationMode != MODE_IDLE) {
+         debugger.systemMessage("Comando solo disponible en modo idle");
+         return;
+       }
+       const char* params = cmd + 8;
+       char* comma = strchr(params, ',');
+       if (!comma) {
+         debugger.systemMessage("Formato: set rpm <izquierda>,<derecha>");
+         return;
+       }
+       float leftRPM = atof(params);
+       float rightRPM = atof(comma + 1);
+       idleLeftTargetRPM = leftRPM;
+       idleRightTargetRPM = rightRPM;
+       leftPid.reset();
+       rightPid.reset();
        success = true;
      }
 
@@ -473,105 +565,4 @@ void loop() {
        debugger.systemMessage("Comando desconocido. Envía 'help'");
      }
    }
-}
-
-// ==========================
-// DEBUG
-// ==========================
-void printDebugInfo() {
-  DebugData data;
-  int16_t* sensors = qtr.getSensorValues();
-  memcpy(data.sensors, sensors, sizeof(data.sensors));
-
-  data.linePos = qtr.linePosition;
-  data.cascade = config.cascadeMode;
-  data.mode = config.operationMode;
-  data.uptime = millis();
-
-  // PID línea
-  data.lineKp = config.lineKp;
-  data.lineKi = config.lineKi;
-  data.lineKd = config.lineKd;
-  data.linePidOut = lastPidOutput;
-  data.lineError = linePid.getError();
-  data.lineIntegral = linePid.getIntegral();
-  data.lineDeriv = linePid.getDerivative();
-
-  // PID izquierdo
-  data.leftKp = config.leftKp;
-  data.leftKi = config.leftKi;
-  data.leftKd = config.leftKd;
-  data.lPidOut = leftPid.getOutput();
-  data.lError = leftPid.getError();
-  data.lIntegral = leftPid.getIntegral();
-  data.lDeriv = leftPid.getDerivative();
-
-  // PID derecho
-  data.rightKp = config.rightKp;
-  data.rightKi = config.rightKi;
-  data.rightKd = config.rightKd;
-  data.rPidOut = rightPid.getOutput();
-  data.rError = rightPid.getError();
-  data.rIntegral = rightPid.getIntegral();
-  data.rDeriv = rightPid.getDerivative();
-
-  // Velocidades
-  data.lRpm = leftMotor.getRPM();
-  data.rRpm = rightMotor.getRPM();
-  data.lTargetRpm = leftTargetRPM;
-  data.rTargetRpm = rightTargetRPM;
-  data.lSpeed = leftMotor.getSpeed();
-  data.rSpeed = rightMotor.getSpeed();
-
-  // Sistema
-  data.battery = analogRead(BATTERY_PIN) * BATTERY_FACTOR;
-  data.loopTime = loopTime;
-  data.freeMem = 0;  // freeMemory removed for optimization
-  data.encL = leftMotor.getEncoderCount();
-  data.encR = rightMotor.getEncoderCount();
-
-
-  debugger.debugData(data);
-}
-
-// ==========================
-// DEBUG Telemetry
-// ==========================
-void printTelemetryInfo() {
-  DebugData data;
-  qtr.read();  // Read sensors even in non-line-follower modes
-  int16_t* sensors = qtr.getSensorValues();
-  memcpy(data.sensors, sensors, sizeof(data.sensors));
-
-  data.linePos = qtr.linePosition;
-  data.lineError = linePid.getError();
-  data.linePidOut = lastPidOutput;
-  data.lineIntegral = linePid.getIntegral();
-  data.lineDeriv = linePid.getDerivative();
-  data.lPidOut = leftPid.getOutput();
-  data.rPidOut = rightPid.getOutput();
-  data.uptime = millis();
-  data.lRpm = leftMotor.getRPM();
-  data.rRpm = rightMotor.getRPM();
-  data.lTargetRpm = leftTargetRPM;
-  data.rTargetRpm = rightTargetRPM;
-  data.lSpeed = leftMotor.getSpeed();
-  data.rSpeed = rightMotor.getSpeed();
-  data.encL = leftMotor.getEncoderCount();
-  data.encR = rightMotor.getEncoderCount();
-  data.encLBackward = leftMotor.getBackwardCount();
-  data.encRBackward = rightMotor.getBackwardCount();
-  data.baseSpeed = config.baseSpeed;
-  data.baseRPM = config.baseRPM;
-  data.wheelDiameter = config.wheelDiameter;
-  data.wheelDistance = config.wheelDistance;
-  data.leftSpeedCms = (data.lRpm * PI * (config.wheelDiameter / 10.0)) / 60.0;
-  data.rightSpeedCms = (data.rRpm * PI * (config.wheelDiameter / 10.0)) / 60.0;
-  data.battery = analogRead(BATTERY_PIN) * BATTERY_FACTOR;
-  data.loopTime = loopTime;
-  data.freeMem = 0;  // freeMemory removed for optimization
-  data.cascade = config.cascadeMode;
-  data.mode = config.operationMode;
-
-  debugger.telemetryData(data);
 }

@@ -1,0 +1,26 @@
+set telemetry 0
+get config
+set mode 1
+
+set telemetry 1
+calibrate
+get telemetry
+set mode 0
+
+set rpm 300,1000
+set rpm 0,0
+
+set pwm -100,-200
+set rpm -300,-1000
+set rpm -3000,-1000
+set rpm -300,-300
+set left 0.0,0.0,0.0
+set right 0.0,0.0,0.0
+set left 5.0,0.5,0.1
+set rpm -300,0
+
+set right 0.29,0.01,0.0025
+set left 0.29,0.01,0.0025
+set right 1.5,0.2,0.1
+set left 1.5,0.2,0.5
+set left 0.9,0.0,5
