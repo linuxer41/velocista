@@ -44,6 +44,8 @@ set right kp,ki,kd  - Configura PID motor derecho (ej: set right 0.29,0.01,0.002
 ```
 set base <pwm>,<rpm>    - Configura velocidad base PWM y RPM (ej: set base 200,120)
 set max <pwm>,<rpm>     - Configura velocidad máxima PWM y RPM (ej: set max 230,300)
+set weight <g>          - Configura peso del robot en gramos (ej: set weight 155)
+set samp_rate <line_ms>,<speed_ms>,<telemetry_ms> - Configura frecuencias de muestreo de bucles PID y telemetría (ej: set samp_rate 2,1,100)
 ```
 
 **Límites de Seguridad:**
@@ -97,7 +99,7 @@ type:2|ack:save
 Configuración actual del robot (PID, velocidades base, modo, cascada):
 
 ```
-type:3|LINE_K_PID:[2.00,0.05,0.75]|LEFT_K_PID:[0.29,0.01,0.0025]|RIGHT_K_PID:[0.29,0.01,0.0025]|BASE:[200,120.00]|MAX:[230,3000.00]|WHEELS:[32.0,85.0]|FEAT_CONFIG:[0,1,0,0,1,0,1,1,0]|MODE:1|CASCADE:1|TELEMETRY:1
+type:3|LINE_K_PID:[0.900,0.010,0.020]|LEFT_K_PID:[0.590,0.001,0.0025]|RIGHT_K_PID:[0.590,0.001,0.050]|BASE:[200,120.00]|MAX:[230,3000.00]|WHEELS:[32.0,85.0]|WEIGHT:155.0|SAMP_RATE:[2,1,100]|FEAT_CONFIG:[0,1,0,0,1,0,1,1,0]|MODE:1|CASCADE:1|TELEMETRY:1
 ```
 
 ### type:4 - Datos de Telemetry
@@ -120,6 +122,8 @@ type:5|LINE_K_PID:[2.00,0.05,0.75]|LEFT_K_PID:[0.29,0.01,0.0025]|RIGHT_K_PID:[0.
 - **BASE**: [PWM_base,RPM_base] velocidades base configuradas
 - **MAX**: [PWM_max,RPM_max] velocidades máximas configuradas
 - **WHEELS**: [diámetro_rueda_mm,distancia_ruedas_mm] dimensiones físicas
+- **WEIGHT**: Peso del robot en gramos
+- **SAMP_RATE**: [ms_línea,ms_velocidad,ms_telemetría] frecuencias de muestreo de los bucles PID y telemetría en ms
 - **MODE**: Modo actual (0=IDLE, 1=LINE_FOLLOWING, 2=REMOTE_CONTROL)
 - **CASCADE**: Control en cascada (1=activado, 0=desactivado)
 - **TELEMETRY**: Estado de telemetría continua (1=activada, 0=desactivada)
@@ -147,13 +151,14 @@ Contiene todos los campos de configuración, telemetry y datos adicionales de de
 ### Valores por Defecto
 ```cpp
 // PID Línea
-KP: 2.0, KI: 0.05, KD: 0.75
+KP: 0.900, KI: 0.010, KD: 0.020
 
 // PID Motores
-KP: 0.29, KI: 0.01, KD: 0.0025
+KP: 0.590, KI: 0.001, KD: 0.0025 (izq) / 0.050 (der)
 
 // Velocidad base: 200
 // Máxima velocidad: 230
+// Peso del robot: 155g
 // Telemetry: 1 (activada)
 ```
 
@@ -341,6 +346,8 @@ pio run  # PlatformIO
 - `set cascade 0/1` para activar/desactivar control cascada
 - `set line/left/right kp,ki,kd` para ajustar PID
 - `set base <pwm>,<rpm>` y `set max <pwm>,<rpm>` para configurar velocidades base y máxima
+- `set weight <g>` para configurar peso del robot
+- `set samp_rate <line_ms>,<speed_ms>,<telemetry_ms>` para configurar frecuencias de muestreo
 - `rc throttle,steering` para control remoto (RPM-based)
 - `set pwm <derecha>,<izquierda>` para control PWM directo en modo idle
 - `set rpm <izquierda>,<derecha>` para control RPM con PID en modo idle

@@ -50,10 +50,10 @@ class StatusBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 4),
-      child: ValueListenableBuilder<SerialData?>(
-        valueListenable: appState.currentData,
-        builder: (context, data, child) {
-          final batteryVoltage = (data is DebugData) ? data.batt ?? 7.4 : 7.4;
+      child: ValueListenableBuilder<TelemetryData?>(
+        valueListenable: appState.telemetryData,
+        builder: (context, telemetryData, child) {
+          final batteryVoltage = telemetryData?.batt ?? 7.4;
           final batteryPercentage = _calculateBatteryPercentage(batteryVoltage);
           final isConnected = appState.isConnected.value;
 

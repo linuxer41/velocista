@@ -27,6 +27,11 @@ class _ConfigPageState extends State<ConfigPage> {
   late TextEditingController _rightKiController;
   late TextEditingController _rightKdController;
 
+  late TextEditingController _weightController;
+  late TextEditingController _lineSampleController;
+  late TextEditingController _speedSampleController;
+  late TextEditingController _telemetrySampleController;
+
   double _leftPwm = 0.0;
   double _rightPwm = 0.0;
   double _leftRpm = 0.0;
@@ -41,15 +46,19 @@ class _ConfigPageState extends State<ConfigPage> {
     _baseRpmController = TextEditingController(text: '120.0');
     _maxSpeedController = TextEditingController(text: '230');
     _maxRpmController = TextEditingController(text: '3000');
-    _lineKpController = TextEditingController(text: '2.0');
-    _lineKiController = TextEditingController(text: '0.05');
-    _lineKdController = TextEditingController(text: '0.75');
-    _leftKpController = TextEditingController(text: '1.0');
-    _leftKiController = TextEditingController(text: '0.0');
-    _leftKdController = TextEditingController(text: '0.0');
-    _rightKpController = TextEditingController(text: '1.0');
-    _rightKiController = TextEditingController(text: '0.0');
-    _rightKdController = TextEditingController(text: '0.0');
+    _lineKpController = TextEditingController(text: '0.900');
+    _lineKiController = TextEditingController(text: '0.010');
+    _lineKdController = TextEditingController(text: '0.020');
+    _leftKpController = TextEditingController(text: '0.590');
+    _leftKiController = TextEditingController(text: '0.001');
+    _leftKdController = TextEditingController(text: '0.0025');
+    _rightKpController = TextEditingController(text: '0.590');
+    _rightKiController = TextEditingController(text: '0.001');
+    _rightKdController = TextEditingController(text: '0.050');
+    _weightController = TextEditingController(text: '155.0');
+    _lineSampleController = TextEditingController(text: '2');
+    _speedSampleController = TextEditingController(text: '1');
+    _telemetrySampleController = TextEditingController(text: '100');
 
     // Update controllers from config when available
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -80,6 +89,10 @@ class _ConfigPageState extends State<ConfigPage> {
     _rightKpController.dispose();
     _rightKiController.dispose();
     _rightKdController.dispose();
+    _weightController.dispose();
+    _lineSampleController.dispose();
+    _speedSampleController.dispose();
+    _telemetrySampleController.dispose();
     super.dispose();
   }
 
@@ -110,22 +123,34 @@ class _ConfigPageState extends State<ConfigPage> {
 
         // Update PID controllers
         if (config.lineKPid != null && config.lineKPid!.length >= 3) {
-          _lineKpController.text = config.lineKPid![0].toStringAsFixed(2);
+          _lineKpController.text = config.lineKPid![0].toStringAsFixed(3);
           _lineKiController.text = config.lineKPid![1].toStringAsFixed(3);
-          _lineKdController.text = config.lineKPid![2].toStringAsFixed(2);
+          _lineKdController.text = config.lineKPid![2].toStringAsFixed(3);
         }
 
         if (config.leftKPid != null && config.leftKPid!.length >= 3) {
-          _leftKpController.text = config.leftKPid![0].toStringAsFixed(2);
+          _leftKpController.text = config.leftKPid![0].toStringAsFixed(3);
           _leftKiController.text = config.leftKPid![1].toStringAsFixed(3);
-          _leftKdController.text = config.leftKPid![2].toStringAsFixed(2);
+          _leftKdController.text = config.leftKPid![2].toStringAsFixed(3);
         }
 
         if (config.rightKPid != null && config.rightKPid!.length >= 3) {
-          _rightKpController.text = config.rightKPid![0].toStringAsFixed(2);
+          _rightKpController.text = config.rightKPid![0].toStringAsFixed(3);
           _rightKiController.text = config.rightKPid![1].toStringAsFixed(3);
-          _rightKdController.text = config.rightKPid![2].toStringAsFixed(2);
+          _rightKdController.text = config.rightKPid![2].toStringAsFixed(3);
         }
+
+         // Update weight controller
+         if (config.weight != null) {
+           _weightController.text = config.weight!.toStringAsFixed(1);
+         }
+
+         // Update sampling rate controllers
+         if (config.sampRate != null && config.sampRate!.length >= 3) {
+           _lineSampleController.text = config.sampRate![0].toString();
+           _speedSampleController.text = config.sampRate![1].toString();
+           _telemetrySampleController.text = config.sampRate![2].toString();
+         }
       }
     }
   }
@@ -317,6 +342,12 @@ class _ConfigPageState extends State<ConfigPage> {
   }
 
   Widget _buildPwmSection(AppState appState) {
+    // Get max PWM from config, default to 250 if not available
+    final config = appState.configData.value;
+    final maxPwm = config?.max != null && config!.max!.length >= 1
+        ? config.max![0].toDouble()
+        : 250.0;
+
     return Container(
       padding: const EdgeInsets.all(12),
       margin: const EdgeInsets.only(bottom: 8),
@@ -376,9 +407,9 @@ class _ConfigPageState extends State<ConfigPage> {
                 height: 30,
                 child: Slider(
                   value: _leftPwm,
-                  min: -230,
-                  max: 230,
-                  divisions: 460,
+                  min: -maxPwm,
+                  max: maxPwm,
+                  divisions: (maxPwm * 2).toInt(),
                   onChanged: (value) {
                     setState(() {
                       _leftPwm = value;
@@ -399,9 +430,9 @@ class _ConfigPageState extends State<ConfigPage> {
                 height: 30,
                 child: Slider(
                   value: _rightPwm,
-                  min: -230,
-                  max: 230,
-                  divisions: 460,
+                  min: -maxPwm,
+                  max: maxPwm,
+                  divisions: (maxPwm * 2).toInt(),
                   onChanged: (value) {
                     setState(() {
                       _rightPwm = value;
@@ -432,6 +463,12 @@ class _ConfigPageState extends State<ConfigPage> {
   }
 
   Widget _buildRpmSection(AppState appState) {
+    // Get max RPM from config, default to 5000 if not available
+    final config = appState.configData.value;
+    final maxRpm = config?.max != null && config!.max!.length >= 2
+        ? config.max![1].toDouble()
+        : 5000.0;
+
     return Container(
       padding: const EdgeInsets.all(12),
       margin: const EdgeInsets.only(bottom: 8),
@@ -491,9 +528,9 @@ class _ConfigPageState extends State<ConfigPage> {
                 height: 30,
                 child: Slider(
                   value: _leftRpm,
-                  min: -300,
-                  max: 300,
-                  divisions: 600,
+                  min: -maxRpm,
+                  max: maxRpm,
+                  divisions: (maxRpm * 2 / 10).toInt(), // Divisions every 10 units
                   onChanged: (value) {
                     setState(() {
                       _leftRpm = value;
@@ -514,9 +551,9 @@ class _ConfigPageState extends State<ConfigPage> {
                 height: 30,
                 child: Slider(
                   value: _rightRpm,
-                  min: -300,
-                  max: 300,
-                  divisions: 600,
+                  min: -maxRpm,
+                  max: maxRpm,
+                  divisions: (maxRpm * 2 / 10).toInt(), // Divisions every 10 units
                   onChanged: (value) {
                     setState(() {
                       _rightRpm = value;
@@ -704,6 +741,66 @@ class _ConfigPageState extends State<ConfigPage> {
     );
   }
 
+  Widget _buildWeightAndSamplingSection(AppState appState) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Peso y Muestreo',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Theme.of(context).colorScheme.onSurface,
+              fontFamily: 'Space Grotesk',
+            ),
+          ),
+          const SizedBox(height: 12),
+          // Weight input
+          _buildBaseSpeedInput('Peso (g)', _weightController),
+          const SizedBox(height: 8),
+          // Sampling rates
+          Row(
+            children: [
+              Expanded(
+                child: _buildBaseSpeedInput('Línea (ms)', _lineSampleController),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildBaseSpeedInput('Velocidad (ms)', _speedSampleController),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildBaseSpeedInput('Telemetría (ms)', _telemetrySampleController),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // Send button
+          SizedBox(
+            width: double.infinity,
+            height: 36,
+            child: ElevatedButton.icon(
+              onPressed: () => _sendWeightAndSamplingConfiguration(appState),
+              icon: const Icon(Icons.send, size: 16),
+              label: const Text('Enviar', style: TextStyle(fontSize: 12)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.tertiary,
+                foregroundColor: Theme.of(context).colorScheme.onTertiary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _sendBaseSpeedConfiguration(AppState appState) async {
     final baseSpeedValue = double.tryParse(_baseSpeedController.text) ?? 200.0;
     final baseRpmValue = double.tryParse(_baseRpmController.text) ?? 120.0;
@@ -787,17 +884,17 @@ class _ConfigPageState extends State<ConfigPage> {
     double kp, ki, kd;
 
     if (type == 'line') {
-      kp = double.tryParse(_lineKpController.text) ?? 2.0;
-      ki = double.tryParse(_lineKiController.text) ?? 0.05;
-      kd = double.tryParse(_lineKdController.text) ?? 0.75;
+      kp = double.tryParse(_lineKpController.text) ?? 0.900;
+      ki = double.tryParse(_lineKiController.text) ?? 0.010;
+      kd = double.tryParse(_lineKdController.text) ?? 0.020;
     } else if (type == 'left') {
-      kp = double.tryParse(_leftKpController.text) ?? 1.0;
-      ki = double.tryParse(_leftKiController.text) ?? 0.0;
-      kd = double.tryParse(_leftKdController.text) ?? 0.0;
+      kp = double.tryParse(_leftKpController.text) ?? 0.590;
+      ki = double.tryParse(_leftKiController.text) ?? 0.001;
+      kd = double.tryParse(_leftKdController.text) ?? 0.0025;
     } else if (type == 'right') {
-      kp = double.tryParse(_rightKpController.text) ?? 1.0;
-      ki = double.tryParse(_rightKiController.text) ?? 0.0;
-      kd = double.tryParse(_rightKdController.text) ?? 0.0;
+      kp = double.tryParse(_rightKpController.text) ?? 0.590;
+      ki = double.tryParse(_rightKiController.text) ?? 0.001;
+      kd = double.tryParse(_rightKdController.text) ?? 0.050;
     } else {
       return; // Invalid type
     }
@@ -814,6 +911,32 @@ class _ConfigPageState extends State<ConfigPage> {
         SnackBar(
           content: Text('PID $type enviado correctamente'),
           duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  void _sendWeightAndSamplingConfiguration(AppState appState) async {
+    final weightValue = double.tryParse(_weightController.text) ?? 155.0;
+    final lineSampleValue = int.tryParse(_lineSampleController.text) ?? 2;
+    final speedSampleValue = int.tryParse(_speedSampleController.text) ?? 1;
+    final telemetrySampleValue = int.tryParse(_telemetrySampleController.text) ?? 100;
+
+    final weightCommand = WeightCommand(weightValue);
+    await appState.sendCommand(weightCommand.toCommand());
+
+    final sampRateCommand = SampRateCommand(lineSampleValue, speedSampleValue, telemetrySampleValue);
+    await appState.sendCommand(sampRateCommand.toCommand());
+
+    // Request fresh config data to sync UI
+    await appState.sendCommand(ConfigRequestCommand().toCommand());
+
+    // Show success message
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Peso y muestreo enviados correctamente'),
+          duration: Duration(seconds: 2),
         ),
       );
     }
@@ -859,6 +982,7 @@ class _ConfigPageState extends State<ConfigPage> {
               ],
             ),
             _buildPidSection(appState),
+            _buildWeightAndSamplingSection(appState),
           ],
         ),
       ),

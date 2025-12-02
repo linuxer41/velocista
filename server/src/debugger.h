@@ -123,17 +123,17 @@ public:
   void sendConfigData(RobotConfig& config, bool endLine = true) {
     if (endLine) Serial.print(F("type:3|"));
     Serial.print(F("LINE_K_PID:["));
-    Serial.print(config.lineKp, 2); Serial.print(F(","));
-    Serial.print(config.lineKi, 2); Serial.print(F(","));
-    Serial.print(config.lineKd, 2); Serial.print(F("]"));
+    Serial.print(config.lineKp, 3); Serial.print(F(","));
+    Serial.print(config.lineKi, 3); Serial.print(F(","));
+    Serial.print(config.lineKd, 3); Serial.print(F("]"));
     Serial.print(F("|LEFT_K_PID:["));
-    Serial.print(config.leftKp, 2); Serial.print(F(","));
-    Serial.print(config.leftKi, 2); Serial.print(F(","));
-    Serial.print(config.leftKd, 2); Serial.print(F("]"));
+    Serial.print(config.leftKp, 3); Serial.print(F(","));
+    Serial.print(config.leftKi, 3); Serial.print(F(","));
+    Serial.print(config.leftKd, 3); Serial.print(F("]"));
     Serial.print(F("|RIGHT_K_PID:["));
-    Serial.print(config.rightKp, 2); Serial.print(F(","));
-    Serial.print(config.rightKi, 2); Serial.print(F(","));
-    Serial.print(config.rightKd, 2); Serial.print(F("]"));
+    Serial.print(config.rightKp, 3); Serial.print(F(","));
+    Serial.print(config.rightKi, 3); Serial.print(F(","));
+    Serial.print(config.rightKd, 3); Serial.print(F("]"));
     Serial.print(F("|BASE:["));
     Serial.print(config.basePwm); Serial.print(F(","));
     Serial.print(config.baseRPM, 2); Serial.print(F("]"));
@@ -151,6 +151,12 @@ public:
     Serial.print(config.telemetry ? F("1") : F("0"));
     Serial.print(F("|FEAT_CONFIG:"));
     Serial.print(config.features.serialize());
+    Serial.print(F("|WEIGHT:"));
+    Serial.print(config.robotWeight, 1);
+    Serial.print(F("|SAMP_RATE:["));
+    Serial.print(config.loopLineMs); Serial.print(F(","));
+    Serial.print(config.loopSpeedMs); Serial.print(F(","));
+    Serial.print(config.telemetryIntervalMs); Serial.print(F("]"));
     if (endLine) Serial.println();
   }
 

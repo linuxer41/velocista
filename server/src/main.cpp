@@ -19,10 +19,10 @@ SensorState checkSensorState(int16_t* rawSensors) {
     for(int i = 0; i < NUM_SENSORS; i++) {
         int range = config.sensorMax[i] - config.sensorMin[i];
         if(range > 0) {
-            if(rawSensors[i] > config.sensorMin[i] + 0.3 * range) {
+            if(rawSensors[i] < config.sensorMax[i] - 0.3 * range) {
                 allBlack = false;
             }
-            if(rawSensors[i] < config.sensorMax[i] - 0.3 * range) {
+            if(rawSensors[i] > config.sensorMin[i] + 0.3 * range) {
                 allWhite = false;
             }
         } else {
@@ -371,7 +371,7 @@ void loop() {
        debugger.systemMessage(F("Comandos: calibrate, save, get debug, get telemetry, get config, reset, help"));
        debugger.systemMessage(F("set telemetry 0/1  |  set mode 0/1/2  |  set cascade 0/1"));
        debugger.systemMessage(F("set feature <idx 0-8> 0/1  |  set features 0,1,0,...  |  set line kp,ki,kd  |  set left kp,ki,kd  |  set right kp,ki,kd"));
-       debugger.systemMessage(F("set base <pwm>,<rpm>  |  set max <pwm>,<rpm>"));
+       debugger.systemMessage(F("set base <pwm>,<rpm>  |  set max <pwm>,<rpm>  |  set weight <g>  |  set samp_rate <line_ms>,<speed_ms>,<telemetry_ms>"));
        debugger.systemMessage(F("set pwm <derecha>,<izquierda>  (solo en modo idle)"));
        debugger.systemMessage(F("set rpm <izquierda>,<derecha>  (solo en modo idle)"));
 
@@ -379,7 +379,7 @@ void loop() {
      } else if (strncmp(cmd, "set telemetry ", 14) == 0) {
        char* end;
        int val = strtol(cmd + 14, &end, 10);
-       if (end == cmd + 14 || *end != '\0') { debugger.systemMessage("Falta argumento"); return; }
+       if (end == cmd + 14 || *end != '\0') { debugger.systemMessage(F("Falta argumento")); return; }
        config.telemetry = (val == 1);
        saveConfig();
        success = true;
@@ -387,7 +387,7 @@ void loop() {
      } else if (strncmp(cmd, "set mode ", 9) == 0) {
        char* end;
        int m = strtol(cmd + 9, &end, 10);
-       if (end == cmd + 9 || *end != '\0') { debugger.systemMessage("Falta argumento"); return; }
+       if (end == cmd + 9 || *end != '\0') { debugger.systemMessage(F("Falta argumento")); return; }
        config.operationMode = (OperationMode)m;
        if (config.operationMode == MODE_REMOTE_CONTROL) {
          throttle = 0; steering = 0;
@@ -404,7 +404,7 @@ void loop() {
      } else if (strncmp(cmd, "set cascade ", 12) == 0) {
        char* end;
        int val = strtol(cmd + 12, &end, 10);
-       if (end == cmd + 12 || *end != '\0') { debugger.systemMessage("Falta argumento"); return; }
+       if (end == cmd + 12 || *end != '\0') { debugger.systemMessage(F("Falta argumento")); return; }
        config.cascadeMode = (val == 1);
        success = true;
 
@@ -412,10 +412,10 @@ void loop() {
        const char* p = cmd + 12;
        char* end1;
        int idx = strtol(p, &end1, 10);
-       if (end1 == p || *end1 != ' ') { debugger.systemMessage("Formato: set feature <idx> <0/1>"); return; }
+       if (end1 == p || *end1 != ' ') { debugger.systemMessage(F("Formato: set feature <idx> <0/1>")); return; }
        char* end2;
        int val = strtol(end1 + 1, &end2, 10);
-       if (end2 == end1 + 1 || *end2 != '\0' || idx < 0 || idx > 8) { debugger.systemMessage("Formato: set feature <idx> <0/1>"); return; }
+       if (end2 == end1 + 1 || *end2 != '\0' || idx < 0 || idx > 8) { debugger.systemMessage(F("Formato: set feature <idx> <0/1>")); return; }
        config.features.setFeature(idx, val == 1);
        features.setConfig(config.features);
        success = true;
@@ -426,7 +426,7 @@ void loop() {
          features.setConfig(config.features);
          success = true;
        } else {
-         debugger.systemMessage("Formato: set features 0,1,0,1,... (9 valores)");
+         debugger.systemMessage(F("Formato: set features 0,1,0,1,... (9 valores)"));
          return;
        }
 
@@ -434,15 +434,15 @@ void loop() {
        const char* p = cmd + 9;
        float kp = atof(p);
        while (*p && *p != ',') p++;
-       if (*p != ',') { debugger.systemMessage("Formato: set line kp,ki,kd"); return; }
+       if (*p != ',') { debugger.systemMessage(F("Formato: set line kp,ki,kd")); return; }
        p++;
        float ki = atof(p);
        while (*p && *p != ',') p++;
-       if (*p != ',') { debugger.systemMessage("Formato: set line kp,ki,kd"); return; }
+       if (*p != ',') { debugger.systemMessage(F("Formato: set line kp,ki,kd")); return; }
        p++;
        float kd = atof(p);
        while (*p && *p != '\0') p++;
-       if (*p != '\0') { debugger.systemMessage("Formato: set line kp,ki,kd"); return; }
+       if (*p != '\0') { debugger.systemMessage(F("Formato: set line kp,ki,kd")); return; }
        config.lineKp = kp; config.lineKi = ki; config.lineKd = kd;
        linePid.setGains(kp, ki, kd);
        success = true;
@@ -451,15 +451,15 @@ void loop() {
        const char* p = cmd + 9;
        float kp = atof(p);
        while (*p && *p != ',') p++;
-       if (*p != ',') { debugger.systemMessage("Formato: set left kp,ki,kd"); return; }
+       if (*p != ',') { debugger.systemMessage(F("Formato: set left kp,ki,kd")); return; }
        p++;
        float ki = atof(p);
        while (*p && *p != ',') p++;
-       if (*p != ',') { debugger.systemMessage("Formato: set left kp,ki,kd"); return; }
+       if (*p != ',') { debugger.systemMessage(F("Formato: set left kp,ki,kd")); return; }
        p++;
        float kd = atof(p);
        while (*p && *p != '\0') p++;
-       if (*p != '\0') { debugger.systemMessage("Formato: set left kp,ki,kd"); return; }
+       if (*p != '\0') { debugger.systemMessage(F("Formato: set left kp,ki,kd")); return; }
        config.leftKp = kp; config.leftKi = ki; config.leftKd = kd;
        leftPid.setGains(kp, ki, kd);
        success = true;
@@ -468,15 +468,15 @@ void loop() {
        const char* p = cmd + 10;
        float kp = atof(p);
        while (*p && *p != ',') p++;
-       if (*p != ',') { debugger.systemMessage("Formato: set right kp,ki,kd"); return; }
+       if (*p != ',') { debugger.systemMessage(F("Formato: set right kp,ki,kd")); return; }
        p++;
        float ki = atof(p);
        while (*p && *p != ',') p++;
-       if (*p != ',') { debugger.systemMessage("Formato: set right kp,ki,kd"); return; }
+       if (*p != ',') { debugger.systemMessage(F("Formato: set right kp,ki,kd")); return; }
        p++;
        float kd = atof(p);
        while (*p && *p != '\0') p++;
-       if (*p != '\0') { debugger.systemMessage("Formato: set right kp,ki,kd"); return; }
+       if (*p != '\0') { debugger.systemMessage(F("Formato: set right kp,ki,kd")); return; }
        config.rightKp = kp; config.rightKi = ki; config.rightKd = kd;
        rightPid.setGains(kp, ki, kd);
        success = true;
@@ -484,7 +484,7 @@ void loop() {
      } else if (strncmp(cmd, "set base ", 9) == 0) {
        const char* params = cmd + 9;
        char* comma = strchr(params, ',');
-       if (!comma) { debugger.systemMessage("Formato: set base <pwm>,<rpm>"); return; }
+       if (!comma) { debugger.systemMessage(F("Formato: set base <pwm>,<rpm>")); return; }
        int pwm = atoi(params);
        float rpm = atof(comma + 1);
        config.basePwm = constrain(pwm, -LIMIT_MAX_PWM, LIMIT_MAX_PWM);
@@ -494,17 +494,40 @@ void loop() {
      } else if (strncmp(cmd, "set max ", 8) == 0) {
        const char* params = cmd + 8;
        char* comma = strchr(params, ',');
-       if (!comma) { debugger.systemMessage("Formato: set max <pwm>,<rpm>"); return; }
+       if (!comma) { debugger.systemMessage(F("Formato: set max <pwm>,<rpm>")); return; }
        int pwm = atoi(params);
        float rpm = atof(comma + 1);
        config.maxPwm = constrain(pwm, 0, LIMIT_MAX_PWM);
        config.maxRpm = constrain(rpm, 0, LIMIT_MAX_RPM);
        success = true;
 
+     } else if (strncmp(cmd, "set weight ", 11) == 0) {
+       float weight = atof(cmd + 11);
+       if (weight <= 0) { debugger.systemMessage(F("Peso debe ser mayor a 0")); return; }
+       config.robotWeight = weight;
+       saveConfig();
+       success = true;
+
+     } else if (strncmp(cmd, "set samp_rate ", 14) == 0) {
+       const char* params = cmd + 14;
+       char* comma1 = strchr(params, ',');
+       if (!comma1) { debugger.systemMessage(F("Formato: set samp_rate <line_ms>,<speed_ms>,<telemetry_ms>")); return; }
+       char* comma2 = strchr(comma1 + 1, ',');
+       if (!comma2) { debugger.systemMessage(F("Formato: set samp_rate <line_ms>,<speed_ms>,<telemetry_ms>")); return; }
+       int lineMs = atoi(params);
+       int speedMs = atoi(comma1 + 1);
+       int telemetryMs = atoi(comma2 + 1);
+       if (lineMs <= 0 || speedMs <= 0 || telemetryMs <= 0) { debugger.systemMessage(F("Valores deben ser mayores a 0")); return; }
+       config.loopLineMs = lineMs;
+       config.loopSpeedMs = speedMs;
+       config.telemetryIntervalMs = telemetryMs;
+       saveConfig();
+       success = true;
+
      } else if (strncmp(cmd, "rc ", 3) == 0) {
        const char* params = cmd + 3;
        char* comma = strchr(params, ',');
-       if (!comma) { debugger.systemMessage("Formato: rc throttle,steering"); return; }
+       if (!comma) { debugger.systemMessage(F("Formato: rc throttle,steering")); return; }
        float t = atof(params);
        float s = atof(comma + 1);
        throttle = t;
@@ -513,25 +536,25 @@ void loop() {
 
      } else if (strncmp(cmd, "set pwm ", 8) == 0) {
        if (config.operationMode != MODE_IDLE) {
-         debugger.systemMessage("Comando solo disponible en modo idle");
+         debugger.systemMessage(F("Comando solo disponible en modo idle"));
          return;
        }
        const char* params = cmd + 8;
        char* comma = strchr(params, ',');
        if (!comma) {
-         debugger.systemMessage("Formato: set pwm <derecha>,<izquierda>");
+         debugger.systemMessage(F("Formato: set pwm <derecha>,<izquierda>"));
          return;
        }
        char* end1;
        int rightVal = strtol(params, &end1, 10);
        if (end1 != comma) {
-         debugger.systemMessage("Formato: set pwm <derecha>,<izquierda>");
+         debugger.systemMessage(F("Formato: set pwm <derecha>,<izquierda>"));
          return;
        }
        char* end2;
        int leftVal = strtol(comma + 1, &end2, 10);
        if (*end2 != '\0') {
-         debugger.systemMessage("Formato: set pwm <derecha>,<izquierda>");
+         debugger.systemMessage(F("Formato: set pwm <derecha>,<izquierda>"));
          return;
        }
        idleRightPWM = rightVal;
@@ -540,13 +563,13 @@ void loop() {
 
      } else if (strncmp(cmd, "set rpm ", 8) == 0) {
        if (config.operationMode != MODE_IDLE) {
-         debugger.systemMessage("Comando solo disponible en modo idle");
+         debugger.systemMessage(F("Comando solo disponible en modo idle"));
          return;
        }
        const char* params = cmd + 8;
        char* comma = strchr(params, ',');
        if (!comma) {
-         debugger.systemMessage("Formato: set rpm <izquierda>,<derecha>");
+         debugger.systemMessage(F("Formato: set rpm <izquierda>,<derecha>"));
          return;
        }
        float leftRPM = atof(params);

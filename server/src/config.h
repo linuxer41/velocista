@@ -30,6 +30,7 @@ const float DEFAULT_WHEEL_DISTANCE_MM = 100.0f;
 const uint16_t DEFAULT_LOOP_LINE_MS = 2;
 const uint16_t DEFAULT_LOOP_SPEED_MS = 1;
 const unsigned long DEFAULT_TELEMTRY_INTERVAL_MS = 100;
+const float DEFAULT_ROBOT_WEIGHT = 155.0f;
 
 // Límites de seguridad para proteger motores
 const int16_t LIMIT_MAX_PWM = 240;    // PWM máximo seguro
@@ -67,18 +68,18 @@ const int SENSOR_PINS[NUM_SENSORS] = {A0, A1, A2, A3, A4, A5};
 // =============================================================================
 
 // PID para línea (más agresivo para corrección rápida)
-const float DEFAULT_LINE_KP = 0.9;
-const float DEFAULT_LINE_KI = 0.01;
-const float DEFAULT_LINE_KD = 0.02;
+const float DEFAULT_LINE_KP = 1.500;
+const float DEFAULT_LINE_KI = 0.001;
+const float DEFAULT_LINE_KD = 0.050;
 
 // PID para motores (más agresivo para alcanzar RPM objetivo)
-const float DEFAULT_LEFT_KP = 0.59;
+const float DEFAULT_LEFT_KP = 0.590;
 const float DEFAULT_LEFT_KI = 0.001;
 const float DEFAULT_LEFT_KD = 0.0025;
 
-const float DEFAULT_RIGHT_KP = 0.59;
+const float DEFAULT_RIGHT_KP = 0.590;
 const float DEFAULT_RIGHT_KI = 0.001;
-const float DEFAULT_RIGHT_KD = 0.05;
+const float DEFAULT_RIGHT_KD = 0.050;
 
 // =============================================================================
 // ENUMERACIONES
@@ -165,12 +166,12 @@ public:
 // VALORES POR DEFECTO
 // =============================================================================
 
-const int16_t DEFAULT_BASE_SPEED = 200;
 const bool DEFAULT_CASCADE = true;
 const bool DEFAULT_TELEMETRY_ENABLED = true;
 const FeaturesConfig DEFAULT_FEATURES = {false, false, false, false, false, false, false, false, false};
 const OperationMode DEFAULT_OPERATION_MODE = MODE_IDLE;
-const float DEFAULT_BASE_RPM = 120.0f;
+const int16_t DEFAULT_BASE_SPEED = 150;
+const float DEFAULT_BASE_RPM = 300.0f;
 const int16_t DEFAULT_MAX_SPEED = 230;
 const float DEFAULT_MAX_RPM = 3000.0f;
 
@@ -213,6 +214,7 @@ public:
    uint16_t loopLineMs;
    uint16_t loopSpeedMs;
    unsigned long telemetryIntervalMs;
+   float robotWeight;                    // Peso del robot en gramos
    uint32_t checksum;                    // Checksum para verificación
 
    void restoreDefaults();
@@ -245,6 +247,7 @@ void RobotConfig::restoreDefaults() {
      loopLineMs = DEFAULT_LOOP_LINE_MS;
      loopSpeedMs = DEFAULT_LOOP_SPEED_MS;
      telemetryIntervalMs = DEFAULT_TELEMTRY_INTERVAL_MS;
+     robotWeight = DEFAULT_ROBOT_WEIGHT;
      checksum = 1234567892;
      for (int i = 0; i < NUM_SENSORS; i++) {
          sensorMin[i] = 0;

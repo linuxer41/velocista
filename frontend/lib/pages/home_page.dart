@@ -319,26 +319,34 @@ class _HomePageState extends State<HomePage> {
                                       .onSurfaceVariant,
                                 ),
                               ),
-                              Slider(
-                                value: _leftPwm,
-                                min: -230,
-                                max: 230,
-                                divisions: 460,
-                                onChanged: (value) {
-                                  setState(() {
-                                    _leftPwm = value;
-                                  });
-                                },
-                                onChangeEnd: (value) {
-                                  final pwmCommand = SetPwmCommand(
-                                    rightPwm: _rightPwm.toInt(),
-                                    leftPwm: _leftPwm.toInt(),
+                              ValueListenableBuilder<ConfigData?>(
+                                valueListenable: appState.configData,
+                                builder: (context, config, child) {
+                                  final maxPwm = config?.max != null && config!.max!.length >= 1
+                                      ? config.max![0].toDouble()
+                                      : 250.0;
+                                  return Slider(
+                                    value: _leftPwm.clamp(-maxPwm, maxPwm),
+                                    min: -maxPwm,
+                                    max: maxPwm,
+                                    divisions: (maxPwm * 2).toInt(),
+                                    onChanged: (value) {
+                                      setState(() {
+                                        _leftPwm = value;
+                                      });
+                                    },
+                                    onChangeEnd: (value) {
+                                      final pwmCommand = SetPwmCommand(
+                                        rightPwm: _rightPwm.toInt(),
+                                        leftPwm: _leftPwm.toInt(),
+                                      );
+                                      print(
+                                          'Sending PWM command: ${pwmCommand.toCommand()}');
+                                      appState.sendCommand(pwmCommand.toCommand());
+                                    },
+                                    activeColor: Theme.of(context).colorScheme.primary,
                                   );
-                                  print(
-                                      'Sending PWM command: ${pwmCommand.toCommand()}');
-                                  appState.sendCommand(pwmCommand.toCommand());
                                 },
-                                activeColor: Theme.of(context).colorScheme.primary,
                               ),
                             ],
                           ),
@@ -356,26 +364,34 @@ class _HomePageState extends State<HomePage> {
                                       .onSurfaceVariant,
                                 ),
                               ),
-                              Slider(
-                                value: _rightPwm,
-                                min: -230,
-                                max: 230,
-                                divisions: 460,
-                                onChanged: (value) {
-                                  setState(() {
-                                    _rightPwm = value;
-                                  });
-                                },
-                                onChangeEnd: (value) {
-                                  final pwmCommand = SetPwmCommand(
-                                    rightPwm: _rightPwm.toInt(),
-                                    leftPwm: _leftPwm.toInt(),
+                              ValueListenableBuilder<ConfigData?>(
+                                valueListenable: appState.configData,
+                                builder: (context, config, child) {
+                                  final maxPwm = config?.max != null && config!.max!.length >= 1
+                                      ? config.max![0].toDouble()
+                                      : 250.0;
+                                  return Slider(
+                                    value: _rightPwm.clamp(-maxPwm, maxPwm),
+                                    min: -maxPwm,
+                                    max: maxPwm,
+                                    divisions: (maxPwm * 2).toInt(),
+                                    onChanged: (value) {
+                                      setState(() {
+                                        _rightPwm = value;
+                                      });
+                                    },
+                                    onChangeEnd: (value) {
+                                      final pwmCommand = SetPwmCommand(
+                                        rightPwm: _rightPwm.toInt(),
+                                        leftPwm: _leftPwm.toInt(),
+                                      );
+                                      print(
+                                          'Sending PWM command: ${pwmCommand.toCommand()}');
+                                      appState.sendCommand(pwmCommand.toCommand());
+                                    },
+                                    activeColor: Theme.of(context).colorScheme.primary,
                                   );
-                                  print(
-                                      'Sending PWM command: ${pwmCommand.toCommand()}');
-                                  appState.sendCommand(pwmCommand.toCommand());
                                 },
-                                activeColor: Theme.of(context).colorScheme.primary,
                               ),
                             ],
                           ),
@@ -398,26 +414,34 @@ class _HomePageState extends State<HomePage> {
                                       .onSurfaceVariant,
                                 ),
                               ),
-                              Slider(
-                                value: _leftRpm,
-                                min: -300,
-                                max: 300,
-                                divisions: 600,
-                                onChanged: (value) {
-                                  setState(() {
-                                    _leftRpm = value;
-                                  });
-                                },
-                                onChangeEnd: (value) {
-                                  final rpmCommand = SetRpmCommand(
-                                    leftRpm: _leftRpm.toInt(),
-                                    rightRpm: _rightRpm.toInt(),
+                              ValueListenableBuilder<ConfigData?>(
+                                valueListenable: appState.configData,
+                                builder: (context, config, child) {
+                                  final maxRpm = config?.max != null && config!.max!.length >= 2
+                                      ? config.max![1].toDouble()
+                                      : 5000.0;
+                                  return Slider(
+                                    value: _leftRpm.clamp(-maxRpm, maxRpm),
+                                    min: -maxRpm,
+                                    max: maxRpm,
+                                    divisions: (maxRpm * 2 / 10).toInt(),
+                                    onChanged: (value) {
+                                      setState(() {
+                                        _leftRpm = value;
+                                      });
+                                    },
+                                    onChangeEnd: (value) {
+                                      final rpmCommand = SetRpmCommand(
+                                        leftRpm: _leftRpm.toInt(),
+                                        rightRpm: _rightRpm.toInt(),
+                                      );
+                                      print(
+                                          'Sending RPM command: ${rpmCommand.toCommand()}');
+                                      appState.sendCommand(rpmCommand.toCommand());
+                                    },
+                                    activeColor: Theme.of(context).colorScheme.secondary,
                                   );
-                                  print(
-                                      'Sending RPM command: ${rpmCommand.toCommand()}');
-                                  appState.sendCommand(rpmCommand.toCommand());
                                 },
-                                activeColor: Theme.of(context).colorScheme.secondary,
                               ),
                             ],
                           ),
@@ -435,26 +459,34 @@ class _HomePageState extends State<HomePage> {
                                       .onSurfaceVariant,
                                 ),
                               ),
-                              Slider(
-                                value: _rightRpm,
-                                min: -300,
-                                max: 300,
-                                divisions: 600,
-                                onChanged: (value) {
-                                  setState(() {
-                                    _rightRpm = value;
-                                  });
-                                },
-                                onChangeEnd: (value) {
-                                  final rpmCommand = SetRpmCommand(
-                                    leftRpm: _leftRpm.toInt(),
-                                    rightRpm: _rightRpm.toInt(),
+                              ValueListenableBuilder<ConfigData?>(
+                                valueListenable: appState.configData,
+                                builder: (context, config, child) {
+                                  final maxRpm = config?.max != null && config!.max!.length >= 2
+                                      ? config.max![1].toDouble()
+                                      : 5000.0;
+                                  return Slider(
+                                    value: _rightRpm.clamp(-maxRpm, maxRpm),
+                                    min: -maxRpm,
+                                    max: maxRpm,
+                                    divisions: (maxRpm * 2 / 10).toInt(),
+                                    onChanged: (value) {
+                                      setState(() {
+                                        _rightRpm = value;
+                                      });
+                                    },
+                                    onChangeEnd: (value) {
+                                      final rpmCommand = SetRpmCommand(
+                                        leftRpm: _leftRpm.toInt(),
+                                        rightRpm: _rightRpm.toInt(),
+                                      );
+                                      print(
+                                          'Sending RPM command: ${rpmCommand.toCommand()}');
+                                      appState.sendCommand(rpmCommand.toCommand());
+                                    },
+                                    activeColor: Theme.of(context).colorScheme.secondary,
                                   );
-                                  print(
-                                      'Sending RPM command: ${rpmCommand.toCommand()}');
-                                  appState.sendCommand(rpmCommand.toCommand());
                                 },
-                                activeColor: Theme.of(context).colorScheme.secondary,
                               ),
                             ],
                           ),
@@ -1490,12 +1522,14 @@ class _HomePageState extends State<HomePage> {
                                       final lineData = telemetryData?.line ??
                                           [0.0, 0.0, 0.0, 0.0, 0.0];
                                       final config = appState.configData.value;
-                                      final lineKPid = config?.lineKPid ?? [2.0, 0.05, 0.75];
-                                      final leftKPid = config?.leftKPid ?? [1.0, 0.0, 0.0];
-                                      final rightKPid = config?.rightKPid ?? [1.0, 0.0, 0.0];
+                                      final lineKPid = config?.lineKPid ?? [0.900, 0.010, 0.020];
+                                      final leftKPid = config?.leftKPid ?? [0.590, 0.001, 0.0025];
+                                      final rightKPid = config?.rightKPid ?? [0.590, 0.001, 0.050];
                                       final baseData = config?.base ?? [200.0, 120.0];
                                       final maxData = config?.max ?? [230.0, 300.0];
                                       final wheelsData = config?.wheels ?? [32.0, 85.0];
+                                      final weightData = config?.weight ?? 155.0;
+                                      final sampRateData = config?.sampRate ?? [2, 1, 100];
                                       final modeData = config?.mode ?? 0;
                                       final cascadeData = config?.cascade ?? 1;
                                       final telemetryConfig = config?.telemetry ?? 0;
@@ -2013,7 +2047,7 @@ class _HomePageState extends State<HomePage> {
                                                                       height:
                                                                           4),
                                                                   Text(
-                                                                    'KP: ${lineKPid[0].toStringAsFixed(2)}',
+                                                                    'KP: ${lineKPid[0].toStringAsFixed(3)}',
                                                                     style:
                                                                         TextStyle(
                                                                       fontSize:
@@ -2037,7 +2071,7 @@ class _HomePageState extends State<HomePage> {
                                                                     ),
                                                                   ),
                                                                   Text(
-                                                                    'KD: ${lineKPid[2].toStringAsFixed(2)}',
+                                                                    'KD: ${lineKPid[2].toStringAsFixed(3)}',
                                                                     style:
                                                                         TextStyle(
                                                                       fontSize:
@@ -2101,7 +2135,7 @@ class _HomePageState extends State<HomePage> {
                                                                       height:
                                                                           4),
                                                                   Text(
-                                                                    'KP: ${leftKPid[0].toStringAsFixed(2)}',
+                                                                    'KP: ${leftKPid[0].toStringAsFixed(3)}',
                                                                     style:
                                                                         TextStyle(
                                                                       fontSize:
@@ -2125,7 +2159,7 @@ class _HomePageState extends State<HomePage> {
                                                                     ),
                                                                   ),
                                                                   Text(
-                                                                    'KD: ${leftKPid[2].toStringAsFixed(2)}',
+                                                                    'KD: ${leftKPid[2].toStringAsFixed(3)}',
                                                                     style:
                                                                         TextStyle(
                                                                       fontSize:
@@ -2188,7 +2222,7 @@ class _HomePageState extends State<HomePage> {
                                                                       height:
                                                                           4),
                                                                   Text(
-                                                                    'KP: ${rightKPid[0].toStringAsFixed(2)}',
+                                                                    'KP: ${rightKPid[0].toStringAsFixed(3)}',
                                                                     style:
                                                                         TextStyle(
                                                                       fontSize:
@@ -2212,7 +2246,7 @@ class _HomePageState extends State<HomePage> {
                                                                     ),
                                                                   ),
                                                                   Text(
-                                                                    'KD: ${rightKPid[2].toStringAsFixed(2)}',
+                                                                    'KD: ${rightKPid[2].toStringAsFixed(3)}',
                                                                     style:
                                                                         TextStyle(
                                                                       fontSize:
@@ -2433,6 +2467,154 @@ class _HomePageState extends State<HomePage> {
                                                                   ),
                                                                   Text(
                                                                     'Sep.: ${wheelsData[1].toStringAsFixed(2)}',
+                                                                    style:
+                                                                        TextStyle(
+                                                                      fontSize:
+                                                                          9,
+                                                                      color: Theme.of(
+                                                                              context)
+                                                                          .colorScheme
+                                                                          .onSurfaceVariant,
+                                                                    ),
+                                                                  ),
+                                                                ],
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                      const SizedBox(height: 8),
+                                                      // Weight and Sampling Rate
+                                                      Row(
+                                                        children: [
+                                                          Expanded(
+                                                            child: Container(
+                                                              padding:
+                                                                  const EdgeInsets
+                                                                      .all(8),
+                                                              margin:
+                                                                  const EdgeInsets
+                                                                      .only(
+                                                                      right: 2),
+                                                              decoration:
+                                                                  BoxDecoration(
+                                                                color: Theme.of(
+                                                                        context)
+                                                                    .colorScheme
+                                                                    .surface,
+                                                                borderRadius:
+                                                                    BorderRadius
+                                                                        .circular(
+                                                                            6),
+                                                              ),
+                                                              child: Column(
+                                                                crossAxisAlignment:
+                                                                    CrossAxisAlignment
+                                                                        .start,
+                                                                children: [
+                                                                  Text(
+                                                                    'Peso',
+                                                                    style:
+                                                                        TextStyle(
+                                                                      fontSize:
+                                                                          11,
+                                                                      fontWeight:
+                                                                          FontWeight
+                                                                              .w600,
+                                                                      color: Theme.of(
+                                                                              context)
+                                                                          .colorScheme
+                                                                          .onSurface,
+                                                                    ),
+                                                                  ),
+                                                                  const SizedBox(
+                                                                      height:
+                                                                          4),
+                                                                  Text(
+                                                                    '${weightData.toStringAsFixed(1)} g',
+                                                                    style:
+                                                                        TextStyle(
+                                                                      fontSize:
+                                                                          9,
+                                                                      color: Theme.of(
+                                                                              context)
+                                                                          .colorScheme
+                                                                          .onSurfaceVariant,
+                                                                    ),
+                                                                  ),
+                                                                ],
+                                                              ),
+                                                            ),
+                                                          ),
+                                                          Expanded(
+                                                            child: Container(
+                                                              padding:
+                                                                  const EdgeInsets
+                                                                      .all(8),
+                                                              margin:
+                                                                  const EdgeInsets
+                                                                      .only(
+                                                                      left: 2),
+                                                              decoration:
+                                                                  BoxDecoration(
+                                                                color: Theme.of(
+                                                                        context)
+                                                                    .colorScheme
+                                                                    .surface,
+                                                                borderRadius:
+                                                                    BorderRadius
+                                                                        .circular(
+                                                                            6),
+                                                              ),
+                                                              child: Column(
+                                                                crossAxisAlignment:
+                                                                    CrossAxisAlignment
+                                                                        .start,
+                                                                children: [
+                                                                  Text(
+                                                                    'Muestreo',
+                                                                    style:
+                                                                        TextStyle(
+                                                                      fontSize:
+                                                                          11,
+                                                                      fontWeight:
+                                                                          FontWeight
+                                                                              .w600,
+                                                                      color: Theme.of(
+                                                                              context)
+                                                                          .colorScheme
+                                                                          .onSurface,
+                                                                    ),
+                                                                  ),
+                                                                  const SizedBox(
+                                                                      height:
+                                                                          4),
+                                                                  Text(
+                                                                    'Línea: ${sampRateData.length > 0 ? sampRateData[0] : 2}ms',
+                                                                    style:
+                                                                        TextStyle(
+                                                                      fontSize:
+                                                                          9,
+                                                                      color: Theme.of(
+                                                                              context)
+                                                                          .colorScheme
+                                                                          .onSurfaceVariant,
+                                                                    ),
+                                                                  ),
+                                                                  Text(
+                                                                    'Velocidad: ${sampRateData.length > 1 ? sampRateData[1] : 1}ms',
+                                                                    style:
+                                                                        TextStyle(
+                                                                      fontSize:
+                                                                          9,
+                                                                      color: Theme.of(
+                                                                              context)
+                                                                          .colorScheme
+                                                                          .onSurfaceVariant,
+                                                                    ),
+                                                                  ),
+                                                                  Text(
+                                                                    'Telemetría: ${sampRateData.length > 2 ? sampRateData[2] : 100}ms',
                                                                     style:
                                                                         TextStyle(
                                                                       fontSize:

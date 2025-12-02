@@ -68,6 +68,8 @@ class ConfigData extends SerialData {
   final List<double>? base;
   final List<double>? max;
   final List<double>? wheels;
+  final double? weight;
+  final List<int>? sampRate;
   final int? mode;
   final int? cascade;
   final int? telemetry;
@@ -80,6 +82,8 @@ class ConfigData extends SerialData {
     this.base,
     this.max,
     this.wheels,
+    this.weight,
+    this.sampRate,
     this.mode,
     this.cascade,
     this.telemetry,
@@ -113,6 +117,8 @@ class ConfigData extends SerialData {
     final base = _parseDoubleArray(dataMap['BASE']);
     final max = _parseDoubleArray(dataMap['MAX']);
     final wheels = _parseDoubleArray(dataMap['WHEELS']);
+    final weight = double.tryParse(dataMap['WEIGHT'] ?? '155.0') ?? 155.0;
+    final sampRate = _parseIntArray(dataMap['SAMP_RATE']);
     final featConfig = _parseIntArray(dataMap['FEAT_CONFIG']);
 
     // Parse simple values
@@ -127,6 +133,8 @@ class ConfigData extends SerialData {
       base: base,
       max: max,
       wheels: wheels,
+      weight: weight,
+      sampRate: sampRate,
       mode: mode,
       cascade: cascade,
       telemetry: telemetry,
@@ -136,7 +144,7 @@ class ConfigData extends SerialData {
 
   @override
   String toString() =>
-      'ConfigData{lineKPid: $lineKPid, leftKPid: $leftKPid, rightKPid: $rightKPid, base: $base, max: $max, wheels: $wheels, mode: $mode, cascade: $cascade, telemetry: $telemetry, featConfig: $featConfig}';
+      'ConfigData{lineKPid: $lineKPid, leftKPid: $leftKPid, rightKPid: $rightKPid, base: $base, max: $max, wheels: $wheels, weight: $weight, sampRate: $sampRate, mode: $mode, cascade: $cascade, telemetry: $telemetry, featConfig: $featConfig}';
 }
 
 enum OperationMode {
@@ -650,6 +658,28 @@ class SetRpmCommand {
 
   String toCommand() {
     return 'set rpm $leftRpm,$rightRpm';
+  }
+}
+
+class WeightCommand {
+  final double weight;
+
+  WeightCommand(this.weight);
+
+  String toCommand() {
+    return 'set weight ${weight.toStringAsFixed(1)}';
+  }
+}
+
+class SampRateCommand {
+  final int lineMs;
+  final int speedMs;
+  final int telemetryMs;
+
+  SampRateCommand(this.lineMs, this.speedMs, this.telemetryMs);
+
+  String toCommand() {
+    return 'set samp_rate $lineMs,$speedMs,$telemetryMs';
   }
 }
 

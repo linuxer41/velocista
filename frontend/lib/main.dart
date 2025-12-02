@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'app_state.dart';
 import 'pages/home_page.dart';
 import 'pages/terminal_page.dart';
-import 'pages/settings_page.dart';
 import 'pages/config_page.dart';
 import 'pages/debug_page.dart';
 
@@ -62,10 +61,6 @@ class _MyAppState extends State<MyApp> {
         routes: {
           '/': (context) => HomePage(themeProvider: widget.themeProvider),
           '/terminal': (context) => TerminalPage(provider: widget.appState),
-          '/settings': (context) => SettingsPage(
-            appState: widget.appState,
-            themeProvider: widget.themeProvider,
-          ),
           '/config': (context) => const ConfigPage(),
           '/debug': (context) => const DebugPage(),
         },
