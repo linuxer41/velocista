@@ -210,6 +210,7 @@ class SerialClient {
       if (_connectionType == 'bluetooth' && _bluetoothConnection != null) {
         _bluetoothConnection!.writeString(commandString);
         print('Bluetooth command sent: $commandString');
+        print('Bluetooth command sent as bytes: ${utf8.encode(commandString).toList().join('- ')}');
         return true;
       }
 

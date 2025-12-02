@@ -11,14 +11,50 @@ class StatusBar extends StatelessWidget {
   const StatusBar(
       {super.key, required this.appState, required this.onShowConnectionModal});
 
+  double _calculateBatteryPercentage(double voltage) {
+    const double maxVoltage = 8.8; // 100%
+    const double minVoltage = 7.0; // 0%
+
+    if (voltage >= maxVoltage) return 100.0;
+    if (voltage <= minVoltage) return 0.0;
+
+    return ((voltage - minVoltage) / (maxVoltage - minVoltage)) * 100.0;
+  }
+
+  IconData _getBatteryIcon(double percentage) {
+    if (percentage >= 90) return Icons.battery_full;
+    if (percentage >= 80) return Icons.battery_6_bar;
+    if (percentage >= 60) return Icons.battery_5_bar;
+    if (percentage >= 40) return Icons.battery_4_bar;
+    if (percentage >= 20) return Icons.battery_3_bar;
+    if (percentage >= 10) return Icons.battery_2_bar;
+    if (percentage >= 5) return Icons.battery_1_bar;
+    return Icons.battery_0_bar;
+  }
+
+  Color _getBatteryColor(double percentage) {
+    if (percentage >= 50) {
+      // Green to Yellow transition (50% to 100%)
+      final greenValue = 255;
+      final redValue = (percentage - 50) * 5.1; // 0 to 255
+      return Color.fromARGB(255, redValue.toInt(), greenValue, 0);
+    } else {
+      // Red to Yellow transition (0% to 50%)
+      final redValue = 255;
+      final greenValue = percentage * 5.1; // 0 to 255
+      return Color.fromARGB(255, redValue, greenValue.toInt(), 0);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 4),
       child: ValueListenableBuilder<SerialData?>(
         valueListenable: appState.currentData,
         builder: (context, data, child) {
-          final battery = (data is DebugData) ? data.batt ?? 7.4 : 88.0;
+          final batteryVoltage = (data is DebugData) ? data.batt ?? 7.4 : 7.4;
+          final batteryPercentage = _calculateBatteryPercentage(batteryVoltage);
           final isConnected = appState.isConnected.value;
 
           return Row(
@@ -26,26 +62,38 @@ class StatusBar extends StatelessWidget {
               // Left column: Battery and Time
               Row(
                 children: [
-                  // Battery icon and percentage
+                  // Battery icon and voltage/percentage
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        Icons.battery_6_bar,
-                        color: Theme.of(context).colorScheme.onSurface,
-                        size: 16,
+                        _getBatteryIcon(batteryPercentage),
+                        color: _getBatteryColor(batteryPercentage),
+                        size: 20,
                       ),
+                      // const SizedBox(width: 2),
                       Column(
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            '${battery.toStringAsFixed(0)}%',
+                            '${batteryVoltage.toStringAsFixed(1)}v',
                             style: TextStyle(
-                              fontSize: 12,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w500,
+                              color: Theme.of(context).colorScheme.onSurface,
+                              fontFamily: 'Space Grotesk',
+                              height: 1.0,
+                            ),
+                          ),
+                          Text(
+                            '${batteryPercentage.toStringAsFixed(0)}%',
+                            style: TextStyle(
+                              fontSize: 9,
                               fontWeight: FontWeight.w600,
                               color: Theme.of(context).colorScheme.onSurface,
                               fontFamily: 'Space Grotesk',
+                              height: 1.0,
                             ),
                           ),
                         ],
@@ -96,6 +144,36 @@ class StatusBar extends StatelessWidget {
                           ),
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    // Debug icon
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .secondary
+                            .withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: IconButton(
+                          onPressed: () {
+                            Navigator.pushNamed(context, '/debug');
+                          },
+                          icon: Icon(
+                            Icons.show_chart,
+                            color: Theme.of(context).colorScheme.onSurface,
+                            size: 20,
+                          ),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          tooltip: 'Gráficos de Debug',
                         ),
                       ),
                     ),

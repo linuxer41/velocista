@@ -61,14 +61,10 @@ class _LeftPidControlState extends State<LeftPidControl> {
     final ki = double.tryParse(_kiController.text) ?? 0.5;
     final kd = double.tryParse(_kdController.text) ?? 0.1;
 
-    // Send left motor PID command to Arduino
-    final pidCommand = PidCommand(
-      type: 'left',
-      kp: kp,
-      ki: ki,
-      kd: kd,
-    );
-    await widget.appState.sendCommand(pidCommand.toCommand());
+    // Send left motor PID commands separately
+    await widget.appState.sendCommand('set left kp ${kp.toStringAsFixed(2)}');
+    await widget.appState.sendCommand('set left ki ${ki.toStringAsFixed(3)}');
+    await widget.appState.sendCommand('set left kd ${kd.toStringAsFixed(2)}');
     // Request fresh config data to sync UI
     await widget.appState.sendCommand(ConfigRequestCommand().toCommand());
   }

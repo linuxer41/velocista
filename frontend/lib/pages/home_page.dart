@@ -316,7 +316,7 @@ class _HomePageState extends State<HomePage> {
                       Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
                 SizedBox(
-                  height: 140, // Fixed height for tab content
+                  height: 160, // Fixed height for tab content
                   child: TabBarView(
                     children: [
                       // PWM Tab
@@ -483,44 +483,118 @@ class _HomePageState extends State<HomePage> {
               ],
             ),
           ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            height: 32,
+            child: ElevatedButton(
+              onPressed: () {
+                setState(() {
+                  _leftPwm = 0.0;
+                  _rightPwm = 0.0;
+                  _leftRpm = 0.0;
+                  _rightRpm = 0.0;
+                });
+                final pwmCommand = SetPwmCommand(
+                  rightPwm: 0,
+                  leftPwm: 0,
+                );
+                final rpmCommand = SetRpmCommand(
+                  leftRpm: 0,
+                  rightRpm: 0,
+                );
+                appState.sendCommand(pwmCommand.toCommand());
+                appState.sendCommand(rpmCommand.toCommand());
+              },
+              child: const Text('Reset Motores',
+                  style: TextStyle(fontSize: 12)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+                foregroundColor: Theme.of(context).colorScheme.onError,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Ajuste PID Motores',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Theme.of(context).colorScheme.onSurface,
+              fontFamily: 'Space Grotesk',
+            ),
+          ),
+          const SizedBox(height: 8),
+          DefaultTabController(
+            length: 2,
+            child: Column(
+              children: [
+                TabBar(
+                  tabs: const [
+                    Tab(text: 'PID Izquierdo'),
+                    Tab(text: 'PID Derecho'),
+                  ],
+                  labelStyle: const TextStyle(
+                      fontSize: 12, fontFamily: 'Space Grotesk'),
+                  indicatorColor: Theme.of(context).colorScheme.primary,
+                  labelColor: Theme.of(context).colorScheme.primary,
+                  unselectedLabelColor:
+                      Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+                SizedBox(
+                  height: 200,
+                  child: TabBarView(
+                    children: [
+                      LeftPidControl(appState: appState),
+                      RightPidControl(appState: appState),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
 
   Widget _buildPidTabs(AppState appState) {
-    return DefaultTabController(
-      length: 3,
-      child: Column(
-        children: [
-          _buildBaseSpeedTab(appState),
-          TabBar(
-            tabs: const [
-              Tab(text: 'PID Línea'),
-              Tab(text: 'PID Izquierdo'),
-              Tab(text: 'PID Derecho'),
-            ],
-            labelStyle:
-                const TextStyle(fontSize: 12, fontFamily: 'Space Grotesk'),
-            indicatorColor: Theme.of(context).colorScheme.primary,
-            labelColor: Theme.of(context).colorScheme.primary,
-            unselectedLabelColor:
-                Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-          IntrinsicHeight(
-            child: TabBarView(
-              children: [
-                _buildLinePidTab(appState),
-                LeftPidControl(appState: appState),
-                RightPidControl(appState: appState),
+    return Container(
+      padding: const EdgeInsets.only(top: 16),
+      child: DefaultTabController(
+        length: 3,
+        child: Column(
+          children: [
+            _buildBaseSpeedTab(appState),
+            TabBar(
+              tabs: const [
+                Tab(text: 'PID Línea'),
+                Tab(text: 'PID Izquierdo'),
+                Tab(text: 'PID Derecho'),
               ],
+              labelStyle:
+                  const TextStyle(fontSize: 12, fontFamily: 'Space Grotesk'),
+              indicatorColor: Theme.of(context).colorScheme.primary,
+              labelColor: Theme.of(context).colorScheme.primary,
+              unselectedLabelColor:
+                  Theme.of(context).colorScheme.onSurfaceVariant,
             ),
-          ),
-          const SizedBox(
-              height: 4), // Reduced spacing between tabs and features
-          // Features Control Board - Outside the tabs
-          _buildFeaturesControlBoard(appState),
-        ],
+            SizedBox(
+              height: 200,
+              child: TabBarView(
+                children: [
+                  _buildLinePidTab(appState),
+                  LeftPidControl(appState: appState),
+                  RightPidControl(appState: appState),
+                ],
+              ),
+            ),
+            const SizedBox(
+                height: 4), // Reduced spacing between tabs and features
+            // Features Control Board - Outside the tabs
+            _buildFeaturesControlBoard(appState),
+          ],
+        ),
       ),
     );
   }
@@ -1034,17 +1108,13 @@ class _HomePageState extends State<HomePage> {
             width: double.infinity,
             child: ElevatedButton(
               onPressed: () async {
-                // Send line PID command
+                // Send line PID commands separately
                 final kp = double.tryParse(_lineKpController.text) ?? 2.0;
                 final ki = double.tryParse(_lineKiController.text) ?? 0.05;
                 final kd = double.tryParse(_lineKdController.text) ?? 0.75;
-                final pidCommand = PidCommand(
-                  type: 'line',
-                  kp: kp,
-                  ki: ki,
-                  kd: kd,
-                );
-                await appState.sendCommand(pidCommand.toCommand());
+                await appState.sendCommand('set line kp ${kp.toStringAsFixed(2)}');
+                await appState.sendCommand('set line ki ${ki.toStringAsFixed(3)}');
+                await appState.sendCommand('set line kd ${kd.toStringAsFixed(2)}');
                 // Request fresh config data to sync UI
                 await appState.sendCommand(ConfigRequestCommand().toCommand());
               },
@@ -1394,45 +1464,6 @@ class _HomePageState extends State<HomePage> {
                 ],
               );
             },
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Ajuste PID Motores',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Theme.of(context).colorScheme.onSurface,
-              fontFamily: 'Space Grotesk',
-            ),
-          ),
-          const SizedBox(height: 8),
-          DefaultTabController(
-            length: 2,
-            child: Column(
-              children: [
-                TabBar(
-                  tabs: const [
-                    Tab(text: 'PID Izquierdo'),
-                    Tab(text: 'PID Derecho'),
-                  ],
-                  labelStyle: const TextStyle(
-                      fontSize: 12, fontFamily: 'Space Grotesk'),
-                  indicatorColor: Theme.of(context).colorScheme.primary,
-                  labelColor: Theme.of(context).colorScheme.primary,
-                  unselectedLabelColor:
-                      Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-                SizedBox(
-                  height: 140,
-                  child: TabBarView(
-                    children: [
-                      LeftPidControl(appState: appState),
-                      RightPidControl(appState: appState),
-                    ],
-                  ),
-                ),
-              ],
-            ),
           ),
         ],
       ),
