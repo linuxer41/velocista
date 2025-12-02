@@ -70,6 +70,7 @@ bool ledState = false;
 float previousLinePosition = 0;
 float currentCurvature = 0;
 SensorState currentSensorState = NORMAL;
+int lastTurnDirection = 1; // 1 para derecha, -1 para izquierda
 // Idle mode PWM
 int16_t idleLeftPWM = 0;
 int16_t idleRightPWM = 0;
@@ -194,9 +195,13 @@ void loop() {
 
         // Calcular curvatura para ajustes dinámicos
        float currentPosition = features.applySignalFilters(qtr.linePosition);
-       float curvature = abs(currentPosition - previousLinePosition) / dtLine;
-       previousLinePosition = currentPosition;
-       currentCurvature = curvature;
+        float curvature = abs(currentPosition - previousLinePosition) / dtLine;
+        previousLinePosition = currentPosition;
+        currentCurvature = curvature;
+
+        // Actualizar dirección del último giro
+        if (currentPosition > 10) lastTurnDirection = 1; // derecha
+        else if (currentPosition < -10) lastTurnDirection = -1; // izquierda
 
        // Ajustes dinámicos de velocidad base
        float applyBaseRPM = config.baseRPM;
@@ -215,7 +220,7 @@ void loop() {
        if(state == ALL_BLACK) {
          pidOutput = config.features.turnDirection ? 200 : -200;  // girar según feature: derecha o izquierda
        } else if(state == ALL_WHITE) {
-         pidOutput = 200;   // girar a la derecha rápidamente cuando todos los sensores están en blanco
+         pidOutput = lastTurnDirection * 200;   // girar según la última dirección de la curva
        } else {
          lastLinePosition = currentPosition;
          float error = 0 - lastLinePosition;
