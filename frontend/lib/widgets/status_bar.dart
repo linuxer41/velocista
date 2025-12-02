@@ -148,6 +148,36 @@ class StatusBar extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 6),
+                    // Config icon
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .tertiary
+                            .withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: IconButton(
+                          onPressed: () {
+                            Navigator.pushNamed(context, '/config');
+                          },
+                          icon: Icon(
+                            Icons.settings,
+                            color: Theme.of(context).colorScheme.onSurface,
+                            size: 20,
+                          ),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          tooltip: 'Configuración',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
                     // Debug icon
                     Container(
                       padding: const EdgeInsets.symmetric(

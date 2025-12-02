@@ -66,6 +66,7 @@ class ConfigData extends SerialData {
   final List<double>? leftKPid;
   final List<double>? rightKPid;
   final List<double>? base;
+  final List<double>? max;
   final List<double>? wheels;
   final int? mode;
   final int? cascade;
@@ -77,6 +78,7 @@ class ConfigData extends SerialData {
     this.leftKPid,
     this.rightKPid,
     this.base,
+    this.max,
     this.wheels,
     this.mode,
     this.cascade,
@@ -109,6 +111,7 @@ class ConfigData extends SerialData {
     final leftKPid = _parseDoubleArray(dataMap['LEFT_K_PID']);
     final rightKPid = _parseDoubleArray(dataMap['RIGHT_K_PID']);
     final base = _parseDoubleArray(dataMap['BASE']);
+    final max = _parseDoubleArray(dataMap['MAX']);
     final wheels = _parseDoubleArray(dataMap['WHEELS']);
     final featConfig = _parseIntArray(dataMap['FEAT_CONFIG']);
 
@@ -122,6 +125,7 @@ class ConfigData extends SerialData {
       leftKPid: leftKPid,
       rightKPid: rightKPid,
       base: base,
+      max: max,
       wheels: wheels,
       mode: mode,
       cascade: cascade,
@@ -132,7 +136,7 @@ class ConfigData extends SerialData {
 
   @override
   String toString() =>
-      'ConfigData{lineKPid: $lineKPid, leftKPid: $leftKPid, rightKPid: $rightKPid, base: $base, wheels: $wheels, mode: $mode, cascade: $cascade, telemetry: $telemetry}';
+      'ConfigData{lineKPid: $lineKPid, leftKPid: $leftKPid, rightKPid: $rightKPid, base: $base, max: $max, wheels: $wheels, mode: $mode, cascade: $cascade, telemetry: $telemetry, featConfig: $featConfig}';
 }
 
 enum OperationMode {
@@ -161,6 +165,7 @@ class DebugData extends SerialData {
   final List<double>? leftKPid;
   final List<double>? rightKPid;
   final List<double>? base;
+  final List<double>? max;
   final List<double>? wheels;
   final int? mode;
   final int? cascade;
@@ -186,6 +191,7 @@ class DebugData extends SerialData {
     this.leftKPid,
     this.rightKPid,
     this.base,
+    this.max,
     this.wheels,
     this.mode,
     this.cascade,
@@ -228,6 +234,7 @@ class DebugData extends SerialData {
     final leftKPid = _parseDoubleArray(dataMap['LEFT_K_PID']);
     final rightKPid = _parseDoubleArray(dataMap['RIGHT_K_PID']);
     final base = _parseDoubleArray(dataMap['BASE']);
+    final max = _parseDoubleArray(dataMap['MAX']);
     final wheels = _parseDoubleArray(dataMap['WHEELS']);
 
     // Parse telemetry arrays
@@ -254,6 +261,7 @@ class DebugData extends SerialData {
       leftKPid: leftKPid,
       rightKPid: rightKPid,
       base: base,
+      max: max,
       wheels: wheels,
       mode: mode,
       cascade: cascade,
@@ -557,32 +565,24 @@ class CascadeCommand {
 }
 
 class BaseSpeedCommand {
-  final double value;
+  final double pwm;
+  final double rpm;
 
-  BaseSpeedCommand(this.value);
-
-  String toCommand() {
-    return 'set base speed ${value.toStringAsFixed(0)}';
-  }
-}
-
-class BaseRpmCommand {
-  final double value;
-
-  BaseRpmCommand(this.value);
+  BaseSpeedCommand(this.pwm, this.rpm);
 
   String toCommand() {
-    return 'set base rpm ${value.toStringAsFixed(1)}';
+    return 'set base ${pwm.toStringAsFixed(0)},${rpm.toStringAsFixed(1)}';
   }
 }
 
 class MaxSpeedCommand {
-  final double value;
+  final double pwm;
+  final double rpm;
 
-  MaxSpeedCommand(this.value);
+  MaxSpeedCommand(this.pwm, this.rpm);
 
   String toCommand() {
-    return 'set max speed ${value.toStringAsFixed(0)}';
+    return 'set max ${pwm.toStringAsFixed(0)},${rpm.toStringAsFixed(1)}';
   }
 }
 
@@ -598,12 +598,12 @@ class RelationCommand {
 
 
 class FeatureCommand {
-  final int index; // Feature index (0-7)
+  final int index; // Feature index (0-8)
   final int value; // Feature state (0 or 1)
 
   FeatureCommand(this.index, this.value) {
-    if (index < 0 || index > 7) {
-      throw ArgumentError('Feature index must be between 0 and 7');
+    if (index < 0 || index > 8) {
+      throw ArgumentError('Feature index must be between 0 and 8');
     }
     if (value != 0 && value != 1) {
       throw ArgumentError('Feature value must be 0 or 1');

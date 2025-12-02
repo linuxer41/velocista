@@ -3,6 +3,7 @@ import 'app_state.dart';
 import 'pages/home_page.dart';
 import 'pages/terminal_page.dart';
 import 'pages/settings_page.dart';
+import 'pages/config_page.dart';
 import 'pages/debug_page.dart';
 
 void main() {
@@ -65,6 +66,7 @@ class _MyAppState extends State<MyApp> {
             appState: widget.appState,
             themeProvider: widget.themeProvider,
           ),
+          '/config': (context) => const ConfigPage(),
           '/debug': (context) => const DebugPage(),
         },
       ),

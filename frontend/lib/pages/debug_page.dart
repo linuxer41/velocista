@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../app_state.dart';
-import '../arduino_data.dart';
 
 class DebugPage extends StatefulWidget {
   const DebugPage({super.key});

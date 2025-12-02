@@ -987,13 +987,12 @@ class _HomePageState extends State<HomePage> {
                         double.tryParse(_baseRpmController.text) ?? 120.0;
                     final maxSpeedValue =
                         double.tryParse(_maxSpeedController.text) ?? 230.0;
+                    final maxRpmValue = 3000.0; // Default max RPM
 
-                    final baseSpeedCommand = BaseSpeedCommand(baseSpeedValue);
-                    final baseRpmCommand = BaseRpmCommand(baseRpmValue);
-                    final maxSpeedCommand = MaxSpeedCommand(maxSpeedValue);
+                    final baseSpeedCommand = BaseSpeedCommand(baseSpeedValue, baseRpmValue);
+                    final maxSpeedCommand = MaxSpeedCommand(maxSpeedValue, maxRpmValue);
 
                     await appState.sendCommand(baseSpeedCommand.toCommand());
-                    await appState.sendCommand(baseRpmCommand.toCommand());
                     await appState.sendCommand(maxSpeedCommand.toCommand());
 
                     // Request fresh config data to sync UI

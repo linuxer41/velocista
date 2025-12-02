@@ -42,9 +42,14 @@ set right kp,ki,kd  - Configura PID motor derecho (ej: set right 0.29,0.01,0.002
 
 ### Configuración de Velocidad Base
 ```
-set base speed <value>  - Configura velocidad base PWM (ej: set base speed 200)
-set base rpm <value>    - Configura RPM base (ej: set base rpm 120.0)
+set base <pwm>,<rpm>    - Configura velocidad base PWM y RPM (ej: set base 200,120)
+set max <pwm>,<rpm>     - Configura velocidad máxima PWM y RPM (ej: set max 230,300)
 ```
+
+**Límites de Seguridad:**
+- PWM máximo: 400 (para protección de motores)
+- RPM máximo: 5000 (para protección de motores)
+- Los valores se limitan automáticamente si exceden estos límites
 
 ### Control Remoto
 ```
@@ -92,7 +97,7 @@ type:2|ack:save
 Configuración actual del robot (PID, velocidades base, modo, cascada):
 
 ```
-type:3|LINE_K_PID:[2.00,0.05,0.75]|LEFT_K_PID:[5.00,0.50,0.10]|RIGHT_K_PID:[5.00,0.50,0.10]|BASE:[200,120.00,230]|WHEELS:[32.0,85.0]|FEAT_CONFIG:[0,1,0,0,1,0,1,1,0]|MODE:1|CASCADE:1|TELEMETRY:1
+type:3|LINE_K_PID:[2.00,0.05,0.75]|LEFT_K_PID:[0.29,0.01,0.0025]|RIGHT_K_PID:[0.29,0.01,0.0025]|BASE:[200,120.00]|MAX:[230,3000.00]|WHEELS:[32.0,85.0]|FEAT_CONFIG:[0,1,0,0,1,0,1,1,0]|MODE:1|CASCADE:1|TELEMETRY:1
 ```
 
 ### type:4 - Datos de Telemetry
@@ -106,13 +111,14 @@ type:4|LINE:[429.30,-225.00,150.50,5.25,150.00]|LEFT:[120.00,232.50,166,1234,567
 Información completa de debugging (config + telemetry + datos PID detallados):
 
 ```
-type:5|LINE_K_PID:[2.00,0.05,0.75]|LEFT_K_PID:[5.00,0.50,0.10]|RIGHT_K_PID:[5.00,0.50,0.10]|BASE:[200,120.00,230]|WHEELS:[32.0,85.0]|MODE:1|CASCADE:1|TELEMETRY:1|LINE:[429.30,-225.00,150.50,5.25,150.00]|LEFT:[120.00,232.50,166,1234,567]|RIGHT:[-85.50,7.50,-53,4567,890]|PID:[150.00,166.00,53.00]|SPEED_CMS:[15.08,-10.68]|QTR:[687,292,0,0,0,0]|BATT:7.85|LOOP_US:45|FREE_MEM:1024|UPTIME:5000|CURV:150.25|STATE:0
+type:5|LINE_K_PID:[2.00,0.05,0.75]|LEFT_K_PID:[0.29,0.01,0.0025]|RIGHT_K_PID:[0.29,0.01,0.0025]|BASE:[200,120.00]|MAX:[230,3000.00]|WHEELS:[32.0,85.0]|MODE:1|CASCADE:1|TELEMETRY:1|LINE:[429.30,-225.00,150.50,5.25,150.00]|LEFT:[120.00,232.50,166,1234,567]|RIGHT:[-85.50,7.50,-53,4567,890]|PID:[150.00,166.00,53.00]|SPEED_CMS:[15.08,-10.68]|QTR:[687,292,0,0,0,0]|BATT:7.85|LOOP_US:45|UPTIME:5000|CURV:150.25|STATE:0
 ```
 
 **Configuración (igual que type:3):**
 - **LINE_K_PID**: [KP,KI,KD] ganancias PID de línea
 - **LEFT_K_PID/RIGHT_K_PID**: [KP,KI,KD] ganancias PID de motores
-- **BASE**: [PWM_base,RPM_base,max_speed] velocidades base y máxima configurada
+- **BASE**: [PWM_base,RPM_base] velocidades base configuradas
+- **MAX**: [PWM_max,RPM_max] velocidades máximas configuradas
 - **WHEELS**: [diámetro_rueda_mm,distancia_ruedas_mm] dimensiones físicas
 - **MODE**: Modo actual (0=IDLE, 1=LINE_FOLLOWING, 2=REMOTE_CONTROL)
 - **CASCADE**: Control en cascada (1=activado, 0=desactivado)
@@ -249,7 +255,7 @@ function parseTelemetryData(debugString) {
 2. **Modo**: Selector IDLE/LINE/REMOTE con comandos `set mode 0` / `set mode 1` / `set mode 2`
 3. **Cascada**: Toggle para control cascada con `set cascade 0/1`
 4. **PID Tuning**: Sliders para KP/KI/KD con envío automático (`set line kp,ki,kd`, `set left kp,ki,kd`, `set right kp,ki,kd`)
-5. **Velocidad Base**: Sliders para base speed y base RPM (`set base speed <value>`, `set base rpm <value>`)
+5. **Velocidad Base**: Sliders para base PWM y RPM (`set base <pwm>,<rpm>`, `set max <pwm>,<rpm>`)
 6. **Telemetría**: Gráfico en tiempo real de posición, RPM, sensores (`set telemetry 1`)
 7. **Control Remoto**: Joystick virtual para enviar comandos `rc throttle,steering` (RPM-based)
 8. **Modo Idle**: Controles PWM directo (`set pwm <derecha>,<izquierda>`) o RPM con PID (`set rpm <izquierda>,<derecha>`)
@@ -334,7 +340,7 @@ pio run  # PlatformIO
 - `set mode 0/1/2` para cambiar modos: 0=idle, 1=line, 2=remote
 - `set cascade 0/1` para activar/desactivar control cascada
 - `set line/left/right kp,ki,kd` para ajustar PID
-- `set base speed <value>` y `set base rpm <value>` para configurar velocidad base
+- `set base <pwm>,<rpm>` y `set max <pwm>,<rpm>` para configurar velocidades base y máxima
 - `rc throttle,steering` para control remoto (RPM-based)
 - `set pwm <derecha>,<izquierda>` para control PWM directo en modo idle
 - `set rpm <izquierda>,<derecha>` para control RPM con PID en modo idle

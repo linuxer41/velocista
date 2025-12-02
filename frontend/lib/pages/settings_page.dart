@@ -680,13 +680,9 @@ class _SettingsPageState extends State<SettingsPage> {
     // Send base speed and RPM commands
     final baseSpeedCommand = BaseSpeedCommand(
       double.tryParse(_baseSpeedController.text) ?? 200.0,
-    );
-    widget.appState.sendCommand(baseSpeedCommand.toCommand());
-
-    final baseRpmCommand = BaseRpmCommand(
       double.tryParse(_baseRpmController.text) ?? 120.0,
     );
-    widget.appState.sendCommand(baseRpmCommand.toCommand());
+    widget.appState.sendCommand(baseSpeedCommand.toCommand());
 
     // Save settings to EEPROM
     final saveCommand = EepromSaveCommand();

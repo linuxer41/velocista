@@ -175,16 +175,6 @@ TelemetryData buildTelemetryData() {
   return data;
 }
 
-void telemetry() {
-  TelemetryData data = buildTelemetryData();
-  debugger.sendTelemetryData(data);
-}
-
-void debug(){
-    TelemetryData data = buildTelemetryData();
-  debugger.sendDebugData(data, config);
-}
-
 // ==========================
 // LOOP PRINCIPAL
 // ==========================
@@ -210,14 +200,14 @@ void loop() {
 
        // Ajustes dinámicos de velocidad base
        float applyBaseRPM = config.baseRPM;
-       int applyBaseSpeed = config.baseSpeed;
+       int applyBaseSpeed = config.basePwm;
        if(config.features.speedProfiling) {
          if(curvature > 500 || state == ALL_BLACK) {  // Alta curvatura o pérdida de línea
            applyBaseRPM = max(60.0f, applyBaseRPM - 30.0f);
            applyBaseSpeed = max(100, applyBaseSpeed - 50);
          } else if(curvature < 100) {  // Baja curvatura (recta)
            applyBaseRPM = min(config.baseRPM + 20.0f, applyBaseRPM + 10.0f);
-           applyBaseSpeed = min(config.maxSpeed, applyBaseSpeed + 20);
+           applyBaseSpeed = min(config.maxPwm, applyBaseSpeed + 20);
          }
        }
 
@@ -250,8 +240,8 @@ void loop() {
         // Open-loop control
         int leftSpeed = applyBaseSpeed + pidOutput;
         int rightSpeed = applyBaseSpeed - pidOutput;
-        leftSpeed = constrain(leftSpeed, -config.maxSpeed, config.maxSpeed);
-        rightSpeed = constrain(rightSpeed, -config.maxSpeed, config.maxSpeed);
+        leftSpeed = constrain(leftSpeed, -config.maxPwm, config.maxPwm);
+        rightSpeed = constrain(rightSpeed, -config.maxPwm, config.maxPwm);
         leftMotor.setSpeed(leftSpeed);
         rightMotor.setSpeed(rightSpeed);
       }
@@ -276,13 +266,13 @@ void loop() {
         int leftSpeed = leftPid.calculate(leftTargetRPM, leftMotor.getRPM(), dtSpeed);
         int rightSpeed = rightPid.calculate(rightTargetRPM, rightMotor.getRPM(), dtSpeed);
 
-        leftSpeed = constrain(leftSpeed, -config.maxSpeed, config.maxSpeed);
-        rightSpeed = constrain(rightSpeed, -config.maxSpeed, config.maxSpeed);
+        leftSpeed = constrain(leftSpeed, -config.maxPwm, config.maxPwm);
+        rightSpeed = constrain(rightSpeed, -config.maxPwm, config.maxPwm);
 
         // Actualizar velocidad máxima registrada
         int currentMax = max(abs(leftSpeed), abs(rightSpeed));
-        if(currentMax > config.maxSpeed) {
-          config.maxSpeed = currentMax;
+        if(currentMax > config.maxPwm) {
+          config.maxPwm = currentMax;
           saveConfig();
         }
 
@@ -294,8 +284,8 @@ void loop() {
           int leftSpeed = leftPid.calculate(idleLeftTargetRPM, leftMotor.getRPM(), dtSpeed);
           int rightSpeed = rightPid.calculate(idleRightTargetRPM, rightMotor.getRPM(), dtSpeed);
 
-          leftSpeed = constrain(leftSpeed, -config.maxSpeed, config.maxSpeed);
-          rightSpeed = constrain(rightSpeed, -config.maxSpeed, config.maxSpeed);
+          leftSpeed = constrain(leftSpeed, -config.maxPwm, config.maxPwm);
+          rightSpeed = constrain(rightSpeed, -config.maxPwm, config.maxPwm);
 
           leftMotor.setSpeed(leftSpeed);
           rightMotor.setSpeed(rightSpeed);
@@ -311,7 +301,8 @@ void loop() {
 
    // Telemetry Print (Non-blocking)
    if (config.telemetry && (millis() - lastTelemetryTime > config.telemetryIntervalMs)) {
-     telemetry();
+      TelemetryData data = buildTelemetryData();
+      debugger.sendTelemetryData(data);;
      lastTelemetryTime = millis();
    }
 
@@ -354,15 +345,17 @@ void loop() {
        success = true;
 
      } else if (strcmp(cmd, "get debug") == 0) {
-       debug();
+        TelemetryData data = buildTelemetryData();
+        debugger.sendDebugData(data, config);
        success = true;
 
      } else if (strcmp(cmd, "get telemetry") == 0) {
-       telemetry();
+        TelemetryData data = buildTelemetryData();
+        debugger.sendTelemetryData(data);
        success = true;
 
      } else if (strcmp(cmd, "get config") == 0) {
-       telemetry();
+        debugger.sendConfigData(config);
        success = true;
 
      } else if (strcmp(cmd, "reset") == 0) {
@@ -378,7 +371,7 @@ void loop() {
        debugger.systemMessage(F("Comandos: calibrate, save, get debug, get telemetry, get config, reset, help"));
        debugger.systemMessage(F("set telemetry 0/1  |  set mode 0/1/2  |  set cascade 0/1"));
        debugger.systemMessage(F("set feature <idx 0-8> 0/1  |  set features 0,1,0,...  |  set line kp,ki,kd  |  set left kp,ki,kd  |  set right kp,ki,kd"));
-       debugger.systemMessage(F("set base speed <value>  |  set base rpm <value>"));
+       debugger.systemMessage(F("set base <pwm>,<rpm>  |  set max <pwm>,<rpm>"));
        debugger.systemMessage(F("set pwm <derecha>,<izquierda>  (solo en modo idle)"));
        debugger.systemMessage(F("set rpm <izquierda>,<derecha>  (solo en modo idle)"));
 
@@ -488,16 +481,24 @@ void loop() {
        rightPid.setGains(kp, ki, kd);
        success = true;
 
-     } else if (strncmp(cmd, "set base speed ", 15) == 0) {
-       char* end;
-       int speed = strtol(cmd + 15, &end, 10);
-       if (end == cmd + 15 || *end != '\0') { debugger.systemMessage("Falta argumento"); return; }
-       config.baseSpeed = speed;
+     } else if (strncmp(cmd, "set base ", 9) == 0) {
+       const char* params = cmd + 9;
+       char* comma = strchr(params, ',');
+       if (!comma) { debugger.systemMessage("Formato: set base <pwm>,<rpm>"); return; }
+       int pwm = atoi(params);
+       float rpm = atof(comma + 1);
+       config.basePwm = constrain(pwm, -LIMIT_MAX_PWM, LIMIT_MAX_PWM);
+       config.baseRPM = constrain(rpm, -LIMIT_MAX_RPM, LIMIT_MAX_RPM);
        success = true;
 
-     } else if (strncmp(cmd, "set base rpm ", 13) == 0) {
-       float rpm = atof(cmd + 13);
-       config.baseRPM = rpm;
+     } else if (strncmp(cmd, "set max ", 8) == 0) {
+       const char* params = cmd + 8;
+       char* comma = strchr(params, ',');
+       if (!comma) { debugger.systemMessage("Formato: set max <pwm>,<rpm>"); return; }
+       int pwm = atoi(params);
+       float rpm = atof(comma + 1);
+       config.maxPwm = constrain(pwm, 0, LIMIT_MAX_PWM);
+       config.maxRpm = constrain(rpm, 0, LIMIT_MAX_RPM);
        success = true;
 
      } else if (strncmp(cmd, "rc ", 3) == 0) {

@@ -231,7 +231,7 @@ class AppState extends ChangeNotifier {
       print('Command ack: $ack');
       lastAck.value = ack; // Notify listeners
 
-      // Try to parse as config data
+      // Try to parse as config data (only if it's a full config response, not just an ack)
       try {
         final parsedConfigData = ConfigData.fromSerial("type:3|$ack");
         if (parsedConfigData != null) {
@@ -241,9 +241,11 @@ class AppState extends ChangeNotifier {
           }
           // Set configData to trigger UI updates
           configData.value = parsedConfigData;
+          return; // Successfully parsed as config, don't process further
         }
       } catch (e) {
-        // Not config data, ignore
+        // Not config data, just an acknowledgment - don't return, let it fall through
+        print('Ack received, not config data: $ack');
       }
       return;
     }

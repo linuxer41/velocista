@@ -39,7 +39,7 @@ public:
   }
 
   void setSpeed(int s) {
-    speed = constrain(s, -config.maxSpeed, config.maxSpeed);
+    speed = constrain(s, -config.maxPwm, config.maxPwm);
     if (location == LEFT) {
       if (speed >= 0) {
         analogWrite(pin1, speed);

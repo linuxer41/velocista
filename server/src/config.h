@@ -31,6 +31,10 @@ const uint16_t DEFAULT_LOOP_LINE_MS = 10;
 const uint16_t DEFAULT_LOOP_SPEED_MS = 5;
 const unsigned long DEFAULT_TELEMTRY_INTERVAL_MS = 100;
 
+// Límites de seguridad para proteger motores
+const int16_t LIMIT_MAX_PWM = 240;    // PWM máximo seguro
+const float LIMIT_MAX_RPM = 4000.0f;  // RPM máximo seguro
+
 // =============================================================================
 // CONFIGURACIÓN DE PINES
 // =============================================================================
@@ -168,6 +172,7 @@ const FeaturesConfig DEFAULT_FEATURES = {false, false, false, false, false, fals
 const OperationMode DEFAULT_OPERATION_MODE = MODE_IDLE;
 const float DEFAULT_BASE_RPM = 120.0f;
 const int16_t DEFAULT_MAX_SPEED = 230;
+const float DEFAULT_MAX_RPM = 3000.0f;
 
 
 // =============================================================================
@@ -188,7 +193,7 @@ public:
    float rightKp;                        // Ganancia proporcional PID motor der
    float rightKi;                         // Ganancia integral PID motor der
    float rightKd;                         // Ganancia derivativa PID motor der
-   int16_t baseSpeed;                    // Velocidad base
+   int16_t basePwm;                    // Velocidad base
    float wheelDiameter;                  // Diámetro de rueda en mm
    float wheelDistance;                  // Distancia entre ruedas en mm
    int16_t sensorMin[6];                 // Valores mínimos de sensores
@@ -202,7 +207,8 @@ public:
    FeaturesConfig features;
    OperationMode operationMode;          // Cambiado de OperationMode a uint8_t
    float baseRPM;                        // RPM base para control de velocidad
-   int16_t maxSpeed;                         // Cambiado de int a int16_t
+   int16_t maxPwm;                         // Cambiado de int a int16_t
+   float maxRpm;                         // RPM máximo para control de velocidad
    int16_t pulsesPerRevolution;
    uint16_t loopLineMs;
    uint16_t loopSpeedMs;
@@ -222,7 +228,7 @@ void RobotConfig::restoreDefaults() {
      rightKp = DEFAULT_RIGHT_KP;
      rightKi = DEFAULT_RIGHT_KI;
      rightKd = DEFAULT_RIGHT_KD;
-     baseSpeed = DEFAULT_BASE_SPEED;
+     basePwm = DEFAULT_BASE_SPEED;
      wheelDiameter = DEFAULT_WHEEL_DIAMETER_MM;
      wheelDistance = DEFAULT_WHEEL_DISTANCE_MM;
      rcDeadzone = DEFAULT_RC_DEADZONE;
@@ -233,7 +239,8 @@ void RobotConfig::restoreDefaults() {
      features = DEFAULT_FEATURES;
      operationMode = DEFAULT_OPERATION_MODE;
      baseRPM = DEFAULT_BASE_RPM;
-     maxSpeed = DEFAULT_MAX_SPEED;
+     maxPwm = DEFAULT_MAX_SPEED;
+     maxRpm = DEFAULT_MAX_RPM;
      pulsesPerRevolution = DEFAULT_PULSES_PER_REVOLUTION;
      loopLineMs = DEFAULT_LOOP_LINE_MS;
      loopSpeedMs = DEFAULT_LOOP_SPEED_MS;

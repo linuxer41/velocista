@@ -135,9 +135,11 @@ public:
     Serial.print(config.rightKi, 2); Serial.print(F(","));
     Serial.print(config.rightKd, 2); Serial.print(F("]"));
     Serial.print(F("|BASE:["));
-    Serial.print(config.baseSpeed); Serial.print(F(","));
-    Serial.print(config.baseRPM, 2); Serial.print(F(","));
-    Serial.print(config.maxSpeed); Serial.print(F("]"));
+    Serial.print(config.basePwm); Serial.print(F(","));
+    Serial.print(config.baseRPM, 2); Serial.print(F("]"));
+    Serial.print(F("|MAX:["));
+    Serial.print(config.maxPwm); Serial.print(F(","));
+    Serial.print(config.maxRpm, 2); Serial.print(F("]"));
     Serial.print(F("|WHEELS:["));
     Serial.print(config.wheelDiameter, 1); Serial.print(F(","));
     Serial.print(config.wheelDistance, 1); Serial.print(F("]"));
