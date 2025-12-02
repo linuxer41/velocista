@@ -313,6 +313,10 @@ class TelemetryData extends SerialData {
   final List<int>? featConfig;
   final List<dynamic>? featValues;
 
+  // Line state data
+  final double? curv;
+  final int? state;
+
   TelemetryData({
     required this.operationMode,
     required this.modeName,
@@ -333,6 +337,8 @@ class TelemetryData extends SerialData {
     this.freeMem,
     this.featConfig,
     this.featValues,
+    this.curv,
+    this.state,
   }) : super(4);
 
   static TelemetryData? fromSerial(String dataString) {
@@ -388,6 +394,8 @@ class TelemetryData extends SerialData {
     final loopUs = int.tryParse(dataMap['LOOP_US'] ?? '0') ?? 0;
     final freeMem = int.tryParse(dataMap['FREE_MEM'] ?? '0') ?? 0;
     final uptime = int.tryParse(dataMap['UPTIME'] ?? '0') ?? 0;
+    final curv = double.tryParse(dataMap['CURV'] ?? '0.0') ?? 0.0;
+    final state = int.tryParse(dataMap['STATE'] ?? '0') ?? 0;
 
     // Extract encoder values
     final leftRpm = left != null && left.isNotEmpty ? left[0] : 0.0;
@@ -420,6 +428,8 @@ class TelemetryData extends SerialData {
       featConfig:
           null, // FEAT_CONFIG removed from telemetry, now only in config
       featValues: featValues,
+      curv: curv,
+      state: state,
     );
   }
 

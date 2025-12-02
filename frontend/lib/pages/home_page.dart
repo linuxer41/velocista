@@ -107,8 +107,11 @@ class _HomePageState extends State<HomePage> {
           if (config.base!.length >= 2) {
             _baseRpmController.text = config.base![1].toStringAsFixed(1);
           }
-          if (config.base!.length >= 3) {
-            _maxSpeedController.text = config.base![2].toStringAsFixed(0);
+        }
+        // Update max speed controllers
+        if (config.max != null) {
+          if (config.max!.length >= 1) {
+            _maxSpeedController.text = config.max![0].toStringAsFixed(0);
           }
         }
 
@@ -1490,8 +1493,9 @@ class _HomePageState extends State<HomePage> {
                                       final lineKPid = config?.lineKPid ?? [2.0, 0.05, 0.75];
                                       final leftKPid = config?.leftKPid ?? [1.0, 0.0, 0.0];
                                       final rightKPid = config?.rightKPid ?? [1.0, 0.0, 0.0];
-                                      final baseData = config?.base ?? [200.0, 120.0, 230.0];
-                                      final wheelsData = config?.wheels ?? [0.0, 0.0];
+                                      final baseData = config?.base ?? [200.0, 120.0];
+                                      final maxData = config?.max ?? [230.0, 300.0];
+                                      final wheelsData = config?.wheels ?? [32.0, 85.0];
                                       final modeData = config?.mode ?? 0;
                                       final cascadeData = config?.cascade ?? 1;
                                       final telemetryConfig = config?.telemetry ?? 0;
@@ -1822,6 +1826,33 @@ class _HomePageState extends State<HomePage> {
                                                           .colorScheme
                                                           .onSurfaceVariant,
                                                     ),
+                                                  ),
+                                                  const SizedBox(height: 2),
+                                                  Row(
+                                                    children: [
+                                                      Expanded(
+                                                        child: Text(
+                                                          'Estado: ${telemetryData?.state == 0 ? 'NORMAL' : telemetryData?.state == 1 ? 'ALL_BLACK' : 'ALL_WHITE'}',
+                                                          style: TextStyle(
+                                                            fontSize: 9,
+                                                            color: Theme.of(context)
+                                                                .colorScheme
+                                                                .onSurfaceVariant,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      Expanded(
+                                                        child: Text(
+                                                          'Curvatura: ${telemetryData?.curv?.toStringAsFixed(1) ?? '0.0'}',
+                                                          style: TextStyle(
+                                                            fontSize: 9,
+                                                            color: Theme.of(context)
+                                                                .colorScheme
+                                                                .onSurfaceVariant,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ],
                                                   ),
                                                   const SizedBox(height: 2),
                                                   // Features status
@@ -2199,7 +2230,7 @@ class _HomePageState extends State<HomePage> {
                                                         ],
                                                       ),
                                                       const SizedBox(height: 8),
-                                                      // Base and Wheels
+                                                      // Base, Max and Wheels
                                                       Row(
                                                         children: [
                                                           Expanded(
@@ -2246,7 +2277,7 @@ class _HomePageState extends State<HomePage> {
                                                                       height:
                                                                           4),
                                                                   Text(
-                                                                    'Velocidad: ${baseData[0].toStringAsFixed(0)}',
+                                                                    'rpm: ${baseData[1].toStringAsFixed(1)}',
                                                                     style:
                                                                         TextStyle(
                                                                       fontSize:
@@ -2258,7 +2289,67 @@ class _HomePageState extends State<HomePage> {
                                                                     ),
                                                                   ),
                                                                   Text(
-                                                                    'RPM: ${baseData[1].toStringAsFixed(1)}',
+                                                                    'pwm: ${baseData[0].toStringAsFixed(0)}',
+                                                                    style:
+                                                                        TextStyle(
+                                                                      fontSize:
+                                                                          9,
+                                                                      color: Theme.of(
+                                                                              context)
+                                                                          .colorScheme
+                                                                          .onSurfaceVariant,
+                                                                    ),
+                                                                  ),
+                                                                ],
+                                                              ),
+                                                            ),
+                                                          ),
+                                                          Expanded(
+                                                            child: Container(
+                                                              padding:
+                                                                  const EdgeInsets
+                                                                      .all(8),
+                                                              margin:
+                                                                  const EdgeInsets
+                                                                      .symmetric(
+                                                                      horizontal:
+                                                                          2),
+                                                              decoration:
+                                                                  BoxDecoration(
+                                                                color: Theme.of(
+                                                                        context)
+                                                                    .colorScheme
+                                                                    .surface,
+                                                                borderRadius:
+                                                                    BorderRadius
+                                                                        .circular(
+                                                                            6),
+                                                              ),
+                                                              child: Column(
+                                                                crossAxisAlignment:
+                                                                    CrossAxisAlignment
+                                                                        .start,
+                                                                children: [
+                                                                  Text(
+                                                                    'Max',
+                                                                    style:
+                                                                        TextStyle(
+                                                                      fontSize:
+                                                                          11,
+                                                                      fontWeight:
+                                                                          FontWeight
+                                                                              .w600,
+                                                                      color: Theme.of(
+                                                                              context)
+                                                                          .colorScheme
+                                                                          .onSurface,
+                                                                    ),
+                                                                  ),
+                                                                  const SizedBox(
+                                                                      height:
+                                                                          4),
+                                                                  Text(
+                                                                    'rpm: ${maxData[1].toStringAsFixed(1)}',
                                                                     style:
                                                                         TextStyle(
                                                                       fontSize:
@@ -2270,7 +2361,7 @@ class _HomePageState extends State<HomePage> {
                                                                     ),
                                                                   ),
                                                                   Text(
-                                                                    'Máx: ${baseData.length > 2 ? baseData[2].toStringAsFixed(0) : '230'}',
+                                                                    'pwm: ${maxData[0].toStringAsFixed(0)}',
                                                                     style:
                                                                         TextStyle(
                                                                       fontSize:
@@ -2329,7 +2420,7 @@ class _HomePageState extends State<HomePage> {
                                                                       height:
                                                                           4),
                                                                   Text(
-                                                                    'Diámetro: ${wheelsData[0].toStringAsFixed(2)}',
+                                                                    'Diam.: ${wheelsData[0].toStringAsFixed(2)}',
                                                                     style:
                                                                         TextStyle(
                                                                       fontSize:
@@ -2341,7 +2432,7 @@ class _HomePageState extends State<HomePage> {
                                                                     ),
                                                                   ),
                                                                   Text(
-                                                                    'Separación: ${wheelsData[1].toStringAsFixed(2)}',
+                                                                    'Sep.: ${wheelsData[1].toStringAsFixed(2)}',
                                                                     style:
                                                                         TextStyle(
                                                                       fontSize:

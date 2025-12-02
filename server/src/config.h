@@ -25,10 +25,10 @@ const int16_t DEFAULT_RC_DEADZONE = 10;
 const int16_t DEFAULT_RC_MAX_THROTTLE = 255;
 const int16_t DEFAULT_RC_MAX_STEERING = 150;
 const int16_t DEFAULT_PULSES_PER_REVOLUTION = 36;
-const float DEFAULT_WHEEL_DIAMETER_MM = 32.0f;
-const float DEFAULT_WHEEL_DISTANCE_MM = 85.0f;
-const uint16_t DEFAULT_LOOP_LINE_MS = 10;
-const uint16_t DEFAULT_LOOP_SPEED_MS = 5;
+const float DEFAULT_WHEEL_DIAMETER_MM = 20.0f;
+const float DEFAULT_WHEEL_DISTANCE_MM = 100.0f;
+const uint16_t DEFAULT_LOOP_LINE_MS = 2;
+const uint16_t DEFAULT_LOOP_SPEED_MS = 1;
 const unsigned long DEFAULT_TELEMTRY_INTERVAL_MS = 100;
 
 // Límites de seguridad para proteger motores
@@ -67,18 +67,18 @@ const int SENSOR_PINS[NUM_SENSORS] = {A0, A1, A2, A3, A4, A5};
 // =============================================================================
 
 // PID para línea (más agresivo para corrección rápida)
-const float DEFAULT_LINE_KP = 2.0;
-const float DEFAULT_LINE_KI = 0.05;
-const float DEFAULT_LINE_KD = 0.75;
+const float DEFAULT_LINE_KP = 0.9;
+const float DEFAULT_LINE_KI = 0.01;
+const float DEFAULT_LINE_KD = 0.02;
 
 // PID para motores (más agresivo para alcanzar RPM objetivo)
-const float DEFAULT_LEFT_KP = 0.29;
-const float DEFAULT_LEFT_KI = 0.01;
+const float DEFAULT_LEFT_KP = 0.59;
+const float DEFAULT_LEFT_KI = 0.001;
 const float DEFAULT_LEFT_KD = 0.0025;
 
-const float DEFAULT_RIGHT_KP = 0.29;
-const float DEFAULT_RIGHT_KI = 0.01;
-const float DEFAULT_RIGHT_KD = 0.0025;
+const float DEFAULT_RIGHT_KP = 0.59;
+const float DEFAULT_RIGHT_KI = 0.001;
+const float DEFAULT_RIGHT_KD = 0.05;
 
 // =============================================================================
 // ENUMERACIONES
