@@ -1,16 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_gauges/gauges.dart';
 import '../app_state.dart';
+import '../app_state.dart';
 import '../arduino_data.dart';
 import '../arduino_data.dart' as arduino_data;
 import '../connection_bottom_sheet.dart';
-import '../widgets/pid_control.dart';
 import '../widgets/remote_control.dart';
-import '../widgets/left_pid_control.dart';
-import '../widgets/right_pid_control.dart';
 import '../widgets/status_bar.dart';
-import 'settings_page.dart';
-import 'package:intl/intl.dart';
 
 class HomePage extends StatefulWidget {
   final ThemeProvider themeProvider;
@@ -25,10 +21,6 @@ class _HomePageState extends State<HomePage> {
   late TextEditingController _baseSpeedController;
   late TextEditingController _baseRpmController;
   late TextEditingController _maxSpeedController;
-
-  late TextEditingController _lineKpController;
-  late TextEditingController _lineKiController;
-  late TextEditingController _lineKdController;
 
   double _leftPwm = 0.0;
   double _rightPwm = 0.0;
@@ -45,9 +37,6 @@ class _HomePageState extends State<HomePage> {
     _baseSpeedController = TextEditingController(text: '200');
     _baseRpmController = TextEditingController(text: '120.0');
     _maxSpeedController = TextEditingController(text: '230');
-    _lineKpController = TextEditingController(text: '2.0');
-    _lineKiController = TextEditingController(text: '0.05');
-    _lineKdController = TextEditingController(text: '0.75');
 
     // Show connection modal automatically if not connected
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -72,9 +61,6 @@ class _HomePageState extends State<HomePage> {
     _baseSpeedController.dispose();
     _baseRpmController.dispose();
     _maxSpeedController.dispose();
-    _lineKpController.dispose();
-    _lineKiController.dispose();
-    _lineKdController.dispose();
     super.dispose();
   }
 
@@ -88,10 +74,10 @@ class _HomePageState extends State<HomePage> {
 
         // Add features status if available
         if (appState.configData.value?.featConfig != null &&
-            appState.configData.value!.featConfig!.length >= 6) {
+            appState.configData.value!.featConfig!.length >= 9) {
           final featConfig = appState.configData.value!.featConfig!;
           final features =
-              'FEAT_CONFIG:[${featConfig.sublist(0, 6).join(',')}]';
+              'FEAT_CONFIG:[${featConfig.sublist(0, 9).join(',')}]';
           ackMessage += '|$features';
         }
 
@@ -126,12 +112,6 @@ class _HomePageState extends State<HomePage> {
           }
         }
 
-        // Update PID controllers
-        if (config.lineKPid != null && config.lineKPid!.length >= 3) {
-          _lineKpController.text = config.lineKPid![0].toStringAsFixed(2);
-          _lineKiController.text = config.lineKPid![1].toStringAsFixed(3);
-          _lineKdController.text = config.lineKPid![2].toStringAsFixed(2);
-        }
       }
     }
   }
@@ -514,45 +494,6 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            'Ajuste PID Motores',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Theme.of(context).colorScheme.onSurface,
-              fontFamily: 'Space Grotesk',
-            ),
-          ),
-          const SizedBox(height: 8),
-          DefaultTabController(
-            length: 2,
-            child: Column(
-              children: [
-                TabBar(
-                  tabs: const [
-                    Tab(text: 'PID Izquierdo'),
-                    Tab(text: 'PID Derecho'),
-                  ],
-                  labelStyle: const TextStyle(
-                      fontSize: 12, fontFamily: 'Space Grotesk'),
-                  indicatorColor: Theme.of(context).colorScheme.primary,
-                  labelColor: Theme.of(context).colorScheme.primary,
-                  unselectedLabelColor:
-                      Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-                SizedBox(
-                  height: 200,
-                  child: TabBarView(
-                    children: [
-                      LeftPidControl(appState: appState),
-                      RightPidControl(appState: appState),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
         ],
       ),
     );
@@ -561,40 +502,12 @@ class _HomePageState extends State<HomePage> {
   Widget _buildPidTabs(AppState appState) {
     return Container(
       padding: const EdgeInsets.only(top: 16),
-      child: DefaultTabController(
-        length: 3,
-        child: Column(
-          children: [
-            _buildBaseSpeedTab(appState),
-            TabBar(
-              tabs: const [
-                Tab(text: 'PID Línea'),
-                Tab(text: 'PID Izquierdo'),
-                Tab(text: 'PID Derecho'),
-              ],
-              labelStyle:
-                  const TextStyle(fontSize: 12, fontFamily: 'Space Grotesk'),
-              indicatorColor: Theme.of(context).colorScheme.primary,
-              labelColor: Theme.of(context).colorScheme.primary,
-              unselectedLabelColor:
-                  Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-            SizedBox(
-              height: 200,
-              child: TabBarView(
-                children: [
-                  _buildLinePidTab(appState),
-                  LeftPidControl(appState: appState),
-                  RightPidControl(appState: appState),
-                ],
-              ),
-            ),
-            const SizedBox(
-                height: 4), // Reduced spacing between tabs and features
-            // Features Control Board - Outside the tabs
-            _buildFeaturesControlBoard(appState),
-          ],
-        ),
+      child: Column(
+        children: [
+          _buildBaseSpeedTab(appState),
+          const SizedBox(height: 4),
+          _buildFeaturesControlBoard(appState),
+        ],
       ),
     );
   }
@@ -953,326 +866,14 @@ class _HomePageState extends State<HomePage> {
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          // Base speed inputs below the buttons - 3 columns layout
-          Column(
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child:
-                        _buildBaseSpeedInput('VEL. base', _baseSpeedController),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _buildBaseSpeedInput('RPM base', _baseRpmController),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child:
-                        _buildBaseSpeedInput('VEL. max', _maxSpeedController),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                height: 32,
-                child: ElevatedButton(
-                  onPressed: () async {
-                    // Send all three values
-                    final baseSpeedValue =
-                        double.tryParse(_baseSpeedController.text) ?? 200.0;
-                    final baseRpmValue =
-                        double.tryParse(_baseRpmController.text) ?? 120.0;
-                    final maxSpeedValue =
-                        double.tryParse(_maxSpeedController.text) ?? 230.0;
-                    final maxRpmValue = 3000.0; // Default max RPM
-
-                    final baseSpeedCommand = BaseSpeedCommand(baseSpeedValue, baseRpmValue);
-                    final maxSpeedCommand = MaxSpeedCommand(maxSpeedValue, maxRpmValue);
-
-                    await appState.sendCommand(baseSpeedCommand.toCommand());
-                    await appState.sendCommand(maxSpeedCommand.toCommand());
-
-                    // Request fresh config data to sync UI
-                    await appState
-                        .sendCommand(ConfigRequestCommand().toCommand());
-                  },
-                  child: const Text('Enviar Velocidades',
-                      style: TextStyle(fontSize: 12)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Theme.of(context).colorScheme.primary,
-                    foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBaseSpeedInput(String label, TextEditingController controller) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w500,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: 4),
-        SizedBox(
-          height: 32,
-          child: TextField(
-            controller: controller,
-            keyboardType: TextInputType.numberWithOptions(decimal: true),
-            decoration: InputDecoration(
-              hintText: controller.text,
-              hintStyle: TextStyle(
-                fontSize: 12,
-                color: Theme.of(context)
-                    .colorScheme
-                    .onSurfaceVariant
-                    .withOpacity(0.5),
-              ),
-              filled: true,
-              fillColor: Theme.of(context).colorScheme.surface,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(6),
-                borderSide: BorderSide(
-                  color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
-                ),
-              ),
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            ),
-            style: TextStyle(
-              fontSize: 12,
-              color: Theme.of(context).colorScheme.onSurface,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildLinePidTab(AppState appState) {
-    return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'PID Línea',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Theme.of(context).colorScheme.onSurface,
-              fontFamily: 'Space Grotesk',
-            ),
-          ),
-          const SizedBox(height: 8),
-
-          // PID Parameters
-          Row(
-            children: [
-              Expanded(
-                child: _buildPidInput('Kp', _lineKpController),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildPidInput('Ki', _lineKiController),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildPidInput('Kd', _lineKdController),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 8),
-
-          // Action Button
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () async {
-                // Send line PID commands separately
-                final kp = double.tryParse(_lineKpController.text) ?? 2.0;
-                final ki = double.tryParse(_lineKiController.text) ?? 0.05;
-                final kd = double.tryParse(_lineKdController.text) ?? 0.75;
-                await appState.sendCommand('set line kp ${kp.toStringAsFixed(2)}');
-                await appState.sendCommand('set line ki ${ki.toStringAsFixed(3)}');
-                await appState.sendCommand('set line kd ${kd.toStringAsFixed(2)}');
-                // Request fresh config data to sync UI
-                await appState.sendCommand(ConfigRequestCommand().toCommand());
-              },
-              child: const Text('Actualizar PID Línea',
-                  style: TextStyle(fontSize: 12)),
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                backgroundColor: Theme.of(context).colorScheme.primary,
-                foregroundColor: Theme.of(context).colorScheme.onPrimary,
-              ),
-            ),
-          ),
-
-          // Current Values Display
-          ValueListenableBuilder<SerialData?>(
-            valueListenable: appState.currentData,
-            builder: (context, data, child) {
-              if (data is! DebugData) return const SizedBox.shrink();
-
-              final position = data.line != null && data.line!.isNotEmpty
-                  ? data.line![0]
-                  : 0.0;
-
-              return Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface,
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(
-                    color:
-                        Theme.of(context).colorScheme.outline.withOpacity(0.3),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Estado PID Línea',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Theme.of(context).colorScheme.onSurface,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Posición: ${position.toStringAsFixed(1)}',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
         ],
       ),
     );
   }
 
 
-  Widget _buildFeaturesTab(AppState appState) {
-    const featureNames = ['MED', 'MA', 'KAL', 'HYS', 'DZ', 'LP', 'APID', 'SP'];
-    const featureDescriptions = [
-      'Mediano',
-      'Media Móvil',
-      'Kalman',
-      'Histeresis',
-      'Zona Muerta',
-      'Pasa Bajos',
-      'PID Adaptativo',
-      'Perfil Velocidad'
-    ];
 
-    return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Features de Seguimiento de Línea',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Theme.of(context).colorScheme.onSurface,
-              fontFamily: 'Space Grotesk',
-            ),
-          ),
-          const SizedBox(height: 8),
-          ValueListenableBuilder<ConfigData?>(
-            valueListenable: appState.configData,
-            builder: (context, configData, child) {
-              final featConfig = configData?.featConfig;
-              if (featConfig == null || featConfig.length != 8) {
-                return const Text('Cargando features...');
-              }
 
-              return Column(
-                children: List.generate(8, (index) {
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                featureNames[index],
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color:
-                                      Theme.of(context).colorScheme.onSurface,
-                                ),
-                              ),
-                              Text(
-                                featureDescriptions[index],
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurfaceVariant,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Switch(
-                          value: featConfig[index] == 1,
-                          onChanged: (value) async {
-                            final newValue = value ? 1 : 0;
-                            final featureCommand =
-                                FeatureCommand(index, newValue);
-                            await appState.sendCommand(featureCommand.toCommand());
-                            // Request fresh config data to sync UI
-                            await appState.sendCommand(ConfigRequestCommand().toCommand());
-                          },
-                          activeColor: Theme.of(context).colorScheme.primary,
-                          materialTapTargetSize:
-                              MaterialTapTargetSize.shrinkWrap,
-                        ),
-                      ],
-                    ),
-                  );
-                }),
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _buildFeaturesControlBoard(AppState appState) {
     return Container(
@@ -1298,16 +899,19 @@ class _HomePageState extends State<HomePage> {
             valueListenable: appState.configData,
             builder: (context, configData, child) {
               // Always show labels, use default values if featConfig is null
-              final currentFeatures = configData?.featConfig ?? [1, 1, 1, 1, 1, 1];
+              final currentFeatures = configData?.featConfig ?? [1, 1, 1, 1, 1, 1, 0, 0, 0];
 
-              const featureNames = ['MED', 'MA', 'KAL', 'HYS', 'DZ', 'LP'];
+              const featureNames = ['MED', 'MA', 'KAL', 'HYS', 'DZ', 'LP', 'APID', 'SP', 'DIR'];
               const featureDescriptions = [
-                'Mediano',
+                'Filtro Mediano',
                 'Media Móvil',
-                'Kalman',
+                'Filtro Kalman',
                 'Histeresis',
                 'Zona Muerta',
-                'Pasa Bajos'
+                'Pasa Bajos',
+                'PID Adaptativo',
+                'Perfil Velocidad',
+                'Dirección Giro'
               ];
 
               return Column(
@@ -1323,7 +927,7 @@ class _HomePageState extends State<HomePage> {
                               Text(
                                 featureNames[index],
                                 style: TextStyle(
-                                  fontSize: 10,
+                                  fontSize: 9,
                                   fontWeight: FontWeight.w600,
                                   color:
                                       Theme.of(context).colorScheme.onSurface,
@@ -1333,7 +937,7 @@ class _HomePageState extends State<HomePage> {
                               Text(
                                 featureDescriptions[index],
                                 style: TextStyle(
-                                  fontSize: 7,
+                                  fontSize: 6,
                                   color: Theme.of(context)
                                       .colorScheme
                                       .onSurfaceVariant,
@@ -1385,7 +989,7 @@ class _HomePageState extends State<HomePage> {
                       );
                     }),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
                   // Second row: HYS, DZ, LP
                   Row(
                     children: List.generate(3, (index) {
@@ -1398,7 +1002,7 @@ class _HomePageState extends State<HomePage> {
                               Text(
                                 featureNames[actualIndex],
                                 style: TextStyle(
-                                  fontSize: 10,
+                                  fontSize: 9,
                                   fontWeight: FontWeight.w600,
                                   color:
                                       Theme.of(context).colorScheme.onSurface,
@@ -1408,7 +1012,82 @@ class _HomePageState extends State<HomePage> {
                               Text(
                                 featureDescriptions[actualIndex],
                                 style: TextStyle(
-                                  fontSize: 7,
+                                  fontSize: 6,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 2),
+                              Switch(
+                                value: currentFeatures[actualIndex] == 1,
+                                onChanged: (value) async {
+                                  final newValue = value ? 1 : 0;
+                                  // Update configData locally for immediate UI feedback
+                                  final currentConfig = appState.configData.value;
+                                  if (currentConfig != null && currentConfig.featConfig != null) {
+                                    final updatedFeatConfig = List<int>.from(currentConfig.featConfig!);
+                                    updatedFeatConfig[actualIndex] = newValue;
+                                    final updatedConfig = ConfigData(
+                                      lineKPid: currentConfig.lineKPid,
+                                      leftKPid: currentConfig.leftKPid,
+                                      rightKPid: currentConfig.rightKPid,
+                                      base: currentConfig.base,
+                                      wheels: currentConfig.wheels,
+                                      mode: currentConfig.mode,
+                                      cascade: currentConfig.cascade,
+                                      telemetry: currentConfig.telemetry,
+                                      featConfig: updatedFeatConfig,
+                                    );
+                                    appState.configData.value = updatedConfig;
+                                  }
+
+                                  final featureCommand =
+                                      FeatureCommand(actualIndex, newValue);
+                                  await appState.sendCommand(
+                                      featureCommand.toCommand());
+                                  // Small delay to allow Arduino to process the command
+                                  await Future.delayed(const Duration(milliseconds: 100));
+                                  // Request fresh config data to sync UI
+                                  await appState.sendCommand(
+                                      ConfigRequestCommand().toCommand());
+                                },
+                                activeColor:
+                                    Theme.of(context).colorScheme.primary,
+                                materialTapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
+                  ),
+                  const SizedBox(height: 4),
+                  // Third row: APID, SP, DIR
+                  Row(
+                    children: List.generate(3, (index) {
+                      final actualIndex = index + 6; // 6, 7, 8
+                      return Expanded(
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 1),
+                          child: Column(
+                            children: [
+                              Text(
+                                featureNames[actualIndex],
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w600,
+                                  color:
+                                      Theme.of(context).colorScheme.onSurface,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                              Text(
+                                featureDescriptions[actualIndex],
+                                style: TextStyle(
+                                  fontSize: 6,
                                   color: Theme.of(context)
                                       .colorScheme
                                       .onSurfaceVariant,
@@ -1469,53 +1148,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildPidInput(String label, TextEditingController controller) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w500,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: 2),
-        SizedBox(
-          height: 32,
-          child: TextField(
-            controller: controller,
-            keyboardType: TextInputType.numberWithOptions(decimal: true),
-            decoration: InputDecoration(
-              hintText: controller.text,
-              hintStyle: TextStyle(
-                fontSize: 12,
-                color: Theme.of(context)
-                    .colorScheme
-                    .onSurfaceVariant
-                    .withOpacity(0.5),
-              ),
-              filled: true,
-              fillColor: Theme.of(context).colorScheme.surface,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(6),
-                borderSide: BorderSide(
-                  color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
-                ),
-              ),
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            ),
-            style: TextStyle(
-              fontSize: 12,
-              color: Theme.of(context).colorScheme.onSurface,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -1679,152 +1311,139 @@ class _HomePageState extends State<HomePage> {
                         ValueListenableBuilder<TelemetryData?>(
                           valueListenable: appState.telemetryData,
                           builder: (context, telemetryData, child) {
-                            return GestureDetector(
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => SettingsPage(
-                                      appState: appState,
-                                      themeProvider: widget.themeProvider,
+                            return Container(
+                              height: 70,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(6),
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .surfaceVariant
+                                    .withOpacity(0.1),
+                              ),
+                              child: Column(
+                                children: [
+                                  Text(
+                                    'Sensores QTR',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurface,
                                     ),
                                   ),
-                                );
-                              },
-                              child: Container(
-                                height: 70,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(6),
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .surfaceVariant
-                                      .withOpacity(0.1),
-                                ),
-                                child: Column(
-                                  children: [
-                                    Text(
-                                      'Sensores QTR',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w500,
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .onSurface,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: List.generate(8, (index) {
-                                        // Reverse order: sensor 1 on right, sensor 8 on left
-                                        final reversedIndex = 7 - index;
-                                        // Only sensors 1-6 (indices 1-6) are active, telemetry sends values for sensors
-                                        final isActive = reversedIndex >= 1 &&
-                                            reversedIndex <= 6;
-                                        final sensorIndex = isActive
-                                            ? reversedIndex - 1
-                                            : -1; // Map to telemetry array (0-5)
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.center,
+                                    children: List.generate(8, (index) {
+                                      // Reverse order: sensor 1 on right, sensor 8 on left
+                                      final reversedIndex = 7 - index;
+                                      // Only sensors 1-6 (indices 1-6) are active, telemetry sends values for sensors
+                                      final isActive = reversedIndex >= 1 &&
+                                          reversedIndex <= 6;
+                                      final sensorIndex = isActive
+                                          ? reversedIndex - 1
+                                          : -1; // Map to telemetry array (0-5)
 
-                                        final sensorValue = isActive &&
-                                                telemetryData != null &&
-                                                telemetryData.sensors.length >
-                                                    sensorIndex
-                                            ? telemetryData.sensors[
-                                                sensorIndex] // Use telemetry QTR data
-                                            : 0;
-                                        final percentage =
-                                            (sensorValue / 1023.0)
-                                                .clamp(0.0, 1.0);
+                                      final sensorValue = isActive &&
+                                              telemetryData != null &&
+                                              telemetryData.sensors.length >
+                                                  sensorIndex
+                                          ? telemetryData.sensors[
+                                              sensorIndex] // Use telemetry QTR data
+                                          : 0;
+                                      final percentage =
+                                          (sensorValue / 1023.0)
+                                              .clamp(0.0, 1.0);
 
-                                        return Container(
-                                          width: 20,
-                                          height: 35,
-                                          margin: const EdgeInsets.symmetric(
-                                              horizontal: 1),
-                                          child: Column(
-                                            children: [
-                                              Expanded(
-                                                child: Container(
-                                                  decoration: BoxDecoration(
-                                                    color: isActive
-                                                        ? Theme.of(context)
-                                                            .colorScheme
-                                                            .surfaceVariant
-                                                        : Theme.of(context)
-                                                            .colorScheme
-                                                            .surfaceVariant
-                                                            .withOpacity(0.3),
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                            3),
-                                                  ),
-                                                  child: FractionallySizedBox(
-                                                    alignment:
-                                                        Alignment.bottomCenter,
-                                                    heightFactor: isActive
-                                                        ? percentage
-                                                        : 0.0,
-                                                    child: Container(
-                                                      decoration: BoxDecoration(
-                                                        color: isActive
-                                                            ? Colors.black
-                                                            : Theme.of(context)
-                                                                .colorScheme
-                                                                .onSurfaceVariant
-                                                                .withOpacity(
-                                                                    0.3),
-                                                        borderRadius:
-                                                            BorderRadius
-                                                                .circular(3),
-                                                      ),
+                                      return Container(
+                                        width: 20,
+                                        height: 35,
+                                        margin: const EdgeInsets.symmetric(
+                                            horizontal: 1),
+                                        child: Column(
+                                          children: [
+                                            Expanded(
+                                              child: Container(
+                                                decoration: BoxDecoration(
+                                                  color: isActive
+                                                      ? Theme.of(context)
+                                                          .colorScheme
+                                                          .surfaceVariant
+                                                      : Theme.of(context)
+                                                          .colorScheme
+                                                          .surfaceVariant
+                                                          .withOpacity(0.3),
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                          3),
+                                                ),
+                                                child: FractionallySizedBox(
+                                                  alignment:
+                                                      Alignment.bottomCenter,
+                                                  heightFactor: isActive
+                                                      ? percentage
+                                                      : 0.0,
+                                                  child: Container(
+                                                    decoration: BoxDecoration(
+                                                      color: isActive
+                                                          ? Colors.black
+                                                          : Theme.of(context)
+                                                              .colorScheme
+                                                              .onSurfaceVariant
+                                                              .withOpacity(
+                                                                  0.3),
+                                                      borderRadius:
+                                                          BorderRadius
+                                                              .circular(3),
                                                     ),
                                                   ),
                                                 ),
                                               ),
-                                              const SizedBox(height: 1),
-                                              Column(
-                                                children: [
-                                                  Text(
-                                                    '$sensorValue',
-                                                    style: TextStyle(
-                                                      fontSize: 6,
-                                                      color: isActive
-                                                          ? Theme.of(context)
-                                                              .colorScheme
-                                                              .onSurfaceVariant
-                                                              .withOpacity(0.8)
-                                                          : Theme.of(context)
-                                                              .colorScheme
-                                                              .onSurfaceVariant
-                                                              .withOpacity(0.3),
-                                                    ),
-                                                    textAlign: TextAlign.center,
+                                            ),
+                                            const SizedBox(height: 1),
+                                            Column(
+                                              children: [
+                                                Text(
+                                                  '$sensorValue',
+                                                  style: TextStyle(
+                                                    fontSize: 6,
+                                                    color: isActive
+                                                        ? Theme.of(context)
+                                                            .colorScheme
+                                                            .onSurfaceVariant
+                                                            .withOpacity(0.8)
+                                                        : Theme.of(context)
+                                                            .colorScheme
+                                                            .onSurfaceVariant
+                                                            .withOpacity(0.3),
                                                   ),
-                                                  Text(
-                                                    '${reversedIndex + 1}',
-                                                    style: TextStyle(
-                                                      fontSize: 7,
-                                                      color: isActive
-                                                          ? Theme.of(context)
-                                                              .colorScheme
-                                                              .onSurface
-                                                          : Theme.of(context)
-                                                              .colorScheme
-                                                              .onSurfaceVariant
-                                                              .withOpacity(0.5),
-                                                    ),
-                                                    textAlign: TextAlign.center,
+                                                  textAlign: TextAlign.center,
+                                                ),
+                                                Text(
+                                                  '${reversedIndex + 1}',
+                                                  style: TextStyle(
+                                                    fontSize: 7,
+                                                    color: isActive
+                                                        ? Theme.of(context)
+                                                            .colorScheme
+                                                            .onSurface
+                                                        : Theme.of(context)
+                                                            .colorScheme
+                                                            .onSurfaceVariant
+                                                            .withOpacity(0.5),
                                                   ),
-                                                ],
-                                              ),
-                                            ],
-                                          ),
-                                        );
-                                      }),
-                                    ),
-                                  ],
-                                ),
+                                                  textAlign: TextAlign.center,
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    }),
+                                  ),
+                                ],
                               ),
                             );
                           },
@@ -2227,7 +1846,8 @@ class _HomePageState extends State<HomePage> {
                                                         'DZ',
                                                         'LP',
                                                         'APID',
-                                                        'SP'
+                                                        'SP',
+                                                        'DIR'
                                                       ];
                                                       final activeFeatures =
                                                           <String>[];
@@ -2877,10 +2497,10 @@ class _HomePageState extends State<HomePage> {
                                                                 const SizedBox(
                                                                     height: 4),
                                                                 Text(
-                                                                  'MED:${featConfig[0]} MA:${featConfig[1]} KAL:${featConfig[2]} HYS:${featConfig[3]} DZ:${featConfig[4]} LP:${featConfig[5]} APID:${featConfig[6]} SP:${featConfig[7]}',
+                                                                  'MED:${featConfig[0]} MA:${featConfig[1]} KAL:${featConfig[2]} HYS:${featConfig[3]} DZ:${featConfig[4]} LP:${featConfig[5]} APID:${featConfig[6]} SP:${featConfig[7]} DIR:${featConfig[8]}',
                                                                   style:
                                                                       TextStyle(
-                                                                    fontSize: 9,
+                                                                    fontSize: 8,
                                                                     color: Theme.of(
                                                                             context)
                                                                         .colorScheme
