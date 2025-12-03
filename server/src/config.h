@@ -32,6 +32,12 @@ const uint16_t DEFAULT_LOOP_SPEED_MS = 1;
 const unsigned long DEFAULT_TELEMTRY_INTERVAL_MS = 100;
 const float DEFAULT_ROBOT_WEIGHT = 155.0f;
 
+// Magic numbers for sensor and control logic
+const float SENSOR_THRESHOLD = 0.3f;
+const float HIGH_CURVATURE_THRESHOLD = 500.0f;
+const float LOW_CURVATURE_THRESHOLD = 100.0f;
+const float TURN_PID_OUTPUT = 200.0f;
+
 // Límites de seguridad para proteger motores
 const int16_t LIMIT_MAX_PWM = 240;    // PWM máximo seguro
 const float LIMIT_MAX_RPM = 4000.0f;  // RPM máximo seguro

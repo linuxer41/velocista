@@ -23,6 +23,7 @@ public:
   void load() {
     EEPROM.get(EEPROM_CONFIG_ADDR, config);
     if (config.checksum != 1234567892) {
+      Serial.println(F("Checksum EEPROM inválido, restaurando valores por defecto"));
       config.restoreDefaults();
       save();
     }

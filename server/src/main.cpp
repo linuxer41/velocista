@@ -7,6 +7,7 @@
 #include "debugger.h"
 #include "serial_reader.h"
 #include "features.h"
+#include "command_handler.h"
 
 // ==========================
 // ENUMS Y FUNCIONES AUXILIARES
@@ -19,10 +20,10 @@ SensorState checkSensorState(int16_t* rawSensors) {
     for(int i = 0; i < NUM_SENSORS; i++) {
         int range = config.sensorMax[i] - config.sensorMin[i];
         if(range > 0) {
-            if(rawSensors[i] < config.sensorMax[i] - 0.3 * range) {
+            if(rawSensors[i] < config.sensorMax[i] - SENSOR_THRESHOLD * range) {
                 allBlack = false;
             }
-            if(rawSensors[i] > config.sensorMin[i] + 0.3 * range) {
+            if(rawSensors[i] > config.sensorMin[i] + SENSOR_THRESHOLD * range) {
                 allWhite = false;
             }
         } else {
@@ -69,6 +70,7 @@ bool ledState = false;
 // Variables para mejoras dinámicas
 float previousLinePosition = 0;
 float currentCurvature = 0;
+float filteredCurvature = 0; // Filtro para suavizar curvatura
 SensorState currentSensorState = NORMAL;
 int lastTurnDirection = 1; // 1 para derecha, -1 para izquierda
 // Idle mode PWM
@@ -83,6 +85,19 @@ float idleRightTargetRPM = 0;
 // FUNCIONES AUXILIARES
 // ==========================
 TelemetryData buildTelemetryData();
+
+
+
+
+
+// Función helper para controlar el parpadeo del LED de modo
+void updateModeLed(unsigned long currentMillis, unsigned long blinkInterval) {
+    if (currentMillis - lastLedTime >= blinkInterval) {
+        ledState = !ledState;
+        digitalWrite(MODE_LED_PIN, ledState);
+        lastLedTime = currentMillis;
+    }
+}
 
 
 // ==========================
@@ -127,9 +142,7 @@ void setup() {
   qtr.calibrate();
 
 
-  char msg[20];  // Reducido de 30 a 20
-  sprintf(msg, "Robot iniciado. Modo: %d", config.operationMode);
-  debugger.systemMessage(msg);
+  debugger.systemMessage("RObot iniciado. Modo: " + String(config.operationMode));
   lastLineTime = millis();
   lastSpeedTime = millis();
 }
@@ -138,10 +151,12 @@ void setup() {
 // DEBUG Telemetry
 // ==========================
 TelemetryData buildTelemetryData() {
-  TelemetryData data;
-  qtr.read();  // Read sensors even in non-line-follower modes
-  int16_t* sensors = qtr.getSensorValues();
-  memcpy(data.sensors, sensors, sizeof(data.sensors));
+   TelemetryData data;
+   if (config.operationMode == MODE_LINE_FOLLOWING) {
+     qtr.read();  // Read sensors only in line-following mode for efficiency
+   }
+   int16_t* sensors = qtr.getSensorValues();
+   memcpy(data.sensors, sensors, sizeof(data.sensors));
 
   data.linePos = qtr.linePosition;
   data.lineError = linePid.getError();
@@ -171,7 +186,7 @@ TelemetryData buildTelemetryData() {
   data.rightSpeedCms = (data.rRpm * PI * (config.wheelDiameter / 10.0)) / 60.0;
   data.battery = analogRead(BATTERY_PIN) * BATTERY_FACTOR;
   data.loopTime = loopTime;
-  data.curvature = currentCurvature;
+  data.curvature = filteredCurvature;  // Usar curvatura filtrada
   data.sensorState = (uint8_t)currentSensorState;
   return data;
 }
@@ -194,23 +209,28 @@ void loop() {
         currentSensorState = state;
 
         // Calcular curvatura para ajustes dinámicos
+        // Curvatura = cambio de posición / tiempo, indica qué tan rápido cambia la dirección
        float currentPosition = features.applySignalFilters(qtr.linePosition);
         float curvature = abs(currentPosition - previousLinePosition) / dtLine;
         previousLinePosition = currentPosition;
         currentCurvature = curvature;
+        // Aplicar filtro low-pass a la curvatura para suavizar ruido y evitar cambios bruscos
+        filteredCurvature = 0.8 * filteredCurvature + 0.2 * curvature;
 
         // Actualizar dirección del último giro
         if (currentPosition > 10) lastTurnDirection = 1; // derecha
         else if (currentPosition < -10) lastTurnDirection = -1; // izquierda
 
-       // Ajustes dinámicos de velocidad base
+       // Ajustes dinámicos de velocidad base (Speed Profiling)
+       // Reduce velocidad en curvas altas o pérdida de línea para estabilidad y precisión.
+       // Aumenta velocidad en rectas para mayor eficiencia y velocidad máxima.
        float applyBaseRPM = config.baseRPM;
        int applyBaseSpeed = config.basePwm;
        if(config.features.speedProfiling) {
-         if(curvature > 500 || state == ALL_BLACK) {  // Alta curvatura o pérdida de línea
+         if(filteredCurvature > HIGH_CURVATURE_THRESHOLD || state == ALL_BLACK) {  // Alta curvatura o pérdida de línea
            applyBaseRPM = max(60.0f, applyBaseRPM - 30.0f);
            applyBaseSpeed = max(100, applyBaseSpeed - 50);
-         } else if(curvature < 100) {  // Baja curvatura (recta)
+         } else if(filteredCurvature < LOW_CURVATURE_THRESHOLD) {  // Baja curvatura (recta)
            applyBaseRPM = min(config.baseRPM + 20.0f, applyBaseRPM + 10.0f);
            applyBaseSpeed = min(config.maxPwm, applyBaseSpeed + 20);
          }
@@ -218,16 +238,21 @@ void loop() {
 
        float pidOutput;
        if(state == ALL_BLACK) {
-         pidOutput = config.features.turnDirection ? 200 : -200;  // girar según feature: derecha o izquierda
+         // Pérdida de línea (todo negro): giro controlado usando PID con error grande
+         // En lugar de cambio brusco, integra con el controlador PID para giro suave
+         float turnError = config.features.turnDirection ? -TURN_PID_OUTPUT : TURN_PID_OUTPUT;
+         pidOutput = linePid.calculate(0, turnError, dtLine);
        } else if(state == ALL_WHITE) {
-         pidOutput = lastTurnDirection * 200;   // girar según la última dirección de la curva
+         // Pérdida de línea (todo blanco): giro según última dirección de curva
+         float turnError = lastTurnDirection * -TURN_PID_OUTPUT;
+         pidOutput = linePid.calculate(0, turnError, dtLine);
        } else {
          lastLinePosition = currentPosition;
          float error = 0 - lastLinePosition;
          // Ajuste dinámico de ganancias PID basado en curvatura
          if(config.features.dynamicLinePid) {
-           float dynamicKp = config.lineKp + curvature * 0.001;  // Factor pequeño para ajuste
-           float dynamicKd = config.lineKd + curvature * 0.0005;
+           float dynamicKp = config.lineKp + filteredCurvature * 0.001;  // Factor pequeño para ajuste
+           float dynamicKd = config.lineKd + filteredCurvature * 0.0005;
            linePid.setGains(dynamicKp, config.lineKi, dynamicKd);
          } else {
            linePid.setGains(config.lineKp, config.lineKi, config.lineKd);
@@ -313,17 +338,9 @@ void loop() {
 
    // LED Mode Indication
    if (config.operationMode == MODE_LINE_FOLLOWING) {
-     if (currentMillis - lastLedTime >= 100) {
-       ledState = !ledState;
-       digitalWrite(MODE_LED_PIN, ledState);
-       lastLedTime = currentMillis;
-     }
+     updateModeLed(currentMillis, 100);
    } else if (config.operationMode == MODE_REMOTE_CONTROL) {
-     if (currentMillis - lastLedTime >= 500) {
-       ledState = !ledState;
-       digitalWrite(MODE_LED_PIN, ledState);
-       lastLedTime = currentMillis;
-     }
+     updateModeLed(currentMillis, 500);
    } else {  // MODE_IDLE
      digitalWrite(MODE_LED_PIN, LOW);
    }
@@ -332,261 +349,20 @@ void loop() {
    serialReader.fillBuffer();            // recoge bytes
    const char *cmd;
    if (serialReader.getLine(&cmd)) {     // tenemos línea completa
-     bool success = false;
      if (strlen(cmd) == 0) return;          // línea vacía
 
-     if (strcmp(cmd, "calibrate") == 0) {
-       leftMotor.setSpeed(0);
-       rightMotor.setSpeed(0);
-       digitalWrite(MODE_LED_PIN, HIGH);  // LED on during calibration
-       debugger.systemMessage("Calibrando...");
-       qtr.calibrate();
-       digitalWrite(MODE_LED_PIN, LOW);   // LED off after calibration
-       success = true;
-       debugger.systemMessage("Calibración completada.");
-
-     } else if (strcmp(cmd, "save") == 0) {
-       saveConfig();
-       success = true;
-
-     } else if (strcmp(cmd, "get debug") == 0) {
-        TelemetryData data = buildTelemetryData();
-        debugger.sendDebugData(data, config);
-       success = true;
-
-     } else if (strcmp(cmd, "get telemetry") == 0) {
-        TelemetryData data = buildTelemetryData();
-        debugger.sendTelemetryData(data);
-       success = true;
-
-     } else if (strcmp(cmd, "get config") == 0) {
-        debugger.sendConfigData(config);
-       success = true;
-
-     } else if (strcmp(cmd, "reset") == 0) {
-       // restaurar valores por defecto
-       config.restoreDefaults();
-       saveConfig();
-       linePid.setGains(config.lineKp, config.lineKi, config.lineKd);
-       leftPid.setGains(config.leftKp, config.leftKi, config.leftKd);
-       rightPid.setGains(config.rightKp, config.rightKi, config.rightKd);
-       success = true;
-
-     } else if (strcmp(cmd, "help") == 0) {
-       debugger.systemMessage(F("Comandos: calibrate, save, get debug, get telemetry, get config, reset, help"));
-       debugger.systemMessage(F("set telemetry 0/1  |  set mode 0/1/2  |  set cascade 0/1"));
-       debugger.systemMessage(F("set feature <idx 0-8> 0/1  |  set features 0,1,0,...  |  set line kp,ki,kd  |  set left kp,ki,kd  |  set right kp,ki,kd"));
-       debugger.systemMessage(F("set base <pwm>,<rpm>  |  set max <pwm>,<rpm>  |  set weight <g>  |  set samp_rate <line_ms>,<speed_ms>,<telemetry_ms>"));
-       debugger.systemMessage(F("set pwm <derecha>,<izquierda>  (solo en modo idle)"));
-       debugger.systemMessage(F("set rpm <izquierda>,<derecha>  (solo en modo idle)"));
-
-     // ---------- comandos con parámetros ------------------------------
-     } else if (strncmp(cmd, "set telemetry ", 14) == 0) {
-       char* end;
-       int val = strtol(cmd + 14, &end, 10);
-       if (end == cmd + 14 || *end != '\0') { debugger.systemMessage(F("Falta argumento")); return; }
-       config.telemetry = (val == 1);
-       saveConfig();
-       success = true;
-
-     } else if (strncmp(cmd, "set mode ", 9) == 0) {
-       char* end;
-       int m = strtol(cmd + 9, &end, 10);
-       if (end == cmd + 9 || *end != '\0') { debugger.systemMessage(F("Falta argumento")); return; }
-       config.operationMode = (OperationMode)m;
-       if (config.operationMode == MODE_REMOTE_CONTROL) {
-         throttle = 0; steering = 0;
-         leftMotor.setSpeed(0); rightMotor.setSpeed(0);
-       } else if (config.operationMode == MODE_IDLE) {
-         idleLeftPWM = 0;
-         idleRightPWM = 0;
-         idleLeftTargetRPM = 0;
-         idleRightTargetRPM = 0;
-         leftMotor.setSpeed(0); rightMotor.setSpeed(0);
+     bool handled = false;
+     for (int i = 0; commands[i].command != NULL; i++) {
+       size_t len = strlen(commands[i].command);
+       if (strncmp(cmd, commands[i].command, len) == 0) {
+         const char* params = cmd + len;
+         commands[i].handler(params);
+         handled = true;
+         break;
        }
-       success = true;
-
-     } else if (strncmp(cmd, "set cascade ", 12) == 0) {
-       char* end;
-       int val = strtol(cmd + 12, &end, 10);
-       if (end == cmd + 12 || *end != '\0') { debugger.systemMessage(F("Falta argumento")); return; }
-       config.cascadeMode = (val == 1);
-       success = true;
-
-     } else if (strncmp(cmd, "set feature ", 12) == 0) {
-       const char* p = cmd + 12;
-       char* end1;
-       int idx = strtol(p, &end1, 10);
-       if (end1 == p || *end1 != ' ') { debugger.systemMessage(F("Formato: set feature <idx> <0/1>")); return; }
-       char* end2;
-       int val = strtol(end1 + 1, &end2, 10);
-       if (end2 == end1 + 1 || *end2 != '\0' || idx < 0 || idx > 8) { debugger.systemMessage(F("Formato: set feature <idx> <0/1>")); return; }
-       config.features.setFeature(idx, val == 1);
-       features.setConfig(config.features);
-       success = true;
-
-     } else if (strncmp(cmd, "set features ", 13) == 0) {
-       const char* params = cmd + 13;
-       if (config.features.deserialize(params)) {
-         features.setConfig(config.features);
-         success = true;
-       } else {
-         debugger.systemMessage(F("Formato: set features 0,1,0,1,... (9 valores)"));
-         return;
-       }
-
-     } else if (strncmp(cmd, "set line ", 9) == 0) {
-       const char* p = cmd + 9;
-       float kp = atof(p);
-       while (*p && *p != ',') p++;
-       if (*p != ',') { debugger.systemMessage(F("Formato: set line kp,ki,kd")); return; }
-       p++;
-       float ki = atof(p);
-       while (*p && *p != ',') p++;
-       if (*p != ',') { debugger.systemMessage(F("Formato: set line kp,ki,kd")); return; }
-       p++;
-       float kd = atof(p);
-       while (*p && *p != '\0') p++;
-       if (*p != '\0') { debugger.systemMessage(F("Formato: set line kp,ki,kd")); return; }
-       config.lineKp = kp; config.lineKi = ki; config.lineKd = kd;
-       linePid.setGains(kp, ki, kd);
-       success = true;
-
-     } else if (strncmp(cmd, "set left ", 9) == 0) {
-       const char* p = cmd + 9;
-       float kp = atof(p);
-       while (*p && *p != ',') p++;
-       if (*p != ',') { debugger.systemMessage(F("Formato: set left kp,ki,kd")); return; }
-       p++;
-       float ki = atof(p);
-       while (*p && *p != ',') p++;
-       if (*p != ',') { debugger.systemMessage(F("Formato: set left kp,ki,kd")); return; }
-       p++;
-       float kd = atof(p);
-       while (*p && *p != '\0') p++;
-       if (*p != '\0') { debugger.systemMessage(F("Formato: set left kp,ki,kd")); return; }
-       config.leftKp = kp; config.leftKi = ki; config.leftKd = kd;
-       leftPid.setGains(kp, ki, kd);
-       success = true;
-
-     } else if (strncmp(cmd, "set right ", 10) == 0) {
-       const char* p = cmd + 10;
-       float kp = atof(p);
-       while (*p && *p != ',') p++;
-       if (*p != ',') { debugger.systemMessage(F("Formato: set right kp,ki,kd")); return; }
-       p++;
-       float ki = atof(p);
-       while (*p && *p != ',') p++;
-       if (*p != ',') { debugger.systemMessage(F("Formato: set right kp,ki,kd")); return; }
-       p++;
-       float kd = atof(p);
-       while (*p && *p != '\0') p++;
-       if (*p != '\0') { debugger.systemMessage(F("Formato: set right kp,ki,kd")); return; }
-       config.rightKp = kp; config.rightKi = ki; config.rightKd = kd;
-       rightPid.setGains(kp, ki, kd);
-       success = true;
-
-     } else if (strncmp(cmd, "set base ", 9) == 0) {
-       const char* params = cmd + 9;
-       char* comma = strchr(params, ',');
-       if (!comma) { debugger.systemMessage(F("Formato: set base <pwm>,<rpm>")); return; }
-       int pwm = atoi(params);
-       float rpm = atof(comma + 1);
-       config.basePwm = constrain(pwm, -LIMIT_MAX_PWM, LIMIT_MAX_PWM);
-       config.baseRPM = constrain(rpm, -LIMIT_MAX_RPM, LIMIT_MAX_RPM);
-       success = true;
-
-     } else if (strncmp(cmd, "set max ", 8) == 0) {
-       const char* params = cmd + 8;
-       char* comma = strchr(params, ',');
-       if (!comma) { debugger.systemMessage(F("Formato: set max <pwm>,<rpm>")); return; }
-       int pwm = atoi(params);
-       float rpm = atof(comma + 1);
-       config.maxPwm = constrain(pwm, 0, LIMIT_MAX_PWM);
-       config.maxRpm = constrain(rpm, 0, LIMIT_MAX_RPM);
-       success = true;
-
-     } else if (strncmp(cmd, "set weight ", 11) == 0) {
-       float weight = atof(cmd + 11);
-       if (weight <= 0) { debugger.systemMessage(F("Peso debe ser mayor a 0")); return; }
-       config.robotWeight = weight;
-       saveConfig();
-       success = true;
-
-     } else if (strncmp(cmd, "set samp_rate ", 14) == 0) {
-       const char* params = cmd + 14;
-       char* comma1 = strchr(params, ',');
-       if (!comma1) { debugger.systemMessage(F("Formato: set samp_rate <line_ms>,<speed_ms>,<telemetry_ms>")); return; }
-       char* comma2 = strchr(comma1 + 1, ',');
-       if (!comma2) { debugger.systemMessage(F("Formato: set samp_rate <line_ms>,<speed_ms>,<telemetry_ms>")); return; }
-       int lineMs = atoi(params);
-       int speedMs = atoi(comma1 + 1);
-       int telemetryMs = atoi(comma2 + 1);
-       if (lineMs <= 0 || speedMs <= 0 || telemetryMs <= 0) { debugger.systemMessage(F("Valores deben ser mayores a 0")); return; }
-       config.loopLineMs = lineMs;
-       config.loopSpeedMs = speedMs;
-       config.telemetryIntervalMs = telemetryMs;
-       saveConfig();
-       success = true;
-
-     } else if (strncmp(cmd, "rc ", 3) == 0) {
-       const char* params = cmd + 3;
-       char* comma = strchr(params, ',');
-       if (!comma) { debugger.systemMessage(F("Formato: rc throttle,steering")); return; }
-       float t = atof(params);
-       float s = atof(comma + 1);
-       throttle = t;
-       steering = s;
-       success = true;
-
-     } else if (strncmp(cmd, "set pwm ", 8) == 0) {
-       if (config.operationMode != MODE_IDLE) {
-         debugger.systemMessage(F("Comando solo disponible en modo idle"));
-         return;
-       }
-       const char* params = cmd + 8;
-       char* comma = strchr(params, ',');
-       if (!comma) {
-         debugger.systemMessage(F("Formato: set pwm <derecha>,<izquierda>"));
-         return;
-       }
-       char* end1;
-       int rightVal = strtol(params, &end1, 10);
-       if (end1 != comma) {
-         debugger.systemMessage(F("Formato: set pwm <derecha>,<izquierda>"));
-         return;
-       }
-       char* end2;
-       int leftVal = strtol(comma + 1, &end2, 10);
-       if (*end2 != '\0') {
-         debugger.systemMessage(F("Formato: set pwm <derecha>,<izquierda>"));
-         return;
-       }
-       idleRightPWM = rightVal;
-       idleLeftPWM = leftVal;
-       success = true;
-
-     } else if (strncmp(cmd, "set rpm ", 8) == 0) {
-       if (config.operationMode != MODE_IDLE) {
-         debugger.systemMessage(F("Comando solo disponible en modo idle"));
-         return;
-       }
-       const char* params = cmd + 8;
-       char* comma = strchr(params, ',');
-       if (!comma) {
-         debugger.systemMessage(F("Formato: set rpm <izquierda>,<derecha>"));
-         return;
-       }
-       float leftRPM = atof(params);
-       float rightRPM = atof(comma + 1);
-       idleLeftTargetRPM = leftRPM;
-       idleRightTargetRPM = rightRPM;
-       leftPid.reset();
-       rightPid.reset();
-       success = true;
      }
 
-     if (success) {
+     if (handled) {
        char ackMsg[50];
        sprintf(ackMsg, " %s", cmd);
        debugger.ackMessage(ackMsg);
