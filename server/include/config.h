@@ -17,8 +17,6 @@
 
 // EEPROM address for config
 const int16_t EEPROM_CONFIG_ADDR = 0;
-const float BATTERY_FACTOR = 10.0f / 1023.0f;
-const uint8_t BATTERY_PIN = A7;
 
 // Constants
 const int16_t DEFAULT_RC_DEADZONE = 10;
@@ -27,19 +25,19 @@ const int16_t DEFAULT_RC_MAX_STEERING = 150;
 const int16_t DEFAULT_PULSES_PER_REVOLUTION = 36;
 const float DEFAULT_WHEEL_DIAMETER_MM = 20.0f;
 const float DEFAULT_WHEEL_DISTANCE_MM = 100.0f;
-const uint16_t DEFAULT_LOOP_LINE_MS = 2;
-const uint16_t DEFAULT_LOOP_SPEED_MS = 1;
+const uint16_t DEFAULT_LOOP_LINE_MS = 10;
+const uint16_t DEFAULT_LOOP_SPEED_MS = 5;
 const unsigned long DEFAULT_TELEMTRY_INTERVAL_MS = 100;
 const float DEFAULT_ROBOT_WEIGHT = 155.0f;
 
 // Magic numbers for sensor and control logic
-const float SENSOR_THRESHOLD = 0.3f;
-const float HIGH_CURVATURE_THRESHOLD = 500.0f;
-const float LOW_CURVATURE_THRESHOLD = 100.0f;
-const float TURN_PID_OUTPUT = 200.0f;
+
+// QTR sensor position calculation constants
+const float QTR_POSITION_SCALE = 4000.0f / 3.5f;  // ≈1142.857
+const float QTR_CENTER_OFFSET = 3.5f;
 
 // Límites de seguridad para proteger motores
-const int16_t LIMIT_MAX_PWM = 240;    // PWM máximo seguro
+const int16_t LIMIT_MAX_PWM = 255;    // PWM máximo seguro
 const float LIMIT_MAX_RPM = 4000.0f;  // RPM máximo seguro
 
 // =============================================================================
@@ -51,9 +49,9 @@ const float LIMIT_MAX_RPM = 4000.0f;  // RPM máximo seguro
 #define MOTOR_RIGHT_PIN1  6
 #define MOTOR_RIGHT_PIN2  5
 
-// Array de sensores de línea (A5-A0, right to left)
-#define NUM_SENSORS       6
-const int SENSOR_PINS[NUM_SENSORS] = {A0, A1, A2, A3, A4, A5};
+// Array de sensores de línea (A7-A0, right to left)
+#define NUM_SENSORS       8
+const int SENSOR_PINS[NUM_SENSORS] = {A0, A1, A2, A3, A4, A5, A6, A7};
 #define SENSOR_POWER_PIN  12  // Pin para encender/apagar LEDs de sensores
 
 // Pines para encoders (interrupciones)
@@ -111,61 +109,14 @@ public:
   bool turnDirection : 1;     // 8
 
   // Serialize to string [0,1,0,...]
-  const char* serialize() {
-    static char buf[22];
-    sprintf(buf, "[%d,%d,%d,%d,%d,%d,%d,%d,%d]", medianFilter, movingAverage, kalmanFilter, hysteresis, deadZone, lowPass, dynamicLinePid, speedProfiling, turnDirection);
-    return buf;
-  }
+  const char* serialize();
 
   // Deserialize from command like "0,1,0,1,1,1,0,1,1"
-  bool deserialize(const char* cmd) {
-    // Parse comma separated values
-    char temp[18];
-    strcpy(temp, cmd);
-    char* token = strtok(temp, ",");
-    uint8_t idx = 0;  // Cambiado de int a uint8_t
-    while(token && idx < 9) {
-      if(*token == '1') {
-        setFeature(idx, true);
-      } else if(*token == '0') {
-        setFeature(idx, false);
-      } else {
-        return false; // Invalid
-      }
-      token = strtok(NULL, ",");
-      idx++;
-    }
-    return idx == 9;
-  }
+  bool deserialize(const char* cmd);
 
-  void setFeature(uint8_t idx, bool value) {  // Cambiado de int a uint8_t
-    switch(idx) {
-      case 0: medianFilter = value; break;
-      case 1: movingAverage = value; break;
-      case 2: kalmanFilter = value; break;
-      case 3: hysteresis = value; break;
-      case 4: deadZone = value; break;
-      case 5: lowPass = value; break;
-      case 6: dynamicLinePid = value; break;
-      case 7: speedProfiling = value; break;
-      case 8: turnDirection = value; break;
-    }
-  }
+  void setFeature(uint8_t idx, bool value);  // Cambiado de int a uint8_t
 
-  bool getFeature(uint8_t idx) {  // Cambiado de int a uint8_t
-    switch(idx) {
-      case 0: return medianFilter;
-      case 1: return movingAverage;
-      case 2: return kalmanFilter;
-      case 3: return hysteresis;
-      case 4: return deadZone;
-      case 5: return lowPass;
-      case 6: return dynamicLinePid;
-      case 7: return speedProfiling;
-      case 8: return turnDirection;
-      default: return false;
-    }
-  }
+  bool getFeature(uint8_t idx);  // Cambiado de int a uint8_t
 };
 
 // =============================================================================
@@ -177,7 +128,7 @@ const bool DEFAULT_TELEMETRY_ENABLED = true;
 const FeaturesConfig DEFAULT_FEATURES = {false, false, false, false, false, false, false, false, false};
 const OperationMode DEFAULT_OPERATION_MODE = MODE_IDLE;
 const int16_t DEFAULT_BASE_SPEED = 150;
-const float DEFAULT_BASE_RPM = 300.0f;
+const float DEFAULT_BASE_RPM = 1000.0f;
 const int16_t DEFAULT_MAX_SPEED = 230;
 const float DEFAULT_MAX_RPM = 3000.0f;
 
@@ -203,8 +154,8 @@ public:
    int16_t basePwm;                    // Velocidad base
    float wheelDiameter;                  // Diámetro de rueda en mm
    float wheelDistance;                  // Distancia entre ruedas en mm
-   int16_t sensorMin[6];                 // Valores mínimos de sensores
-   int16_t sensorMax[6];                 // Valores máximos de sensores
+   int16_t sensorMin[8];                 // Valores mínimos de sensores
+   int16_t sensorMax[8];                 // Valores máximos de sensores
    int16_t rcDeadzone;                   // Zona muerta control remoto
    int16_t rcMaxThrottle;                // Throttle máximo control remoto
    int16_t rcMaxSteering;                // Steering máximo control remoto
@@ -226,45 +177,11 @@ public:
    void restoreDefaults();
 };
 
-void RobotConfig::restoreDefaults() {
-     lineKp = DEFAULT_LINE_KP;
-     lineKi = DEFAULT_LINE_KI;
-     lineKd = DEFAULT_LINE_KD;
-     leftKp = DEFAULT_LEFT_KP;
-     leftKi = DEFAULT_LEFT_KI;
-     leftKd = DEFAULT_LEFT_KD;
-     rightKp = DEFAULT_RIGHT_KP;
-     rightKi = DEFAULT_RIGHT_KI;
-     rightKd = DEFAULT_RIGHT_KD;
-     basePwm = DEFAULT_BASE_SPEED;
-     wheelDiameter = DEFAULT_WHEEL_DIAMETER_MM;
-     wheelDistance = DEFAULT_WHEEL_DISTANCE_MM;
-     rcDeadzone = DEFAULT_RC_DEADZONE;
-     rcMaxThrottle = DEFAULT_RC_MAX_THROTTLE;
-     rcMaxSteering = DEFAULT_RC_MAX_STEERING;
-     cascadeMode = DEFAULT_CASCADE;
-     telemetry = DEFAULT_TELEMETRY_ENABLED;
-     features = DEFAULT_FEATURES;
-     operationMode = DEFAULT_OPERATION_MODE;
-     baseRPM = DEFAULT_BASE_RPM;
-     maxPwm = DEFAULT_MAX_SPEED;
-     maxRpm = DEFAULT_MAX_RPM;
-     pulsesPerRevolution = DEFAULT_PULSES_PER_REVOLUTION;
-     loopLineMs = DEFAULT_LOOP_LINE_MS;
-     loopSpeedMs = DEFAULT_LOOP_SPEED_MS;
-     telemetryIntervalMs = DEFAULT_TELEMTRY_INTERVAL_MS;
-     robotWeight = DEFAULT_ROBOT_WEIGHT;
-     checksum = 1234567892;
-     for (int i = 0; i < NUM_SENSORS; i++) {
-         sensorMin[i] = 0;
-         sensorMax[i] = 1023;
-     }
- }
-
-RobotConfig config;
-
 // =============================================================================
 // ENUMERACIONES
 // =============================================================================
+
+// Global config instance
+extern RobotConfig config;
 
 #endif

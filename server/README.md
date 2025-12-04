@@ -4,10 +4,16 @@
 
 Este proyecto implementa un robot seguidor de línea basado en Arduino con control PID avanzado y mejoras dinámicas. Incluye modos de reposo (idle), seguimiento de línea con ajustes adaptativos, control remoto, y configuración ajustable vía comandos seriales.
 
+
 ## Arquitectura del Sistema
 
+### Estructura de Archivos
+- **config.h/config.cpp**: Configuraciones globales, pines, constantes y estructuras EEPROM
+- **robot.h/robot.cpp**: Todas las clases del sistema (Motor, PID, QTR, Debugger, SerialReader, EEPROMManager, Features)
+- **main.cpp**: Punto de entrada del programa
+
 ### Componentes Principales
-- **Sensores**: 6 sensores infrarrojos QTR para detección de línea
+- **Sensores**: 8 sensores infrarrojos QTR para detección de línea (A0-A7)
 - **Motores**: 2 motores DC con encoders para retroalimentación RPM
 - **Control**: PID cascada (línea + velocidad) con lazos separados (100Hz línea, 200Hz velocidad)
 - **Comunicación**: Serial (115200 baud) para comandos y telemetría
@@ -23,6 +29,7 @@ Este proyecto implementa un robot seguidor de línea basado en Arduino con contr
 ### Configuración y Calibración
 ```
 calibrate          - Calibra los sensores de línea
+autotune           - Auto-tuning automático de parámetros PID (solo modo línea)
 reset              - Restaura valores por defecto y resetea EEPROM
 save               - Guarda configuración actual en EEPROM
 ```
@@ -106,7 +113,7 @@ type:3|LINE_K_PID:[0.900,0.010,0.020]|LEFT_K_PID:[0.590,0.001,0.0025]|RIGHT_K_PI
 Datos en tiempo real del robot (línea, motores, sensores):
 
 ```
-type:4|LINE:[429.30,-225.00,150.50,5.25,150.00]|LEFT:[120.00,232.50,166,1234,567,-2.50,15.25,0.75]|RIGHT:[-85.50,7.50,-53,4567,890,3.20,-8.10,1.45]|PID:[150.00,166.00,53.00]|SPEED_CMS:[15.08,-10.68]|QTR:[687,292,0,0,0,0]|BATT:7.85|LOOP_US:45|UPTIME:5000|CURV:150.25|STATE:0
+type:4|LINE:[429.30,-225.00,150.50,5.25,150.00]|LEFT:[120.00,232.50,166,1234,567,-2.50,15.25,0.75]|RIGHT:[-85.50,7.50,-53,4567,890,3.20,-8.10,1.45]|PID:[150.00,166.00,53.00]|SPEED_CMS:[15.08,-10.68]|QTR:[687,292,0,0,0,0,150,800]|BATT:7.85|LOOP_US:45|UPTIME:5000|CURV:150.25|STATE:0
 ```
 
 ### type:5 - Datos Completos de Debug
@@ -134,7 +141,7 @@ type:5|LINE_K_PID:[2.00,0.05,0.75]|LEFT_K_PID:[0.29,0.01,0.0025]|RIGHT_K_PID:[0.
 - **LEFT/RIGHT**: [RPM_actual,RPM_objetivo,PWM,encoder_count,encoder_backward,error,integral,derivada] izquierdo/derecho
 - **PID**: [output_line,output_izquierdo,output_derecho] salidas PID
 - **SPEED_CMS**: [velocidad_izquierda_cm_s,velocidad_derecha_cm_s] velocidades lineales
-- **QTR**: [A0,A1,A2,A3,A4,A5] valores calibrados de los 6 sensores QTR (0-1000)
+- **QTR**: [A0,A1,A2,A3,A4,A5,A6,A7] valores calibrados de los 8 sensores QTR (0-1000)
 - **BATT**: Voltaje de batería en V
 - **LOOP_US**: Tiempo de ejecución del último ciclo PID en microsegundos
 - **UPTIME**: Tiempo desde inicio en ms
@@ -167,6 +174,22 @@ KP: 0.590, KI: 0.001, KD: 0.0025 (izq) / 0.050 (der)
 2. Envía `calibrate`
 3. Mueve el robot sobre la superficie blanca y negra
 4. La calibración toma 5 segundos
+
+### Auto-tuning de PID
+El robot incluye un sistema de auto-tuning automático para optimizar los parámetros PID:
+1. Coloca el robot en modo línea (`set mode 1`)
+2. Envía `autotune`
+3. El robot probará automáticamente diferentes combinaciones de Kp, Ki, Kd
+4. Usa IAE (Integral Absolute Error) como métrica de rendimiento
+5. Toma varios minutos y guarda automáticamente los mejores parámetros
+6. Se puede cancelar con `reset` en cualquier momento
+
+**Características:**
+- Prueba variaciones sistemáticas alrededor de los valores actuales
+- Cada prueba dura 5 segundos
+- Selecciona automáticamente los parámetros con menor error
+- Incluye mecanismos de seguridad para prevenir pérdida de línea
+- LED parpadea más rápido (200ms) durante el tuning
 
 ## Interfaz para Desarrollador Frontend
 
@@ -242,15 +265,15 @@ function parseTelemetryData(debugString) {
 }
 
 // Ejemplo:
-// Input: "type:4|LINE:[429.30,-225.00,150.50,5.25,150.00]|LEFT:[120.00,232.50,166,1234,567,-2.50,15.25,0.75]|RIGHT:[-85.50,7.50,-53,4567,890,3.20,-8.10,1.45]|PID:[150.00,166.00,53.00]|SPEED_CMS:[15.08,-10.68]|QTR:[687,292,0,0,0,0]|BATT:7.85|LOOP_US:45|UPTIME:5000|CURV:150.25|STATE:0"
-// Output: { LINE: [429.3, -225, 150.5, 5.25, 150], LEFT: [120, 232.5, 166, 1234, 567, -2.5, 15.25, 0.75], RIGHT: [-85.5, 7.5, -53, 4567, 890, 3.2, -8.1, 1.45], PID: [150, 166, 53], SPEED_CMS: [15.08, -10.68], QTR: [687, 292, 0, 0, 0, 0], BATT: 7.85, LOOP_US: 45, UPTIME: 5000, CURV: 150.25, STATE: 0 }
+// Input: "type:4|LINE:[429.30,-225.00,150.50,5.25,150.00]|LEFT:[120.00,232.50,166,1234,567,-2.50,15.25,0.75]|RIGHT:[-85.50,7.50,-53,4567,890,3.20,-8.10,1.45]|PID:[150.00,166.00,53.00]|SPEED_CMS:[15.08,-10.68]|QTR:[687,292,0,0,0,0,150,800]|BATT:7.85|LOOP_US:45|UPTIME:5000|CURV:150.25|STATE:0"
+// Output: { LINE: [429.3, -225, 150.5, 5.25, 150], LEFT: [120, 232.5, 166, 1234, 567, -2.5, 15.25, 0.75], RIGHT: [-85.5, 7.5, -53, 4567, 890, 3.2, -8.1, 1.45], PID: [150, 166, 53], SPEED_CMS: [15.08, -10.68], QTR: [687, 292, 0, 0, 0, 0, 150, 800], BATT: 7.85, LOOP_US: 45, UPTIME: 5000, CURV: 150.25, STATE: 0 }
 ```
 
 ### Recomendaciones para UI
 - **Gráfico de línea**: Mostrar posición de línea en tiempo real
 - **Barras de PID**: Visualizar ganancias KP/KI/KD ajustables
 - **Velocímetros**: RPM actual vs objetivo para cada motor
-- **Sensores QTR**: Barra de 6 valores para ver cobertura de línea
+- **Sensores QTR**: Barra de 8 valores para ver cobertura de línea
 - **Controles**: Joystick o sliders para throttle/steering en modo remoto
 - **Modo Idle**: Controles para PWM directo o RPM con PID para debugging
 - **Logs**: Área de texto para mensajes type:1 y confirmaciones
@@ -322,6 +345,7 @@ El PID de línea incluye anti-windup integrado. Los features se aplican únicame
 ### PID no converge
 - Aumentar KP para respuesta más rápida
 - Ajustar KD para reducir oscilaciones
+- Usar `autotune` para optimización automática de parámetros PID
 - Usar `debug` para monitorear PID completo
 - Usar `telemetry 1` para monitoreo continuo de RPM y sensores
 
@@ -331,6 +355,12 @@ El PID de línea incluye anti-windup integrado. Los features se aplican únicame
 - Revisar conexiones de sensores
 
 ## Desarrollo y Testing
+
+### Estructura Unificada del Código
+El proyecto utiliza una estructura de archivos unificada para facilitar el mantenimiento:
+- **config.h/config.cpp**: Configuraciones y constantes globales
+- **robot.h/robot.cpp**: Todas las clases del sistema (Motor, PID, QTR, Debugger, etc.)
+- **main.cpp**: Punto de entrada
 
 ### Compilación
 ```bash

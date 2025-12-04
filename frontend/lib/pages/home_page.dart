@@ -28,6 +28,7 @@ class _HomePageState extends State<HomePage> {
   double _rightRpm = 0.0;
 
   bool _configExpanded = false;
+  bool _syncMotors = false;
 
   @override
   void initState() {
@@ -101,7 +102,7 @@ class _HomePageState extends State<HomePage> {
       if (config != null) {
         // Update base speed controllers
         if (config.base != null) {
-          if (config.base!.length >= 1) {
+          if (config.base!.isNotEmpty) {
             _baseSpeedController.text = config.base![0].toStringAsFixed(0);
           }
           if (config.base!.length >= 2) {
@@ -110,7 +111,7 @@ class _HomePageState extends State<HomePage> {
         }
         // Update max speed controllers
         if (config.max != null) {
-          if (config.max!.length >= 1) {
+          if (config.max!.isNotEmpty) {
             _maxSpeedController.text = config.max![0].toStringAsFixed(0);
           }
         }
@@ -172,7 +173,7 @@ class _HomePageState extends State<HomePage> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -263,7 +264,7 @@ class _HomePageState extends State<HomePage> {
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     backgroundColor:
-                        Theme.of(context).colorScheme.surfaceVariant,
+                        Theme.of(context).colorScheme.surfaceContainerHighest,
                     foregroundColor:
                         Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
@@ -322,7 +323,7 @@ class _HomePageState extends State<HomePage> {
                               ValueListenableBuilder<ConfigData?>(
                                 valueListenable: appState.configData,
                                 builder: (context, config, child) {
-                                  final maxPwm = config?.max != null && config!.max!.length >= 1
+                                  final maxPwm = config?.max != null && config!.max!.isNotEmpty
                                       ? config.max![0].toDouble()
                                       : 250.0;
                                   return Slider(
@@ -333,6 +334,9 @@ class _HomePageState extends State<HomePage> {
                                     onChanged: (value) {
                                       setState(() {
                                         _leftPwm = value;
+                                        if (_syncMotors) {
+                                          _rightPwm = value;
+                                        }
                                       });
                                     },
                                     onChangeEnd: (value) {
@@ -367,7 +371,7 @@ class _HomePageState extends State<HomePage> {
                               ValueListenableBuilder<ConfigData?>(
                                 valueListenable: appState.configData,
                                 builder: (context, config, child) {
-                                  final maxPwm = config?.max != null && config!.max!.length >= 1
+                                  final maxPwm = config?.max != null && config!.max!.isNotEmpty
                                       ? config.max![0].toDouble()
                                       : 250.0;
                                   return Slider(
@@ -378,6 +382,9 @@ class _HomePageState extends State<HomePage> {
                                     onChanged: (value) {
                                       setState(() {
                                         _rightPwm = value;
+                                        if (_syncMotors) {
+                                          _leftPwm = value;
+                                        }
                                       });
                                     },
                                     onChangeEnd: (value) {
@@ -428,6 +435,9 @@ class _HomePageState extends State<HomePage> {
                                     onChanged: (value) {
                                       setState(() {
                                         _leftRpm = value;
+                                        if (_syncMotors) {
+                                          _rightRpm = value;
+                                        }
                                       });
                                     },
                                     onChangeEnd: (value) {
@@ -473,6 +483,9 @@ class _HomePageState extends State<HomePage> {
                                     onChanged: (value) {
                                       setState(() {
                                         _rightRpm = value;
+                                        if (_syncMotors) {
+                                          _leftRpm = value;
+                                        }
                                       });
                                     },
                                     onChangeEnd: (value) {
@@ -499,35 +512,56 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            height: 32,
-            child: ElevatedButton(
-              onPressed: () {
-                setState(() {
-                  _leftPwm = 0.0;
-                  _rightPwm = 0.0;
-                  _leftRpm = 0.0;
-                  _rightRpm = 0.0;
-                });
-                final pwmCommand = SetPwmCommand(
-                  rightPwm: 0,
-                  leftPwm: 0,
-                );
-                final rpmCommand = SetRpmCommand(
-                  leftRpm: 0,
-                  rightRpm: 0,
-                );
-                appState.sendCommand(pwmCommand.toCommand());
-                appState.sendCommand(rpmCommand.toCommand());
-              },
-              child: const Text('Reset Motores',
-                  style: TextStyle(fontSize: 12)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Theme.of(context).colorScheme.error,
-                foregroundColor: Theme.of(context).colorScheme.onError,
+          Row(
+            children: [
+              Expanded(
+                child: CheckboxListTile(
+                  title: const Text(
+                    'Sincronizar Motores',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                  value: _syncMotors,
+                  onChanged: (value) {
+                    setState(() {
+                      _syncMotors = value ?? false;
+                    });
+                  },
+                  controlAffinity: ListTileControlAffinity.leading,
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                ),
               ),
-            ),
+              const SizedBox(width: 8),
+              SizedBox(
+                height: 32,
+                child: ElevatedButton(
+                  onPressed: () {
+                    setState(() {
+                      _leftPwm = 0.0;
+                      _rightPwm = 0.0;
+                      _leftRpm = 0.0;
+                      _rightRpm = 0.0;
+                    });
+                    final pwmCommand = SetPwmCommand(
+                      rightPwm: 0,
+                      leftPwm: 0,
+                    );
+                    final rpmCommand = SetRpmCommand(
+                      leftRpm: 0,
+                      rightRpm: 0,
+                    );
+                    appState.sendCommand(pwmCommand.toCommand());
+                    appState.sendCommand(rpmCommand.toCommand());
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context).colorScheme.error,
+                    foregroundColor: Theme.of(context).colorScheme.onError,
+                  ),
+                  child: const Text('Reset Motores',
+                      style: TextStyle(fontSize: 12)),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -551,7 +585,7 @@ class _HomePageState extends State<HomePage> {
     return Container(
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -592,7 +626,7 @@ class _HomePageState extends State<HomePage> {
                                   await appState.sendCommand(
                                       ConfigRequestCommand().toCommand());
                                 },
-                                activeColor:
+                                activeThumbColor:
                                     Theme.of(context).colorScheme.primary,
                                 materialTapTargetSize:
                                     MaterialTapTargetSize.shrinkWrap,
@@ -654,7 +688,7 @@ class _HomePageState extends State<HomePage> {
                                   await appState.sendCommand(
                                       ConfigRequestCommand().toCommand());
                                 },
-                                activeColor:
+                                activeThumbColor:
                                     Theme.of(context).colorScheme.secondary,
                                 materialTapTargetSize:
                                     MaterialTapTargetSize.shrinkWrap,
@@ -829,74 +863,115 @@ class _HomePageState extends State<HomePage> {
                       ],
                     ),
                   ),
-                  // Reset Button
-                  Expanded(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'Resetear',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w500,
-                            color:
-                                Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                        Container(
-                          width: 32,
-                          height: 32,
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.errorContainer,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: IconButton(
-                            onPressed: () async {
-                              // Show confirmation dialog
-                              final confirmed = await showDialog<bool>(
-                                context: context,
-                                builder: (context) => AlertDialog(
-                                  title: const Text('Confirmar Reseteo'),
-                                  content: const Text(
-                                    '¿Está seguro de resetear los valores por defecto y limpiar la EEPROM? Se borrará toda tu configuración.',
-                                  ),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () =>
-                                          Navigator.of(context).pop(false),
-                                      child: const Text('Cancelar'),
-                                    ),
-                                    TextButton(
-                                      onPressed: () =>
-                                          Navigator.of(context).pop(true),
-                                      child: const Text('Resetear'),
-                                    ),
-                                  ],
-                                ),
-                              );
+                  // Autotune Button
+                   Expanded(
+                     child: Column(
+                       mainAxisSize: MainAxisSize.min,
+                       children: [
+                         Text(
+                           'Autotune',
+                           style: TextStyle(
+                             fontSize: 10,
+                             fontWeight: FontWeight.w500,
+                             color:
+                                 Theme.of(context).colorScheme.onSurfaceVariant,
+                           ),
+                         ),
+                         Container(
+                           width: 32,
+                           height: 32,
+                           decoration: BoxDecoration(
+                             color: Theme.of(context).colorScheme.primaryContainer,
+                             borderRadius: BorderRadius.circular(6),
+                           ),
+                           child: IconButton(
+                             onPressed: () async {
+                               final autotuneCommand = AutotuneCommand();
+                               appState.sendCommand(autotuneCommand.toCommand());
+                             },
+                             icon: Icon(
+                               Icons.tune,
+                               color: Theme.of(context)
+                                   .colorScheme
+                                   .onPrimaryContainer,
+                               size: 16,
+                             ),
+                             tooltip: 'Ajustar PID automáticamente',
+                             padding: EdgeInsets.zero,
+                             constraints: const BoxConstraints(),
+                           ),
+                         ),
+                       ],
+                     ),
+                   ),
+                   // Reset Button
+                   Expanded(
+                     child: Column(
+                       mainAxisSize: MainAxisSize.min,
+                       children: [
+                         Text(
+                           'Resetear',
+                           style: TextStyle(
+                             fontSize: 10,
+                             fontWeight: FontWeight.w500,
+                             color:
+                                 Theme.of(context).colorScheme.onSurfaceVariant,
+                           ),
+                         ),
+                         Container(
+                           width: 32,
+                           height: 32,
+                           decoration: BoxDecoration(
+                             color: Theme.of(context).colorScheme.errorContainer,
+                             borderRadius: BorderRadius.circular(6),
+                           ),
+                           child: IconButton(
+                             onPressed: () async {
+                               // Show confirmation dialog
+                               final confirmed = await showDialog<bool>(
+                                 context: context,
+                                 builder: (context) => AlertDialog(
+                                   title: const Text('Confirmar Reseteo'),
+                                   content: const Text(
+                                     '¿Está seguro de resetear los valores por defecto y limpiar la EEPROM? Se borrará toda tu configuración.',
+                                   ),
+                                   actions: [
+                                     TextButton(
+                                       onPressed: () =>
+                                           Navigator.of(context).pop(false),
+                                       child: const Text('Cancelar'),
+                                     ),
+                                     TextButton(
+                                       onPressed: () =>
+                                           Navigator.of(context).pop(true),
+                                       child: const Text('Resetear'),
+                                     ),
+                                   ],
+                                 ),
+                               );
 
-                              if (confirmed == true) {
-                                await appState.sendCommand(
-                                    ConfigRequestCommand().toCommand());
-                                final resetCommand = FactoryResetCommand();
-                                appState.sendCommand(resetCommand.toCommand());
-                              }
-                            },
-                            icon: Icon(
-                              Icons.refresh,
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onErrorContainer,
-                              size: 16,
-                            ),
-                            tooltip: 'Resetear Valores',
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                               if (confirmed == true) {
+                                 await appState.sendCommand(
+                                     ConfigRequestCommand().toCommand());
+                                 final resetCommand = FactoryResetCommand();
+                                 appState.sendCommand(resetCommand.toCommand());
+                               }
+                             },
+                             icon: Icon(
+                               Icons.refresh,
+                               color: Theme.of(context)
+                                   .colorScheme
+                                   .onErrorContainer,
+                               size: 16,
+                             ),
+                             tooltip: 'Resetear Valores',
+                             padding: EdgeInsets.zero,
+                             constraints: const BoxConstraints(),
+                           ),
+                         ),
+                       ],
+                     ),
+                   ),
                 ],
               ),
             ],
@@ -914,7 +989,7 @@ class _HomePageState extends State<HomePage> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -1013,7 +1088,7 @@ class _HomePageState extends State<HomePage> {
                                   await appState.sendCommand(
                                       ConfigRequestCommand().toCommand());
                                 },
-                                activeColor:
+                                activeThumbColor:
                                     Theme.of(context).colorScheme.primary,
                                 materialTapTargetSize:
                                     MaterialTapTargetSize.shrinkWrap,
@@ -1088,7 +1163,7 @@ class _HomePageState extends State<HomePage> {
                                   await appState.sendCommand(
                                       ConfigRequestCommand().toCommand());
                                 },
-                                activeColor:
+                                activeThumbColor:
                                     Theme.of(context).colorScheme.primary,
                                 materialTapTargetSize:
                                     MaterialTapTargetSize.shrinkWrap,
@@ -1163,7 +1238,7 @@ class _HomePageState extends State<HomePage> {
                                   await appState.sendCommand(
                                       ConfigRequestCommand().toCommand());
                                 },
-                                activeColor:
+                                activeThumbColor:
                                     Theme.of(context).colorScheme.primary,
                                 materialTapTargetSize:
                                     MaterialTapTargetSize.shrinkWrap,
@@ -1190,7 +1265,9 @@ class _HomePageState extends State<HomePage> {
 
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surface,
-      body: SafeArea(
+      body: Stack(
+        children: [
+          SafeArea(
         child: SingleChildScrollView(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -1208,17 +1285,17 @@ class _HomePageState extends State<HomePage> {
                     // Use telemetry data for live displays
                     final leftRpm = (data != null &&
                             data.left != null &&
-                            data.left!.length >= 1)
+                            data.left!.isNotEmpty)
                         ? data.left![0] // RPM from telemetry data
                         : 0.0;
                     final rightRpm = (data != null &&
                             data.right != null &&
-                            data.right!.length >= 1)
+                            data.right!.isNotEmpty)
                         ? data.right![0] // RPM from telemetry data
                         : 0.0;
                     final leftSpeed = (data != null &&
                             data.speedCms != null &&
-                            data.speedCms!.length >= 1)
+                            data.speedCms!.isNotEmpty)
                         ? data.speedCms![0] / 100 // cm/s to m/s
                         : leftRpm * 0.036 / 3.6; // RPM to m/s
                     final rightSpeed = (data != null &&
@@ -1268,7 +1345,7 @@ class _HomePageState extends State<HomePage> {
                           child: ValueListenableBuilder<SerialData?>(
                             valueListenable: appState.currentData,
                             builder: (context, data, child) {
-                              final distance =
+                              const distance =
                                   '0.0'; // Not available in new format
                               return Row(
                                 children: [
@@ -1352,7 +1429,7 @@ class _HomePageState extends State<HomePage> {
                                 borderRadius: BorderRadius.circular(6),
                                 color: Theme.of(context)
                                     .colorScheme
-                                    .surfaceVariant
+                                    .surfaceContainerHighest
                                     .withOpacity(0.1),
                               ),
                               child: Column(
@@ -1374,12 +1451,9 @@ class _HomePageState extends State<HomePage> {
                                     children: List.generate(8, (index) {
                                       // Reverse order: sensor 1 on right, sensor 8 on left
                                       final reversedIndex = 7 - index;
-                                      // Only sensors 1-6 (indices 1-6) are active, telemetry sends values for sensors
-                                      final isActive = reversedIndex >= 1 &&
-                                          reversedIndex <= 6;
-                                      final sensorIndex = isActive
-                                          ? reversedIndex - 1
-                                          : -1; // Map to telemetry array (0-5)
+                                      // All sensors 1-8 (indices 0-7) are active, telemetry sends values for all sensors
+                                      final isActive = true;
+                                      final sensorIndex = reversedIndex; // Map to telemetry array (0-7)
 
                                       final sensorValue = isActive &&
                                               telemetryData != null &&
@@ -1405,10 +1479,10 @@ class _HomePageState extends State<HomePage> {
                                                   color: isActive
                                                       ? Theme.of(context)
                                                           .colorScheme
-                                                          .surfaceVariant
+                                                          .surfaceContainerHighest
                                                       : Theme.of(context)
                                                           .colorScheme
-                                                          .surfaceVariant
+                                                          .surfaceContainerHighest
                                                           .withOpacity(0.3),
                                                   borderRadius:
                                                       BorderRadius.circular(
@@ -1521,6 +1595,7 @@ class _HomePageState extends State<HomePage> {
                                           ];
                                       final lineData = telemetryData?.line ??
                                           [0.0, 0.0, 0.0, 0.0, 0.0];
+                                      final pidData = telemetryData?.pid ?? [0.0, 0.0, 0.0];
                                       final config = appState.configData.value;
                                       final lineKPid = config?.lineKPid ?? [0.900, 0.010, 0.020];
                                       final leftKPid = config?.leftKPid ?? [0.590, 0.001, 0.0025];
@@ -1615,7 +1690,7 @@ class _HomePageState extends State<HomePage> {
                                                   decoration: BoxDecoration(
                                                     color: Theme.of(context)
                                                         .colorScheme
-                                                        .surfaceVariant
+                                                        .surfaceContainerHighest
                                                         .withOpacity(0.5),
                                                     borderRadius:
                                                         BorderRadius.circular(
@@ -1642,7 +1717,7 @@ class _HomePageState extends State<HomePage> {
                                                       ),
                                                       const SizedBox(height: 3),
                                                       Text(
-                                                        'RPM: ${leftRpm.toStringAsFixed(1)} / ${leftTargetRpm.toStringAsFixed(1)}',
+                                                        'RPM Actual: ${leftRpm.toStringAsFixed(1)}',
                                                         style: TextStyle(
                                                           fontSize: 9,
                                                           color: Theme.of(
@@ -1652,7 +1727,7 @@ class _HomePageState extends State<HomePage> {
                                                         ),
                                                       ),
                                                       Text(
-                                                        'PWM: ${leftPwm.toStringAsFixed(0)}',
+                                                        'RPM Objetivo: ${leftTargetRpm.toStringAsFixed(1)}',
                                                         style: TextStyle(
                                                           fontSize: 9,
                                                           color: Theme.of(
@@ -1662,7 +1737,7 @@ class _HomePageState extends State<HomePage> {
                                                         ),
                                                       ),
                                                       Text(
-                                                        'Encoder: $leftEncoder ${leftError > 0 ? '(atrasado)' : leftError < 0 ? '(adelantado)' : ''}',
+                                                        'PWM Actual: ${leftPwm.toStringAsFixed(0)}',
                                                         style: TextStyle(
                                                           fontSize: 9,
                                                           color: Theme.of(
@@ -1672,7 +1747,7 @@ class _HomePageState extends State<HomePage> {
                                                         ),
                                                       ),
                                                       Text(
-                                                        'Dirección: ${leftDirection > 0 ? 'Adelante' : leftDirection < 0 ? 'Atrás' : 'Detenido'}',
+                                                        'Encoder: $leftEncoder',
                                                         style: TextStyle(
                                                           fontSize: 9,
                                                           color: Theme.of(
@@ -1681,11 +1756,40 @@ class _HomePageState extends State<HomePage> {
                                                               .onSurfaceVariant,
                                                         ),
                                                       ),
-                                                      const SizedBox(height: 3),
                                                       Text(
-                                                        'PID - I: ${leftIntegral.toStringAsFixed(1)}, D: ${leftDerivative.toStringAsFixed(1)}, E: ${leftError.toStringAsFixed(1)}',
+                                                        'Dirección: ${leftDirection.toStringAsFixed(1)}',
                                                         style: TextStyle(
-                                                          fontSize: 8,
+                                                          fontSize: 9,
+                                                          color: Theme.of(
+                                                                  context)
+                                                              .colorScheme
+                                                              .onSurfaceVariant,
+                                                        ),
+                                                      ),
+                                                      Text(
+                                                        'Error: ${leftError.toStringAsFixed(1)}',
+                                                        style: TextStyle(
+                                                          fontSize: 9,
+                                                          color: Theme.of(
+                                                                  context)
+                                                              .colorScheme
+                                                              .onSurfaceVariant,
+                                                        ),
+                                                      ),
+                                                      Text(
+                                                        'Integral: ${leftIntegral.toStringAsFixed(1)}',
+                                                        style: TextStyle(
+                                                          fontSize: 9,
+                                                          color: Theme.of(
+                                                                  context)
+                                                              .colorScheme
+                                                              .onSurfaceVariant,
+                                                        ),
+                                                      ),
+                                                      Text(
+                                                        'Derivada: ${leftDerivative.toStringAsFixed(1)}',
+                                                        style: TextStyle(
+                                                          fontSize: 9,
                                                           color: Theme.of(
                                                                   context)
                                                               .colorScheme
@@ -1706,7 +1810,7 @@ class _HomePageState extends State<HomePage> {
                                                   decoration: BoxDecoration(
                                                     color: Theme.of(context)
                                                         .colorScheme
-                                                        .surfaceVariant
+                                                        .surfaceContainerHighest
                                                         .withOpacity(0.5),
                                                     borderRadius:
                                                         BorderRadius.circular(
@@ -1733,7 +1837,7 @@ class _HomePageState extends State<HomePage> {
                                                       ),
                                                       const SizedBox(height: 3),
                                                       Text(
-                                                        'RPM: ${rightRpm.toStringAsFixed(1)} / ${rightTargetRpm.toStringAsFixed(1)}',
+                                                        'RPM Actual: ${rightRpm.toStringAsFixed(1)}',
                                                         style: TextStyle(
                                                           fontSize: 9,
                                                           color: Theme.of(
@@ -1743,7 +1847,7 @@ class _HomePageState extends State<HomePage> {
                                                         ),
                                                       ),
                                                       Text(
-                                                        'PWM: ${rightPwm.toStringAsFixed(0)}',
+                                                        'RPM Objetivo: ${rightTargetRpm.toStringAsFixed(1)}',
                                                         style: TextStyle(
                                                           fontSize: 9,
                                                           color: Theme.of(
@@ -1753,7 +1857,7 @@ class _HomePageState extends State<HomePage> {
                                                         ),
                                                       ),
                                                       Text(
-                                                        'Encoder: $rightEncoder ${rightError > 0 ? '(atrasado)' : rightError < 0 ? '(adelantado)' : ''}',
+                                                        'PWM Actual: ${rightPwm.toStringAsFixed(0)}',
                                                         style: TextStyle(
                                                           fontSize: 9,
                                                           color: Theme.of(
@@ -1763,7 +1867,7 @@ class _HomePageState extends State<HomePage> {
                                                         ),
                                                       ),
                                                       Text(
-                                                        'Dirección: ${rightDirection > 0 ? 'Adelante' : rightDirection < 0 ? 'Atrás' : 'Detenido'}',
+                                                        'Encoder: $rightEncoder',
                                                         style: TextStyle(
                                                           fontSize: 9,
                                                           color: Theme.of(
@@ -1772,11 +1876,40 @@ class _HomePageState extends State<HomePage> {
                                                               .onSurfaceVariant,
                                                         ),
                                                       ),
-                                                      const SizedBox(height: 3),
                                                       Text(
-                                                        'PID - I: ${rightIntegral.toStringAsFixed(1)}, D: ${rightDerivative.toStringAsFixed(1)}, E: ${rightError.toStringAsFixed(1)}',
+                                                        'Dirección: ${rightDirection.toStringAsFixed(1)}',
                                                         style: TextStyle(
-                                                          fontSize: 8,
+                                                          fontSize: 9,
+                                                          color: Theme.of(
+                                                                  context)
+                                                              .colorScheme
+                                                              .onSurfaceVariant,
+                                                        ),
+                                                      ),
+                                                      Text(
+                                                        'Error: ${rightError.toStringAsFixed(1)}',
+                                                        style: TextStyle(
+                                                          fontSize: 9,
+                                                          color: Theme.of(
+                                                                  context)
+                                                              .colorScheme
+                                                              .onSurfaceVariant,
+                                                        ),
+                                                      ),
+                                                      Text(
+                                                        'Integral: ${rightIntegral.toStringAsFixed(1)}',
+                                                        style: TextStyle(
+                                                          fontSize: 9,
+                                                          color: Theme.of(
+                                                                  context)
+                                                              .colorScheme
+                                                              .onSurfaceVariant,
+                                                        ),
+                                                      ),
+                                                      Text(
+                                                        'Derivada: ${rightDerivative.toStringAsFixed(1)}',
+                                                        style: TextStyle(
+                                                          fontSize: 9,
                                                           color: Theme.of(
                                                                   context)
                                                               .colorScheme
@@ -1800,7 +1933,7 @@ class _HomePageState extends State<HomePage> {
                                               decoration: BoxDecoration(
                                                 color: Theme.of(context)
                                                     .colorScheme
-                                                    .surfaceVariant
+                                                    .surfaceContainerHighest
                                                     .withOpacity(0.5),
                                                 borderRadius:
                                                     BorderRadius.circular(8),
@@ -1826,34 +1959,69 @@ class _HomePageState extends State<HomePage> {
                                                   Row(
                                                     children: [
                                                       Expanded(
-                                                        child: Text(
-                                                          'Posición: ${lineData[0].toStringAsFixed(1)}',
-                                                          style: TextStyle(
-                                                            fontSize: 9,
-                                                            color: Theme.of(
-                                                                    context)
-                                                                .colorScheme
-                                                                .onSurfaceVariant,
-                                                          ),
+                                                        child: Column(
+                                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                                          children: [
+                                                            Text(
+                                                              'Posición: ${lineData[0].toStringAsFixed(1)}',
+                                                              style: TextStyle(
+                                                                fontSize: 9,
+                                                                color: Theme.of(context)
+                                                                    .colorScheme
+                                                                    .onSurfaceVariant,
+                                                              ),
+                                                            ),
+                                                            Text(
+                                                              'Error: ${lineData[1].toStringAsFixed(1)}',
+                                                              style: TextStyle(
+                                                                fontSize: 9,
+                                                                color: Theme.of(context)
+                                                                    .colorScheme
+                                                                    .onSurfaceVariant,
+                                                              ),
+                                                            ),
+                                                            Text(
+                                                              'Integral: ${lineData[2].toStringAsFixed(1)}',
+                                                              style: TextStyle(
+                                                                fontSize: 9,
+                                                                color: Theme.of(context)
+                                                                    .colorScheme
+                                                                    .onSurfaceVariant,
+                                                              ),
+                                                            ),
+                                                          ],
                                                         ),
                                                       ),
                                                       Expanded(
-                                                        child: Text(
-                                                          'Corrección: ${lineData.length > 4 ? lineData[4].toStringAsFixed(1) : '0.0'}',
-                                                          style: TextStyle(
-                                                            fontSize: 9,
-                                                            color: Theme.of(
-                                                                    context)
-                                                                .colorScheme
-                                                                .onSurfaceVariant,
-                                                          ),
+                                                        child: Column(
+                                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                                          children: [
+                                                            Text(
+                                                              'Derivada: ${lineData[3].toStringAsFixed(1)}',
+                                                              style: TextStyle(
+                                                                fontSize: 9,
+                                                                color: Theme.of(context)
+                                                                    .colorScheme
+                                                                    .onSurfaceVariant,
+                                                              ),
+                                                            ),
+                                                            Text(
+                                                              'Salida PID: ${lineData[4].toStringAsFixed(1)}',
+                                                              style: TextStyle(
+                                                                fontSize: 9,
+                                                                color: Theme.of(context)
+                                                                    .colorScheme
+                                                                    .onSurfaceVariant,
+                                                              ),
+                                                            ),
+                                                          ],
                                                         ),
                                                       ),
                                                     ],
                                                   ),
                                                   const SizedBox(height: 2),
                                                   Text(
-                                                    'PID - I: ${lineData[2].toStringAsFixed(1)}, D: ${lineData[3].toStringAsFixed(1)}, E: ${lineData[1].toStringAsFixed(1)}',
+                                                    'PID: [${pidData[0].toStringAsFixed(1)}, ${pidData[1].toStringAsFixed(1)}, ${pidData[2].toStringAsFixed(1)}]',
                                                     style: TextStyle(
                                                       fontSize: 9,
                                                       color: Theme.of(context)
@@ -1899,9 +2067,10 @@ class _HomePageState extends State<HomePage> {
                                                       final featConfig = configData?.featConfig;
                                                       if (featConfig == null ||
                                                           featConfig.length !=
-                                                              8)
+                                                              8) {
                                                         return const SizedBox
                                                             .shrink();
+                                                      }
 
                                                       final featureNames = [
                                                         'MED',
@@ -1963,7 +2132,7 @@ class _HomePageState extends State<HomePage> {
                                             decoration: BoxDecoration(
                                               color: Theme.of(context)
                                                   .colorScheme
-                                                  .surfaceVariant
+                                                  .surfaceContainerHighest
                                                   .withOpacity(0.5),
                                               borderRadius:
                                                   BorderRadius.circular(8),
@@ -2590,7 +2759,7 @@ class _HomePageState extends State<HomePage> {
                                                                       height:
                                                                           4),
                                                                   Text(
-                                                                    'Línea: ${sampRateData.length > 0 ? sampRateData[0] : 2}ms',
+                                                                    'Línea: ${sampRateData.isNotEmpty ? sampRateData[0] : 2}ms',
                                                                     style:
                                                                         TextStyle(
                                                                       fontSize:
@@ -2726,9 +2895,10 @@ class _HomePageState extends State<HomePage> {
                                                                   null ||
                                                               featConfig
                                                                       .length !=
-                                                                  8)
+                                                                  8) {
                                                             return const SizedBox
                                                                 .shrink();
+                                                          }
 
                                                           return Container(
                                                             width:
@@ -2817,6 +2987,8 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
         ),
+          ),
+        ],
       ),
     );
   }
@@ -2834,7 +3006,7 @@ class _HomePageState extends State<HomePage> {
             showTicks: false,
             axisLineStyle: AxisLineStyle(
               thickness: 14,
-              color: Theme.of(context).colorScheme.surfaceVariant,
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
               thicknessUnit: GaugeSizeUnit.logicalPixel,
             ),
             pointers: <GaugePointer>[
@@ -2895,7 +3067,7 @@ class _HomePageState extends State<HomePage> {
             showTicks: false,
             axisLineStyle: AxisLineStyle(
               thickness: 8,
-              color: Theme.of(context).colorScheme.surfaceVariant,
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
               thicknessUnit: GaugeSizeUnit.logicalPixel,
             ),
             pointers: <GaugePointer>[
@@ -2981,7 +3153,7 @@ class _HomePageState extends State<HomePage> {
                 showTicks: false,
                 axisLineStyle: AxisLineStyle(
                   thickness: 12,
-                  color: Theme.of(context).colorScheme.surfaceVariant,
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
                   thicknessUnit: GaugeSizeUnit.logicalPixel,
                 ),
                 pointers: <GaugePointer>[

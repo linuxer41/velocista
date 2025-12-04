@@ -7,7 +7,7 @@ Este proyecto implementa un robot seguidor de línea basado en Arduino con contr
 ## Arquitectura del Sistema
 
 ### Componentes Principales
-- **Sensores**: 6 sensores infrarrojos QTR para detección de línea
+- **Sensores**: 8 sensores infrarrojos QTR para detección de línea
 - **Motores**: 2 motores DC con encoders para retroalimentación RPM
 - **Control**: PID cascada (línea + velocidad) con lazos separados (100Hz línea, 200Hz velocidad)
 - **Comunicación**: Serial (115200 baud) para comandos y telemetría
@@ -104,14 +104,14 @@ type:3|LINE_K_PID:[2.00,0.05,0.75]|LEFT_K_PID:[0.29,0.01,0.0025]|RIGHT_K_PID:[0.
 Datos en tiempo real del robot (línea, motores, sensores):
 
 ```
-type:4|LINE:[429.30,-225.00,150.50,5.25,150.00]|LEFT:[120.00,232.50,166,1234,567,-2.50,15.25,0.75]|RIGHT:[-85.50,7.50,-53,4567,890,3.20,-8.10,1.45]|PID:[150.00,166.00,53.00]|SPEED_CMS:[15.08,-10.68]|QTR:[687,292,0,0,0,0]|BATT:7.85|LOOP_US:45|UPTIME:5000|CURV:150.25|STATE:0
+type:4|LINE:[429.30,-225.00,150.50,5.25,150.00]|LEFT:[120.00,232.50,166,1234,567,-2.50,15.25,0.75]|RIGHT:[-85.50,7.50,-53,4567,890,3.20,-8.10,1.45]|PID:[150.00,166.00,53.00]|SPEED_CMS:[15.08,-10.68]|QTR:[687,292,0,0,0,0,150,800]|BATT:7.85|LOOP_US:45|UPTIME:5000|CURV:150.25|STATE:0
 ```
 
 ### type:5 - Datos Completos de Debug
 Información completa de debugging (config + telemetry + datos PID detallados):
 
 ```
-type:5|LINE_K_PID:[2.00,0.05,0.75]|LEFT_K_PID:[0.29,0.01,0.0025]|RIGHT_K_PID:[0.29,0.01,0.0025]|BASE:[200,120.00]|MAX:[230,3000.00]|WHEELS:[32.0,85.0]|MODE:1|CASCADE:1|TELEMETRY:1|LINE:[429.30,-225.00,150.50,5.25,150.00]|LEFT:[120.00,232.50,166,1234,567]|RIGHT:[-85.50,7.50,-53,4567,890]|PID:[150.00,166.00,53.00]|SPEED_CMS:[15.08,-10.68]|QTR:[687,292,0,0,0,0]|BATT:7.85|LOOP_US:45|UPTIME:5000|CURV:150.25|STATE:0
+type:5|LINE_K_PID:[2.00,0.05,0.75]|LEFT_K_PID:[0.29,0.01,0.0025]|RIGHT_K_PID:[0.29,0.01,0.0025]|BASE:[200,120.00]|MAX:[230,3000.00]|WHEELS:[32.0,85.0]|MODE:1|CASCADE:1|TELEMETRY:1|LINE:[429.30,-225.00,150.50,5.25,150.00]|LEFT:[120.00,232.50,166,1234,567]|RIGHT:[-85.50,7.50,-53,4567,890]|PID:[150.00,166.00,53.00]|SPEED_CMS:[15.08,-10.68]|QTR:[687,292,0,0,0,0,150,800]|BATT:7.85|LOOP_US:45|UPTIME:5000|CURV:150.25|STATE:0
 ```
 
 **Configuración (igual que type:3):**
@@ -130,7 +130,7 @@ type:5|LINE_K_PID:[2.00,0.05,0.75]|LEFT_K_PID:[0.29,0.01,0.0025]|RIGHT_K_PID:[0.
 - **LEFT/RIGHT**: [RPM_actual,RPM_objetivo,PWM,encoder_count,encoder_backward,error,integral,derivada] izquierdo/derecho
 - **PID**: [output_line,output_izquierdo,output_derecho] salidas PID
 - **SPEED_CMS**: [velocidad_izquierda_cm_s,velocidad_derecha_cm_s] velocidades lineales
-- **QTR**: [A0,A1,A2,A3,A4,A5] valores calibrados de los 6 sensores QTR (0-1000)
+- **QTR**: [A0,A1,A2,A3,A4,A5,A6,A7] valores calibrados de los 8 sensores QTR (0-1000)
 - **BATT**: Voltaje de batería en V
 - **LOOP_US**: Tiempo de ejecución del último ciclo PID en microsegundos
 - **UPTIME**: Tiempo desde inicio en ms
@@ -237,15 +237,15 @@ function parseTelemetryData(debugString) {
 }
 
 // Ejemplo:
-// Input: "type:4|LINE:[429.30,-225.00,150.50,5.25,150.00]|LEFT:[120.00,232.50,166,1234,567,-2.50,15.25,0.75]|RIGHT:[-85.50,7.50,-53,4567,890,3.20,-8.10,1.45]|PID:[150.00,166.00,53.00]|SPEED_CMS:[15.08,-10.68]|QTR:[687,292,0,0,0,0]|BATT:7.85|LOOP_US:45|UPTIME:5000|CURV:150.25|STATE:0"
-// Output: { LINE: [429.3, -225, 150.5, 5.25, 150], LEFT: [120, 232.5, 166, 1234, 567, -2.5, 15.25, 0.75], RIGHT: [-85.5, 7.5, -53, 4567, 890, 3.2, -8.1, 1.45], PID: [150, 166, 53], SPEED_CMS: [15.08, -10.68], QTR: [687, 292, 0, 0, 0, 0], BATT: 7.85, LOOP_US: 45, UPTIME: 5000, CURV: 150.25, STATE: 0 }
+// Input: "type:4|LINE:[429.30,-225.00,150.50,5.25,150.00]|LEFT:[120.00,232.50,166,1234,567,-2.50,15.25,0.75]|RIGHT:[-85.50,7.50,-53,4567,890,3.20,-8.10,1.45]|PID:[150.00,166.00,53.00]|SPEED_CMS:[15.08,-10.68]|QTR:[687,292,0,0,0,0,150,800]|BATT:7.85|LOOP_US:45|UPTIME:5000|CURV:150.25|STATE:0"
+// Output: { LINE: [429.3, -225, 150.5, 5.25, 150], LEFT: [120, 232.5, 166, 1234, 567, -2.5, 15.25, 0.75], RIGHT: [-85.5, 7.5, -53, 4567, 890, 3.2, -8.1, 1.45], PID: [150, 166, 53], SPEED_CMS: [15.08, -10.68], QTR: [687, 292, 0, 0, 0, 0, 150, 800], BATT: 7.85, LOOP_US: 45, UPTIME: 5000, CURV: 150.25, STATE: 0 }
 ```
 
 ### Recomendaciones para UI
 - **Gráfico de línea**: Mostrar posición de línea en tiempo real
 - **Barras de PID**: Visualizar ganancias KP/KI/KD ajustables
 - **Velocímetros**: RPM actual vs objetivo para cada motor
-- **Sensores QTR**: Barra de 6 valores para ver cobertura de línea
+- **Sensores QTR**: Barra de 8 valores para ver cobertura de línea
 - **Controles**: Joystick o sliders para throttle/steering en modo remoto
 - **Modo Idle**: Controles para PWM directo o RPM con PID para debugging
 - **Logs**: Área de texto para mensajes type:1 y confirmaciones

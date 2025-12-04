@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../app_state.dart';
+import '../widgets/custom_appbar.dart';
 
 enum TerminalTab { all, received, sent }
 
@@ -52,92 +53,58 @@ class _TerminalPageState extends State<TerminalPage> {
       body: SafeArea(
         child: Column(
           children: [
-            // Header with back button and action buttons
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              color: colorScheme.surface,
-              child: Row(
-                children: [
-                  // Back button on the left
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: Icon(
-                      Icons.arrow_back,
-                      color: colorScheme.onSurface,
-                      size: 24,
-                    ),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
+            CustomAppBar(
+              title: 'Terminal',
+              hasBackButton: true,
+              actions: [
+                IconButton(
+                  onPressed: _clearConsole,
+                  icon: Icon(
+                    Icons.delete,
+                    color: colorScheme.onSurfaceVariant,
+                    size: 20,
                   ),
-                  // Centered title
-                  Expanded(
-                    child: Center(
-                      child: Text(
-                        'Terminal',
-                        style: TextStyle(
-                          color: colorScheme.onSurface,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                          fontFamily: 'Space Grotesk',
-                        ),
-                      ),
-                    ),
+                  tooltip: 'Limpiar Consola',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed: _exportLog,
+                  icon: Icon(
+                    Icons.ios_share,
+                    color: colorScheme.onSurfaceVariant,
+                    size: 20,
                   ),
-                  // Action buttons on the right
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        onPressed: _clearConsole,
-                        icon: Icon(
-                          Icons.delete,
-                          color: colorScheme.onSurfaceVariant,
-                          size: 20,
-                        ),
-                        tooltip: 'Limpiar Consola',
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                      ),
-                      const SizedBox(width: 8),
-                      IconButton(
-                        onPressed: _exportLog,
-                        icon: Icon(
-                          Icons.ios_share,
-                          color: colorScheme.onSurfaceVariant,
-                          size: 20,
-                        ),
-                        tooltip: 'Exportar Log',
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                      ),
-                      const SizedBox(width: 8),
-                      IconButton(
-                        onPressed: () {
-                          setState(() {
-                            _isPaused = !_isPaused;
-                            if (!_isPaused) {
-                              _displayedAll = List.from(
-                                  widget.provider.rawDataBuffer.value);
-                              _displayedReceived = List.from(
-                                  widget.provider.receivedDataBuffer.value);
-                              _displayedSent = List.from(
-                                  widget.provider.sentCommandsBuffer.value);
-                            }
-                          });
-                        },
-                        icon: Icon(
-                          _isPaused ? Icons.play_arrow : Icons.pause,
-                          color: colorScheme.onSurfaceVariant,
-                          size: 20,
-                        ),
-                        tooltip: _isPaused ? 'Reanudar' : 'Pausar',
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                      ),
-                    ],
+                  tooltip: 'Exportar Log',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed: () {
+                    setState(() {
+                      _isPaused = !_isPaused;
+                      if (!_isPaused) {
+                        _displayedAll = List.from(
+                            widget.provider.rawDataBuffer.value);
+                        _displayedReceived = List.from(
+                            widget.provider.receivedDataBuffer.value);
+                        _displayedSent = List.from(
+                            widget.provider.sentCommandsBuffer.value);
+                      }
+                    });
+                  },
+                  icon: Icon(
+                    _isPaused ? Icons.play_arrow : Icons.pause,
+                    color: colorScheme.onSurfaceVariant,
+                    size: 20,
                   ),
-                ],
-              ),
+                  tooltip: _isPaused ? 'Reanudar' : 'Pausar',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+              ],
             ),
 
             // Tabs

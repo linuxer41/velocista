@@ -37,9 +37,14 @@ class _RemoteControlState extends State<RemoteControl> {
   }
 
   void _sendCommand() {
+    // Map throttle from -1..1 to 0..5000 RPM (forward only)
+    final throttleRpm = ((_throttle + 1) * 2500).round().clamp(0, 5000);
+    // Map turn from -1..1 to -5000..5000 RPM
+    final steeringRpm = (_turn * 5000).round().clamp(-5000, 5000);
+
     final command = RcCommand(
-      throttle: (_throttle * 230).round(),
-      steering: (_turn * 230).round(),
+      throttle: throttleRpm,
+      steering: steeringRpm,
     );
     widget.appState.sendCommand(command.toCommand());
   }
@@ -60,7 +65,7 @@ class _RemoteControlState extends State<RemoteControl> {
     return Container(
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -93,7 +98,7 @@ class _RemoteControlState extends State<RemoteControl> {
               listener: _onJoystickChanged,
               base: JoystickBase(
                 decoration: JoystickBaseDecoration(
-                  color: Theme.of(context).colorScheme.surfaceVariant,
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
                   drawArrows: true,
                   drawOuterCircle: true,
                 ),
@@ -128,14 +133,14 @@ class _RemoteControlState extends State<RemoteControl> {
                 Column(
                   children: [
                     Text(
-                      'Acel',
+                      'RPM',
                       style: TextStyle(
                         fontSize: 10,
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
                     Text(
-                      '${(_throttle * 100).toStringAsFixed(0)}%',
+                      '${((_throttle + 1) * 2500).round()} RPM',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
@@ -147,14 +152,14 @@ class _RemoteControlState extends State<RemoteControl> {
                 Column(
                   children: [
                     Text(
-                      'Dir',
+                      'Giro',
                       style: TextStyle(
                         fontSize: 10,
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
                     Text(
-                      '${(_turn * 100).toStringAsFixed(0)}%',
+                      '${(_turn * 5000).round()} RPM',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
@@ -175,14 +180,6 @@ class _RemoteControlState extends State<RemoteControl> {
             height: 40,
             child: ElevatedButton(
               onPressed: _emergencyStop,
-              child: const Text(
-                'STOP',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1,
-                ),
-              ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red,
                 foregroundColor: Colors.white,
@@ -191,6 +188,14 @@ class _RemoteControlState extends State<RemoteControl> {
                 ),
                 elevation: 2,
                 shadowColor: Colors.red.withOpacity(0.3),
+              ),
+              child: const Text(
+                'STOP',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1,
+                ),
               ),
             ),
           ),
@@ -229,7 +234,7 @@ class _RemoteControlState extends State<RemoteControl> {
                       final relationCommand = RelationCommand(value);
                       widget.appState.sendCommand(relationCommand.toCommand());
                     },
-                    activeColor: Theme.of(context).colorScheme.primary,
+                    activeThumbColor: Theme.of(context).colorScheme.primary,
                     materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                 ),
@@ -249,11 +254,11 @@ class _RemoteControlState extends State<RemoteControl> {
                     widget.appState.sendCommand(command.toCommand());
                     _resetJoystick();
                   },
-                  child: const Text('Stop', style: TextStyle(fontSize: 10)),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 6),
                     side: BorderSide(color: Theme.of(context).colorScheme.primary),
                   ),
+                  child: const Text('Stop', style: TextStyle(fontSize: 10)),
                 ),
               ),
               const SizedBox(width: 6),
@@ -264,11 +269,11 @@ class _RemoteControlState extends State<RemoteControl> {
                     widget.appState.sendCommand(command.toCommand());
                     _resetJoystick();
                   },
-                  child: const Text('Park', style: TextStyle(fontSize: 10)),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 6),
                     side: BorderSide(color: Theme.of(context).colorScheme.primary),
                   ),
+                  child: const Text('Park', style: TextStyle(fontSize: 10)),
                 ),
               ),
             ],

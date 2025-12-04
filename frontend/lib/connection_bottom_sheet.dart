@@ -452,7 +452,7 @@ class _ConnectionBottomSheetState extends State<ConnectionBottomSheet> {
                       ],
                     ),
                     trailing: isConnected
-                        ? Container(
+                        ? SizedBox(
                             width: 80,
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.end,

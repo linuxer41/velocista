@@ -35,12 +35,12 @@ class StatusBar extends StatelessWidget {
   Color _getBatteryColor(double percentage) {
     if (percentage >= 50) {
       // Green to Yellow transition (50% to 100%)
-      final greenValue = 255;
+      const greenValue = 255;
       final redValue = (percentage - 50) * 5.1; // 0 to 255
       return Color.fromARGB(255, redValue.toInt(), greenValue, 0);
     } else {
       // Red to Yellow transition (0% to 50%)
-      final redValue = 255;
+      const redValue = 255;
       final greenValue = percentage * 5.1; // 0 to 255
       return Color.fromARGB(255, redValue, greenValue.toInt(), 0);
     }
@@ -114,102 +114,14 @@ class StatusBar extends StatelessWidget {
                 ],
               ),
               const SizedBox(width: 20),
-              // Right column: Action buttons and Connection indicator
+              // Right column: Mode selector and Connection indicator
               Expanded(
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    // Terminal icon
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .primary
-                            .withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: IconButton(
-                          onPressed: () {
-                            Navigator.pushNamed(context, '/terminal');
-                          },
-                          icon: Icon(
-                            Icons.terminal,
-                            color: Theme.of(context).colorScheme.onSurface,
-                            size: 20,
-                          ),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    // Config icon
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .tertiary
-                            .withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: IconButton(
-                          onPressed: () {
-                            Navigator.pushNamed(context, '/config');
-                          },
-                          icon: Icon(
-                            Icons.settings,
-                            color: Theme.of(context).colorScheme.onSurface,
-                            size: 20,
-                          ),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                          tooltip: 'Configuración',
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    // Debug icon
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .secondary
-                            .withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: IconButton(
-                          onPressed: () {
-                            Navigator.pushNamed(context, '/debug');
-                          },
-                          icon: Icon(
-                            Icons.show_chart,
-                            color: Theme.of(context).colorScheme.onSurface,
-                            size: 20,
-                          ),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                          tooltip: 'Gráficos de Debug',
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
                     // Mode selector
                     Container(
+                      width: 100,
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
@@ -219,41 +131,77 @@ class StatusBar extends StatelessWidget {
                             .withOpacity(0.1),
                         borderRadius: BorderRadius.circular(6),
                       ),
-                      child: SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: ValueListenableBuilder<OperationMode>(
-                          valueListenable: appState.currentMode,
-                          builder: (context, currentMode, child) {
-                            return PopupMenuButton<OperationMode>(
-                              onSelected: (OperationMode mode) async {
-                                await appState.changeOperationMode(mode);
-                              },
-                              itemBuilder: (BuildContext context) =>
-                                  OperationMode.values
-                                      .map((OperationMode mode) {
-                                return PopupMenuItem<OperationMode>(
-                                  value: mode,
-                                  child: Row(
-                                    children: [
-                                      Icon(mode.icon, size: 20),
-                                      const SizedBox(width: 8),
-                                      Text(mode.displayName,
-                                          style: const TextStyle(fontSize: 12)),
-                                    ],
+                      child: ValueListenableBuilder<OperationMode>(
+                        valueListenable: appState.currentMode,
+                        builder: (context, currentMode, child) {
+                          // Get short label for current mode
+                          String shortLabel;
+                          switch (currentMode) {
+                            case OperationMode.idle:
+                              shortLabel = 'Reposo';
+                              break;
+                            case OperationMode.lineFollowing:
+                              shortLabel = 'Seguidor';
+                              break;
+                            case OperationMode.remoteControl:
+                              shortLabel = 'RC';
+                              break;
+                          }
+
+                          return PopupMenuButton<OperationMode>(
+                            onSelected: (OperationMode mode) async {
+                              await appState.changeOperationMode(mode);
+                            },
+                            itemBuilder: (BuildContext context) =>
+                                OperationMode.values
+                                    .map((OperationMode mode) {
+                              return PopupMenuItem<OperationMode>(
+                                value: mode,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(mode.displayName,
+                                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                                    const SizedBox(height: 2),
+                                    Text(mode.description,
+                                        style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  currentMode.icon,
+                                  color: Theme.of(context).colorScheme.onSurface,
+                                  size: 18,
+                                ),
+                                const SizedBox(width: 4),
+                                Expanded(
+                                  child: Text(
+                                    shortLabel,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: Theme.of(context).colorScheme.onSurface,
+                                      fontFamily: 'Space Grotesk',
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                );
-                              }).toList(),
-                              child: Icon(
-                                currentMode.icon,
-                                color: Theme.of(context).colorScheme.onSurface,
-                                size: 20,
-                              ),
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
-                            );
-                          },
-                        ),
+                                ),
+                                const SizedBox(width: 4),
+                                Icon(
+                                  Icons.keyboard_arrow_down,
+                                  color: Theme.of(context).colorScheme.onSurface,
+                                  size: 16,
+                                ),
+                              ],
+                            ),
+                          );
+                        },
                       ),
                     ),
                     const SizedBox(width: 6),
@@ -340,10 +288,10 @@ class StatusBar extends StatelessWidget {
                                                               .connectedDevice
                                                               .value
                                                               ?.address
-                                                              ?.isNotEmpty ==
+                                                              .isNotEmpty ==
                                                           true
                                                       ? appState.connectedDevice
-                                                          .value!.address!
+                                                          .value!.address
                                                       : 'Sin ID',
                                                   style: TextStyle(
                                                     fontSize: 6,

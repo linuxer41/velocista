@@ -148,15 +148,16 @@ class ConfigData extends SerialData {
 }
 
 enum OperationMode {
-  idle(0, 'REPOSO', Icons.pause_circle, 'REPOSO'),
-  lineFollowing(1, 'SEGUIDOR DE LÍNEA', Icons.route, 'LÍNEA'),
-  remoteControl(2, 'CONTROL REMOTO', Icons.gamepad, 'REMOTO');
+  idle(0, 'REPOSO', Icons.pause_circle, 'REPOSO', 'En este modo, el robot lee los sensores pero no controla los motores.'),
+  lineFollowing(1, 'SEGUIDOR DE LÍNEA', Icons.route, 'LÍNEA', 'Modo de seguimiento de línea para navegación autónoma.'),
+  remoteControl(2, 'CONTROL REMOTO', Icons.gamepad, 'REMOTO', 'Control manual del robot mediante comandos remotos.');
 
-  const OperationMode(this.id, this.displayName, this.icon, this.shortName);
+  const OperationMode(this.id, this.displayName, this.icon, this.shortName, this.description);
   final int id;
   final String displayName;
   final IconData icon;
   final String shortName;
+  final String description;
 
   static OperationMode fromId(int id) {
     return OperationMode.values.firstWhere(
@@ -559,8 +560,8 @@ class PidCommand {
 }
 
 class RcCommand {
-  final int throttle; // -230 to 230
-  final int steering; // -230 to 230
+  final int throttle; // 0 to 5000 RPM (forward)
+  final int steering; // -5000 to 5000 RPM (left/right)
 
   RcCommand({
     required this.throttle,
@@ -568,7 +569,7 @@ class RcCommand {
   });
 
   String toCommand() {
-    return 'rc ${throttle},${steering}';
+    return 'rc $throttle,$steering';
   }
 }
 
@@ -683,6 +684,12 @@ class SampRateCommand {
   }
 }
 
+class AutotuneCommand {
+  String toCommand() {
+    return 'autotune';
+  }
+}
+
 /// PID Configuration for Arduino Line Follower
 class ArduinoPIDConfig {
   final double kp; // Proportional gain
@@ -695,7 +702,7 @@ class ArduinoPIDConfig {
     this.kp = 1.0,
     this.ki = 0.0,
     this.kd = 0.0,
-    this.setpoint = 2500.0, // For 6 sensors
+    this.setpoint = 4500.0, // For 8 sensors
     this.baseSpeed = 0.8,
   });
 

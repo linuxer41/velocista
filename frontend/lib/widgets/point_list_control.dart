@@ -78,7 +78,7 @@ class _PointListControlState extends State<ServoControl> {
     return Container(
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -125,7 +125,7 @@ class _PointListControlState extends State<ServoControl> {
                         child: TextField(
                           controller: _distanceController,
                           keyboardType:
-                              TextInputType.numberWithOptions(decimal: true),
+                              const TextInputType.numberWithOptions(decimal: true),
                           decoration: const InputDecoration(
                             labelText: 'Dist (cm)',
                             labelStyle: TextStyle(fontSize: 10),
@@ -146,7 +146,7 @@ class _PointListControlState extends State<ServoControl> {
                         child: TextField(
                           controller: _angleController,
                           keyboardType:
-                              TextInputType.numberWithOptions(decimal: true),
+                              const TextInputType.numberWithOptions(decimal: true),
                           decoration: const InputDecoration(
                             labelText: 'Ángulo (°)',
                             labelStyle: TextStyle(fontSize: 10),
@@ -165,7 +165,6 @@ class _PointListControlState extends State<ServoControl> {
                       height: 32,
                       child: ElevatedButton(
                         onPressed: _addPoint,
-                        child: const Text('+', style: TextStyle(fontSize: 12)),
                         style: ElevatedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(horizontal: 8),
                           backgroundColor:
@@ -173,6 +172,7 @@ class _PointListControlState extends State<ServoControl> {
                           foregroundColor:
                               Theme.of(context).colorScheme.onPrimary,
                         ),
+                        child: const Text('+', style: TextStyle(fontSize: 12)),
                       ),
                     ),
                   ],
@@ -256,25 +256,25 @@ class _PointListControlState extends State<ServoControl> {
               Expanded(
                 child: ElevatedButton(
                   onPressed: _points.isNotEmpty ? _sendRoute : null,
-                  child: const Text('Enviar', style: TextStyle(fontSize: 10)),
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 6),
                     backgroundColor: Theme.of(context).colorScheme.primary,
                     foregroundColor: Theme.of(context).colorScheme.onPrimary,
                   ),
+                  child: const Text('Enviar', style: TextStyle(fontSize: 10)),
                 ),
               ),
               const SizedBox(width: 4),
               Expanded(
                 child: OutlinedButton(
                   onPressed: _clearRoute,
-                  child: const Text('Limpiar', style: TextStyle(fontSize: 10)),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 6),
                     side:
                         BorderSide(color: Theme.of(context).colorScheme.error),
                     foregroundColor: Theme.of(context).colorScheme.error,
                   ),
+                  child: const Text('Limpiar', style: TextStyle(fontSize: 10)),
                 ),
               ),
             ],
