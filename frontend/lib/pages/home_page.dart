@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:labusfx/pages/config_page.dart';
 import 'package:labusfx/widgets/navigation_menu.dart';
 import '../app_state.dart';
 import '../arduino_data.dart';
@@ -178,62 +177,83 @@ class _HomePageState extends State<HomePage> {
 
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surface,
-      body: ValueListenableBuilder<OperationMode>(
-        valueListenable: appState!.currentMode,
-        builder: (context, mode, child) {
-          return SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Column(
-                children: [
-                  // Status Bar
-                  StatusBar(
-                      appState: appState,
-                      onShowConnectionModal: _showConnectionModal),
-                  NavigationMenu(menuItems: [
-                    {
-                      'label': 'Terminal',
-                      'icon': Icons.code,
-                      'page': TerminalPage(provider: appState,),
-                    },
-                    {
-                      'label': 'Configuración',
-                      'icon': Icons.settings,
-                      'page': const ConfigPage(),
-                    },
-                    {
-                      'label': 'Gráficos',
-                      'icon': Icons.bar_chart,
-                      'page': const GraphsPage(),
-                    },
-                    {
-                      'label': 'Info',
-                      'icon': Icons.help,
-                      'page': AppSettingsPage(themeProvider: widget.themeProvider,),
-                    },
-                  ], onOpenPage: (page) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => page),
-                    );
-                  }),
-                  // Gauges
-                  GaugesSection(appState: appState),
-
-                  // Motor and Line Following Information
-                  MotorInfoSection(appState: appState),
-
-                  const SizedBox(height: 8),
-
-                  // Dynamic controls based on selected mode
-                  _getControlsWidget(mode),
-
-                  const SizedBox(height: 16),
-                ],
+      body: SafeArea(
+        child: Stack(
+          children: [
+            // Fixed StatusBar at top
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              height: 50,
+              child: StatusBar(
+                appState: appState!,
+                onShowConnectionModal: _showConnectionModal,
               ),
             ),
-          );
-        },
+            // Floating NavigationMenu
+            NavigationMenu(menuItems: [
+              {
+                'label': 'Terminal',
+                'icon': Icons.code,
+                'page': TerminalPage(provider: appState,),
+              },
+              {
+                'label': 'Configuración',
+                'icon': Icons.settings,
+                'page': const ConfigPage(),
+              },
+              {
+                'label': 'Gráficos',
+                'icon': Icons.bar_chart,
+                'page': const GraphsPage(),
+              },
+              {
+                'label': 'Info',
+                'icon': Icons.help,
+                'page': AppSettingsPage(themeProvider: widget.themeProvider,),
+              },
+            ], onOpenPage: (page) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => page),
+              );
+            }),
+            // Scrollable content below StatusBar
+            Positioned(
+              top: 50,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: ValueListenableBuilder<OperationMode>(
+                valueListenable: appState.currentMode,
+                builder: (context, mode, child) {
+                  return SingleChildScrollView(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Column(
+                        children: [
+                          // Gauges
+                          GaugesSection(appState: appState),
+
+                          // Motor and Line Following Information
+                          MotorInfoSection(appState: appState),
+
+                          const SizedBox(height: 8),
+
+                          // Dynamic controls based on selected mode
+                          _getControlsWidget(mode),
+
+                          const SizedBox(height: 16),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
