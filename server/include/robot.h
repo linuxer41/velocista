@@ -271,12 +271,7 @@ private:
     float filteredCurvature; // Filtro para suavizar curvatura
     SensorState currentSensorState;
     int lastTurnDirection; // 1 para derecha, -1 para izquierda
-    // Idle mode PWM
-    int16_t idleLeftPWM;
-    int16_t idleRightPWM;
-    // Idle mode RPM targets
-    float idleLeftTargetRPM;
-    float idleRightTargetRPM;
+    // Unified target RPM for all modes
     
     // Auto-tuning variables
     bool autoTuningActive;

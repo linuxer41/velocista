@@ -15,15 +15,16 @@ class RemoteControl extends StatefulWidget {
 class _RemoteControlState extends State<RemoteControl> {
   double _throttle = 0.0;
   double _turn = 0.0;
-  bool _relationEnabled = false; // Local state for relation toggle
 
   void _onJoystickChanged(StickDragDetails details) {
     setState(() {
       // Map joystick values to throttle and turn
-      // details.x: -1 (left) to 1 (right)
-      // details.y: -1 (up) to 1 (down)
+      // details.x: -1 (left) to 1 (right) - for steering
+      // details.y: -1 (up) to 1 (down) - for throttle
       _turn = details.x.clamp(-1.0, 1.0);
-      _throttle = -details.y.clamp(-1.0, 1.0); // Negative because up should be forward
+      
+      // Throttle: -1 (down/reverse) to 1 (up/forward)
+      _throttle = -details.y.clamp(-1.0, 1.0);
     });
     _sendCommand();
   }
@@ -37,10 +38,13 @@ class _RemoteControlState extends State<RemoteControl> {
   }
 
   void _sendCommand() {
-    // Map throttle from -1..1 to 0..5000 RPM (forward only)
-    final throttleRpm = ((_throttle + 1) * 2500).round().clamp(0, 5000);
-    // Map turn from -1..1 to -5000..5000 RPM
-    final steeringRpm = (_turn * 5000).round().clamp(-5000, 5000);
+    // Calculate throttle: -4000 to 4000 RPM (forward/backward)
+    final throttleRpm = (_throttle * 4000).round().clamp(-4000, 4000);
+    
+    // Calculate steering proportional to throttle for proper angle control
+    // Using 0.2 factor for ~20° angle (as per documentation examples)
+    final angleFactor = 0.2;
+    final steeringRpm = (_turn * _throttle * 4000 * angleFactor).round().clamp(-2000, 2000);
 
     final command = RcCommand(
       throttle: throttleRpm,
@@ -133,14 +137,14 @@ class _RemoteControlState extends State<RemoteControl> {
                 Column(
                   children: [
                     Text(
-                      'RPM',
+                      'Throttle',
                       style: TextStyle(
                         fontSize: 10,
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
                     Text(
-                      '${((_throttle + 1) * 2500).round()} RPM',
+                      '${(_throttle * 4000).round()} RPM',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
@@ -152,14 +156,14 @@ class _RemoteControlState extends State<RemoteControl> {
                 Column(
                   children: [
                     Text(
-                      'Giro',
+                      'Steering',
                       style: TextStyle(
                         fontSize: 10,
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
                     Text(
-                      '${(_turn * 5000).round()} RPM',
+                      '${(_turn * _throttle * 4000 * 0.2).round()} RPM',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
@@ -200,11 +204,11 @@ class _RemoteControlState extends State<RemoteControl> {
             ),
           ),
 
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
 
-          // Relation Toggle
+          // Movement Control Buttons (2x2 Grid)
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(6),
@@ -212,71 +216,83 @@ class _RemoteControlState extends State<RemoteControl> {
                 color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
               ),
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            child: Column(
               children: [
-                Text(
-                  'Relación',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: Theme.of(context).colorScheme.onSurface,
-                  ),
+                // Top row: Straight movement
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          // Move forward straight: throttle=2000, steering=0
+                          final command = RcCommand(throttle: 2000, steering: 0);
+                          widget.appState.sendCommand(command.toCommand());
+                        },
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          side: BorderSide(color: Theme.of(context).colorScheme.primary),
+                        ),
+                        icon: Icon(Icons.arrow_upward, size: 16),
+                        label: const Text('Avanzar', style: TextStyle(fontSize: 10)),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          // Move backward straight: throttle=-2000, steering=0
+                          final command = RcCommand(throttle: -2000, steering: 0);
+                          widget.appState.sendCommand(command.toCommand());
+                        },
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          side: BorderSide(color: Theme.of(context).colorScheme.primary),
+                        ),
+                        icon: Icon(Icons.arrow_downward, size: 16),
+                        label: const Text('Retroceder', style: TextStyle(fontSize: 10)),
+                      ),
+                    ),
+                  ],
                 ),
-                Transform.scale(
-                  scale: 0.8,
-                  child: Switch(
-                    value: _relationEnabled,
-                    onChanged: (value) {
-                      setState(() {
-                        _relationEnabled = value;
-                      });
-                      final relationCommand = RelationCommand(value);
-                      widget.appState.sendCommand(relationCommand.toCommand());
-                    },
-                    activeThumbColor: Theme.of(context).colorScheme.primary,
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
+                const SizedBox(height: 6),
+                // Bottom row: Rotation
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          // Rotate left: throttle=0, steering=-1500 (spin left)
+                          final command = RcCommand(throttle: 0, steering: -1500);
+                          widget.appState.sendCommand(command.toCommand());
+                        },
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          side: BorderSide(color: Theme.of(context).colorScheme.primary),
+                        ),
+                        icon: Icon(Icons.rotate_left, size: 16),
+                        label: const Text('Girar Izq', style: TextStyle(fontSize: 10)),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          // Rotate right: throttle=0, steering=1500 (spin right)
+                          final command = RcCommand(throttle: 0, steering: 1500);
+                          widget.appState.sendCommand(command.toCommand());
+                        },
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          side: BorderSide(color: Theme.of(context).colorScheme.primary),
+                        ),
+                        icon: Icon(Icons.rotate_right, size: 16),
+                        label: const Text('Girar Der', style: TextStyle(fontSize: 10)),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-          ),
-
-          const SizedBox(height: 6),
-
-          // Additional Controls
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () {
-                    final command = RcCommand(throttle: 0, steering: 0);
-                    widget.appState.sendCommand(command.toCommand());
-                    _resetJoystick();
-                  },
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 6),
-                    side: BorderSide(color: Theme.of(context).colorScheme.primary),
-                  ),
-                  child: const Text('Stop', style: TextStyle(fontSize: 10)),
-                ),
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () {
-                    final command = RcCommand(throttle: 0, steering: 0);
-                    widget.appState.sendCommand(command.toCommand());
-                    _resetJoystick();
-                  },
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 6),
-                    side: BorderSide(color: Theme.of(context).colorScheme.primary),
-                  ),
-                  child: const Text('Park', style: TextStyle(fontSize: 10)),
-                ),
-              ),
-            ],
           ),
         ],
       ),

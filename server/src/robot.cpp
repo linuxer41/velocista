@@ -132,10 +132,6 @@ Robot::Robot() :
     filteredCurvature(0),
     currentSensorState(NORMAL),
     lastTurnDirection(1),
-    idleLeftPWM(0),
-    idleRightPWM(0),
-    idleLeftTargetRPM(0),
-    idleRightTargetRPM(0),
     autoTuningActive(false),
     autoTuneStartTime(0),
     autoTuneTestStartTime(0),
@@ -297,19 +293,14 @@ void Robot::run() {
             leftMotor.setSpeed(leftSpeed);
             rightMotor.setSpeed(rightSpeed);
         } else if (config.operationMode == MODE_IDLE) {
-            if (idleLeftTargetRPM != 0 || idleRightTargetRPM != 0) {
-                int leftSpeed = leftPid.calculate(idleLeftTargetRPM, leftMotor.getFilteredRPM(), dtSpeed);
-                int rightSpeed = rightPid.calculate(idleRightTargetRPM, rightMotor.getFilteredRPM(), dtSpeed);
+            int leftSpeed = leftPid.calculate(leftTargetRPM, leftMotor.getFilteredRPM(), dtSpeed);
+            int rightSpeed = rightPid.calculate(rightTargetRPM, rightMotor.getFilteredRPM(), dtSpeed);
 
-                leftSpeed = constrain(leftSpeed, -config.maxPwm, config.maxPwm);
-                rightSpeed = constrain(rightSpeed, -config.maxPwm, config.maxPwm);
+            leftSpeed = constrain(leftSpeed, -config.maxPwm, config.maxPwm);
+            rightSpeed = constrain(rightSpeed, -config.maxPwm, config.maxPwm);
 
-                leftMotor.setSpeed(leftSpeed);
-                rightMotor.setSpeed(rightSpeed);
-            } else {
-                leftMotor.setSpeed(idleLeftPWM);
-                rightMotor.setSpeed(idleRightPWM);
-            }
+            leftMotor.setSpeed(leftSpeed);
+            rightMotor.setSpeed(rightSpeed);
         }
 
         loopTime = micros() - loopStartTime;
@@ -791,13 +782,7 @@ TelemetryData Robot::buildTelemetryData() {
     data.lRpm = leftMotor.getRPM();
     data.rRpm = rightMotor.getRPM();
     data.lTargetRpm = leftTargetRPM;
-    if (config.operationMode == MODE_IDLE && idleLeftTargetRPM == 0) {
-        data.lTargetRpm = idleLeftPWM;
-    }
     data.rTargetRpm = rightTargetRPM;
-    if (config.operationMode == MODE_IDLE && idleRightTargetRPM == 0) {
-        data.rTargetRpm = idleRightPWM;
-    }
     data.lSpeed = leftMotor.getSpeed();
     data.rSpeed = rightMotor.getSpeed();
     data.encL = leftMotor.getEncoderCount();
@@ -923,10 +908,8 @@ void Robot::handleSetMode(Robot* self, const char* params) {
         self->throttle = 0; self->steering = 0;
         self->leftMotor.setSpeed(0); self->rightMotor.setSpeed(0);
     } else if (config.operationMode == MODE_IDLE) {
-        self->idleLeftPWM = 0;
-        self->idleRightPWM = 0;
-        self->idleLeftTargetRPM = 0;
-        self->idleRightTargetRPM = 0;
+        self->leftTargetRPM = 0;
+        self->rightTargetRPM = 0;
         self->leftMotor.setSpeed(0); self->rightMotor.setSpeed(0);
     }
 }
@@ -1056,20 +1039,9 @@ void Robot::handleSetPwm(Robot* self, const char* params) {
         // self->debugger.systemMessage(F("Formato: set pwm <derecha>,<izquierda>"));
         return;
     }
-    char* end1;
-    int rightVal = strtol(params, &end1, 10);
-    if (end1 != comma) {
-        // self->debugger.systemMessage(F("Formato: set pwm <derecha>,<izquierda>"));
-        return;
-    }
-    char* end2;
-    int leftVal = strtol(comma + 1, &end2, 10);
-    if (*end2 != '\0') {
-        // self->debugger.systemMessage(F("Formato: set pwm <derecha>,<izquierda>"));
-        return;
-    }
-    self->idleRightPWM = rightVal;
-    self->idleLeftPWM = leftVal;
+    // Set target RPM to 0 for PWM mode (stop motors)
+    self->leftTargetRPM = 0;
+    self->rightTargetRPM = 0;
 }
 
 void Robot::handleSetRpm(Robot* self, const char* params) {
@@ -1084,8 +1056,8 @@ void Robot::handleSetRpm(Robot* self, const char* params) {
     }
     float leftRPM = atof(params);
     float rightRPM = atof(comma + 1);
-    self->idleLeftTargetRPM = leftRPM;
-    self->idleRightTargetRPM = rightRPM;
+    self->leftTargetRPM = leftRPM;
+    self->rightTargetRPM = rightRPM;
     self->leftPid.reset();
     self->rightPid.reset();
 }

@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_gauges/gauges.dart';
 import '../app_state.dart';
-import '../app_state.dart';
 import '../arduino_data.dart';
-import '../arduino_data.dart' as arduino_data;
 import '../connection_bottom_sheet.dart';
 import '../widgets/remote_control.dart';
 import '../widgets/status_bar.dart';
+import 'config_page.dart';
+import 'terminal_page.dart';
+import 'graphs_page.dart';
+import 'app_settings_page.dart';
 
 class HomePage extends StatefulWidget {
   final ThemeProvider themeProvider;
@@ -151,6 +153,80 @@ class _HomePageState extends State<HomePage> {
             ),
           );
         },
+      ),
+    );
+  }
+
+
+  void _openPage(Widget page) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (context) => page),
+    );
+  }
+
+  Widget _buildNavigationMenu() {
+    final appState = AppInheritedWidget.of(context);
+    final menuItems = [
+      {'icon': Icons.tune, 'label': 'Ajustes', 'page': const ConfigPage()},
+      {'icon': Icons.terminal, 'label': 'Terminal', 'page': TerminalPage(provider: appState!)},
+      {'icon': Icons.show_chart, 'label': 'Gráficos', 'page': const GraphsPage()},
+      {'icon': Icons.info, 'label': 'Info', 'page': AppSettingsPage(themeProvider: widget.themeProvider)},
+    ];
+
+    return Positioned(
+      top: 60,
+      right: 10,
+      child: Container(
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.9),
+          borderRadius: BorderRadius.circular(8),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 4,
+              offset: const Offset(0, 1),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: menuItems.map((item) {
+            return Container(
+              margin: const EdgeInsets.symmetric(vertical: 1),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () => _openPage(item['page'] as Widget),
+                  borderRadius: BorderRadius.circular(6),
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          item['icon'] as IconData,
+                          size: 16,
+                          color: Theme.of(context).colorScheme.onSurface,
+                        ),
+                        const SizedBox(height: 1),
+                        Text(
+                          item['label'] as String,
+                          style: TextStyle(
+                            fontSize: 8,
+                            fontWeight: FontWeight.w500,
+                            color: Theme.of(context).colorScheme.onSurface,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
       ),
     );
   }
@@ -780,7 +856,7 @@ class _HomePageState extends State<HomePage> {
                                   .sendCommand(calibrateCommand.toCommand());
                             },
                             icon: Icon(
-                              Icons.tune,
+                              Icons.adjust,
                               color: Theme.of(context)
                                   .colorScheme
                                   .onSecondaryContainer,
@@ -890,7 +966,7 @@ class _HomePageState extends State<HomePage> {
                                appState.sendCommand(autotuneCommand.toCommand());
                              },
                              icon: Icon(
-                               Icons.tune,
+                               Icons.auto_fix_high,
                                color: Theme.of(context)
                                    .colorScheme
                                    .onPrimaryContainer,
@@ -1265,18 +1341,27 @@ class _HomePageState extends State<HomePage> {
 
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surface,
-      body: Stack(
-        children: [
-          SafeArea(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Column(
+      body: ValueListenableBuilder<OperationMode>(
+        valueListenable: appState!.currentMode,
+        builder: (context, mode, child) {
+          if (mode == OperationMode.remoteControl) {
+            // Split screen layout for remote control
+            return Stack(
               children: [
-                // Status Bar
-                StatusBar(
-                    appState: appState!,
-                    onShowConnectionModal: _showConnectionModal),
+                Column(
+                  children: [
+                    // Top half - scrollable content
+                    Expanded(
+                      flex: 1,
+                      child: SingleChildScrollView(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: Column(
+                            children: [
+                              // Status Bar
+                              StatusBar(
+                                  appState: appState,
+                                  onShowConnectionModal: _showConnectionModal),
 
                 // Gauges Layout
                 ValueListenableBuilder<TelemetryData?>(
@@ -2020,29 +2105,8 @@ class _HomePageState extends State<HomePage> {
                                                     ],
                                                   ),
                                                   const SizedBox(height: 2),
-                                                  Text(
-                                                    'PID: [${pidData[0].toStringAsFixed(1)}, ${pidData[1].toStringAsFixed(1)}, ${pidData[2].toStringAsFixed(1)}]',
-                                                    style: TextStyle(
-                                                      fontSize: 9,
-                                                      color: Theme.of(context)
-                                                          .colorScheme
-                                                          .onSurfaceVariant,
-                                                    ),
-                                                  ),
-                                                  const SizedBox(height: 2),
                                                   Row(
                                                     children: [
-                                                      Expanded(
-                                                        child: Text(
-                                                          'Estado: ${telemetryData?.state == 0 ? 'NORMAL' : telemetryData?.state == 1 ? 'ALL_BLACK' : 'ALL_WHITE'}',
-                                                          style: TextStyle(
-                                                            fontSize: 9,
-                                                            color: Theme.of(context)
-                                                                .colorScheme
-                                                                .onSurfaceVariant,
-                                                          ),
-                                                        ),
-                                                      ),
                                                       Expanded(
                                                         child: Text(
                                                           'Curvatura: ${telemetryData?.curv?.toStringAsFixed(1) ?? '0.0'}',
@@ -2895,7 +2959,7 @@ class _HomePageState extends State<HomePage> {
                                                                   null ||
                                                               featConfig
                                                                       .length !=
-                                                                  8) {
+                                                                  9) {
                                                             return const SizedBox
                                                                 .shrink();
                                                           }
@@ -2988,6 +3052,22 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
           ),
+          // Fixed remote control at bottom when in remote control mode
+          ValueListenableBuilder<OperationMode>(
+            valueListenable: appState.currentMode,
+            builder: (context, mode, child) {
+              if (mode == OperationMode.remoteControl) {
+                return Positioned(
+                  bottom: 20,
+                  left: 20,
+                  right: 20,
+                  child: RemoteControl(appState: appState),
+                );
+              }
+              return const SizedBox.shrink();
+            },
+          ),
+          _buildNavigationMenu(),
         ],
       ),
     );

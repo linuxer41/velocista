@@ -85,68 +85,8 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> {
-  int _currentIndex = 0;
-
-  late final List<Widget> _pages;
-
-  @override
-  void initState() {
-    super.initState();
-    _pages = [
-      HomePage(themeProvider: widget.themeProvider),
-      const ConfigPage(), // Settings goes to config page
-      TerminalPage(provider: widget.appState),
-      const GraphsPage(),
-      AppSettingsPage(themeProvider: widget.themeProvider), // Info goes to app settings
-    ];
-  }
-
-  void _onNavTap(int index) {
-    setState(() {
-      _currentIndex = index;
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      canPop: _currentIndex == 0,
-      onPopInvokedWithResult: (didPop, result) {
-        if (!didPop) {
-          setState(() {
-            _currentIndex = 0;
-          });
-        }
-      },
-      child: Scaffold(
-        body: _pages[_currentIndex],
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: _currentIndex,
-          onDestinationSelected: _onNavTap,
-          destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.smart_toy),
-              label: 'Inicio',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.tune),
-              label: 'Ajustes',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.terminal),
-              label: 'Terminal',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.show_chart),
-              label: 'Gráficos',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.info),
-              label: 'Info',
-            ),
-          ],
-        ),
-      ),
-    );
+    return HomePage(themeProvider: widget.themeProvider);
   }
 }

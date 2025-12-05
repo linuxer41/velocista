@@ -680,7 +680,16 @@ class _ConfigPageState extends State<ConfigPage> {
 
   @override
   Widget build(BuildContext context) {
-    final appState = _appState;
+    final appState = _appState ?? AppInheritedWidget.of(context);
+
+    if (appState == null) {
+      return Scaffold(
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        body: const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
 
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surface,
@@ -726,7 +735,7 @@ class _ConfigPageState extends State<ConfigPage> {
                     Row(
                       children: [
                         Expanded(
-                          child: _buildBaseSpeedSection(appState!),
+                          child: _buildBaseSpeedSection(appState),
                         ),
                         const SizedBox(width: 16),
                         Expanded(
