@@ -43,7 +43,7 @@ class _RemoteControlState extends State<RemoteControl> {
     
     // Calculate steering proportional to throttle for proper angle control
     // Using 0.2 factor for ~20° angle (as per documentation examples)
-    final angleFactor = 0.2;
+    const angleFactor = 0.2;
     final steeringRpm = (_turn * _throttle * 4000 * angleFactor).round().clamp(-2000, 2000);
 
     final command = RcCommand(
@@ -232,7 +232,7 @@ class _RemoteControlState extends State<RemoteControl> {
                           padding: const EdgeInsets.symmetric(vertical: 8),
                           side: BorderSide(color: Theme.of(context).colorScheme.primary),
                         ),
-                        icon: Icon(Icons.arrow_upward, size: 16),
+                        icon: const Icon(Icons.arrow_upward, size: 16),
                         label: const Text('Avanzar', style: TextStyle(fontSize: 10)),
                       ),
                     ),
@@ -248,7 +248,7 @@ class _RemoteControlState extends State<RemoteControl> {
                           padding: const EdgeInsets.symmetric(vertical: 8),
                           side: BorderSide(color: Theme.of(context).colorScheme.primary),
                         ),
-                        icon: Icon(Icons.arrow_downward, size: 16),
+                        icon: const Icon(Icons.arrow_downward, size: 16),
                         label: const Text('Retroceder', style: TextStyle(fontSize: 10)),
                       ),
                     ),
@@ -269,7 +269,7 @@ class _RemoteControlState extends State<RemoteControl> {
                           padding: const EdgeInsets.symmetric(vertical: 8),
                           side: BorderSide(color: Theme.of(context).colorScheme.primary),
                         ),
-                        icon: Icon(Icons.rotate_left, size: 16),
+                        icon: const Icon(Icons.rotate_left, size: 16),
                         label: const Text('Girar Izq', style: TextStyle(fontSize: 10)),
                       ),
                     ),
@@ -285,7 +285,7 @@ class _RemoteControlState extends State<RemoteControl> {
                           padding: const EdgeInsets.symmetric(vertical: 8),
                           side: BorderSide(color: Theme.of(context).colorScheme.primary),
                         ),
-                        icon: Icon(Icons.rotate_right, size: 16),
+                        icon: const Icon(Icons.rotate_right, size: 16),
                         label: const Text('Girar Der', style: TextStyle(fontSize: 10)),
                       ),
                     ),

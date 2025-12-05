@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../app_state.dart';
-import '../arduino_data.dart';
 
 class Point {
   double distance;

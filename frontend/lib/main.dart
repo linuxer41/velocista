@@ -1,10 +1,6 @@
 import 'package:flutter/material.dart';
 import 'app_state.dart';
 import 'pages/home_page.dart';
-import 'pages/terminal_page.dart';
-import 'pages/config_page.dart';
-import 'pages/graphs_page.dart';
-import 'pages/app_settings_page.dart';
 
 void main() {
   final appState = AppState();

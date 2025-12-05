@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../app_state.dart';
 import '../arduino_data.dart';
-import '../connection_bottom_sheet.dart';
 
 class StatusBar extends StatelessWidget {
   final AppState appState;

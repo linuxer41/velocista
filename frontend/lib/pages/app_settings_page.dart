@@ -41,7 +41,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
       body: SafeArea(
         child: Column(
           children: [
-            CustomAppBar(
+            const CustomAppBar(
               title: 'Ajustes de App',
               hasBackButton: true,
             ),
