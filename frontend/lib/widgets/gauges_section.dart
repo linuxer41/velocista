@@ -47,7 +47,7 @@ class GaugesSection extends StatelessWidget {
                 child: LargeGauge(
                   value: averageSpeed,
                   unit: 'km/h',
-                  color: Theme.of(context).colorScheme.primary,
+                  color: Colors.green,
                 ),
               ),
             ),

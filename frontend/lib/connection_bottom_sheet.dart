@@ -30,7 +30,7 @@ class _ConnectionBottomSheetState extends State<ConnectionBottomSheet> {
         _provider!.isConnected.addListener(_handleConnectionStatusChange);
         // Automatically start device discovery when sheet is mounted only if no devices discovered yet
         if (!_provider!.isConnected.value && !_provider!.isDiscovering.value && _provider!.discoveredDevices.value.isEmpty) {
-          _provider!.startDiscovery();
+          _startDiscoverySafely();
         }
       }
     });
@@ -42,6 +42,22 @@ class _ConnectionBottomSheetState extends State<ConnectionBottomSheet> {
       _provider!.isConnected.removeListener(_handleConnectionStatusChange);
     }
     super.dispose();
+  }
+
+  void _startDiscoverySafely() async {
+    try {
+      await _provider!.startDiscovery();
+    } catch (e) {
+      print('Error starting discovery: $e');
+      // Show error message to user
+      if (mounted) {
+        widget.onShowMessage?.call(
+          'Error al iniciar búsqueda de dispositivos: $e',
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+        );
+      }
+    }
   }
 
   void _handleConnectionStatusChange() {
@@ -151,8 +167,12 @@ class _ConnectionBottomSheetState extends State<ConnectionBottomSheet> {
         maxHeight: MediaQuery.of(context).size.height * 0.8,
       ),
       decoration: BoxDecoration(
-        color: colorScheme.surface,
+        color: colorScheme.surfaceContainerHighest.withOpacity(0.95),
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        border: Border.all(
+          color: colorScheme.outline.withOpacity(0.2),
+          width: 1,
+        ),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
