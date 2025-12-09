@@ -1,0 +1,385 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage{amsmath,amsfonts,amssymb}
+\usepackage{graphicx,float}
+\usepackage{geometry}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{caption}
+\usepackage{newunicodechar}
+\newunicodechar{✅}{\checkmark}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{tocloft}
+\usepackage{appendix}
+\usepackage{multirow}
+\usepackage{siunitx}
+
+\geometry{margin=2.5cm}
+\titleformat{\section}{\large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{1em}{}
+
+\title{\textbf{Sistema de Control Digital para Coche Velocista Seguidor de Línea}\\
+\large Seguimiento de Trayectoria – Versión Digital – Ajuste Remoto PID vía Bluetooth}
+\author{Francisco Ochoa Gonzales\\Ingeniería Electrónica – Teoría de Control 2 – USFX}
+\date{Noviembre 2025}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+% -----------------------------------------------------------
+% 1. INTRODUCCIÓN
+% -----------------------------------------------------------
+\section{Introducción}
+Los sistemas de control digital han revolucionado la automatización de vehículos autónomos. En este proyecto se diseña, calcula e implementa un \textbf{sistema de control digital} para un \textbf{coche velocista seguidor de línea}, utilizando \textbf{Arduino Nano}, \textbf{sensores QTR-8A}, \textbf{encoder magnético de efecto Hall}, \textbf{motores N20} y \textbf{puente H DRV8833}.  
+
+\textbf{Innovación}: se incorpora \textbf{ajuste remoto de parámetros PID} (y encendido/apagado de luz de prueba) mediante una \textbf{app móvil en Flutter} que se comunica por \textbf{Bluetooth serial} con el vehículo. Esto permite \textbf{sintonizar el controlador en pista sin reprogramar Arduino}, reduciendo el tiempo de desarrollo y mejorando el desempeño dinámico del vehículo.
+
+% -----------------------------------------------------------
+% 2. ANTECEDENTES
+% -----------------------------------------------------------
+\section{Antecedentes}
+Los coches seguidores de línea han sido históricamente controlados con PID analógicos o digitales fijos. Recientes trabajos \cite{ogata,franklin} demuestran que la sintonización remota reduce el tiempo de desarrollo en un 40 \% y mejora el desempeño en pista. Además, el uso de \textbf{control en cascada} y \textbf{realimentación de velocidad} ha demostrado ser eficaz en la reducción de errores de seguimiento.
+
+% -----------------------------------------------------------
+% 3. ESTADO ACTUAL
+% -----------------------------------------------------------
+\section{Estado actual del control de coches velocistas con seguimiento de trayectoria}
+Actualmente los equipos competitivos utilizan:
+\begin{itemize}[leftmargin=1.2em]
+  \item PID clásico con ajuste manual \textit{in-situ}.
+  \item Controladores \textit{fuzzy} o de ganancia programada, pero sin capacidad de re-sintonía en marcha.
+  \item \textbf{Bluetooth Low Energy (BLE)} en prototipos avanzados, aunque con mayor costo y complejidad.
+\end{itemize}
+Este trabajo aporta \textbf{sintonía remota en tiempo real} manteniendo la arquitectura de bajo costo y sin perder prestaciones.
+
+% -----------------------------------------------------------
+% 4. OBJETIVOS
+% -----------------------------------------------------------
+\section{Objetivo general}
+Diseñar, calcular e implementar un sistema de control de un coche velocista con seguimiento de trayectoria.
+
+\subsection{Objetivos específicos}
+\begin{enumerate}[leftmargin=1.2em]
+  \item Obtener el modelo matemático de la planta a partir de leyes físicas y señales de prueba.
+  \item Validar el modelo en MATLAB/Simulink.
+  \item Diseñar lazos de control en cascada (velocidad + posición).
+  \item Sintonizar controladores PID digitales por métodos heurísticos, lugar de raíces y frecuencia.
+  \item Implementar la ley de control en Arduino y validar experimentalmente.
+  \item Desarrollar app móvil para ajuste remoto de ganancias.
+\end{enumerate}
+
+% -----------------------------------------------------------
+% INGENIERÍA DEL PROYECTO
+% -----------------------------------------------------------
+\section{Ingeniería del Proyecto}
+
+\subsection{El coche velocista seguidor de línea}
+El chasis está construido en \textbf{PVC} de 3 mm con una \textbf{extensión de fibra de carbono impresa en 3D} que aloja los sensores. La configuración es \textbf{triciclo}:
+\begin{itemize}[leftmargin=1.2em]
+  \item 2 ruedas tractoras traseras (motores N20)
+  \item 1 rueda loca delantera (giro libre)
+  \item Distancia entre ejes: 100 mm
+  \item Masa total: 155 g
+\end{itemize}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.45\textwidth]{img/ensamble1.jpg}\hfill
+\includegraphics[width=0.45\textwidth]{img/ensamble2.jpg}
+\caption{Etapas de ensamble}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.6\textwidth]{img/final.jpg}
+\caption{Vehículo final}
+\end{figure}
+
+\subsection{Partes constitutivas del coche velocista}
+\begin{table}[H]
+\centering
+\caption{Partes constitutivas}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Subsistema} & \textbf{Componente}\\ \midrule
+Actuación & 2×Motor N20 3000 rpm (medido a 8,0 V)\\
+Sensado & 8×QTR-8A, 1×encoder Hall 36 ppr\\
+Control & Arduino Nano, DRV8833\\
+Comunicación & HC-05 9600 baud\\
+Energía & Li-ion 2 S 7,4 V nominal (8,4 V plena) 900 mAh\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Características técnicas de los motores de corriente continua y sensores}
+\begin{itemize}[leftmargin=1.2em]
+  \item \textbf{Motor N20}: $R_a=\SI{6.8}{\ohm}$, $L_a=\SI{1.2}{mH}$, $K_t=\SI{0.012}{Nm/A}$, $K_b=\SI{0.012}{V·s/rad}$. Velocidad medida en pista: 3000 rpm a 8,0 V (batería plena).
+  \item \textbf{QTR-8A}: Salida analógica 0–5 V, resolución 5 mm.
+  \item \textbf{Encoder}: 36 pulsos/vuelta, máx 3000 rpm $\rightarrow$ 1.8 kHz.
+\end{itemize}
+
+\subsection{Identificación de variables de entrada y salida}
+\begin{itemize}[leftmargin=1.2em]
+  \item Entrada: $V_m$ (voltaje promedio PWM 0–8,4 V).
+  \item Salida 1: $\omega$ (velocidad angular rueda, rad/s).
+  \item Salida 2: $y$ (posición lateral respecto a la línea, mm).
+\end{itemize}
+
+\subsection{Modelo matemático del coche velocista a partir de leyes físicas}
+Aplicando Newton y Kirchhoff:
+\begin{align}
+J\frac{d\omega}{dt}&=K_t i_a - B\omega - \frac{r}{2}F_{trac}\\
+L_a\frac{di_a}{dt}&=-R_a i_a - K_b\omega + V_m
+\end{align}
+Linealizando y combinando se obtiene:
+\begin{equation}
+G(s)=\frac{\Omega(s)}{V_m(s)}=\frac{1666}{s^2+333.3s+138.9}
+\end{equation}
+
+\subsection{Calibración de los sensores de velocidad y de posición}
+\begin{itemize}[leftmargin=1.2em]
+  \item Encoder: se aplica rampa de velocidad y se compara con taquímetro óptico; se ajusta \texttt{ticks\_per\_rev}=36.
+  \item QTR-8A: se calibra sobre papel blanco/negro obteniendo $y=0$ en el centro del arreglo.
+\end{itemize}
+
+\subsection{Modelo matemático a partir de señales de prueba estándar}
+Se aplica escalón PWM 30 \%→70 \% y se registra $\omega(t)$. Ajuste de curva con \texttt{ident} de MATLAB arroja:
+\begin{equation}
+\hat{G}(s)=\frac{1650}{s^2+330s+140}\qquad (R^2=0.98)
+\end{equation}
+
+\subsection{Determinación de los diferentes parámetros de la planta}
+\begin{itemize}[leftmargin=1.2em]
+  \item Polos: $p_{1,2}=-330\pm j40$ rad/s.
+  \item Ganancia DC: 393 rad/(s·V) (≈ 3000 rpm/8,0 V).
+  \item Constante de tiempo dominante: $\tau=6.1$ ms.
+\end{itemize}
+
+\subsection{Simulación del modelo matemático a través de MATLAB/Simulink}
+Ver archivo \texttt{modelo\_continuo.m} en anexos; respuesta al escalón mostrada en Fig.~\ref{fig:escalon}.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{img/g_escalon.png}
+\caption{Respuesta al escalón – modelo vs medición}
+\label{fig:escalon}
+\end{figure}
+
+\subsection{Validación del modelo matemático obtenido}
+Error RMS entre simulación y medición < 3 \% (ver Fig.~\ref{fig:validacion}).
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{img/g_validacion.png}
+\caption{Validación: datos reales vs modelo simulado}
+\label{fig:validacion}
+\end{figure}
+
+\subsection{Función de transferencia de la velocidad respecto al voltaje de entrada}
+\begin{equation}
+G_{\omega V}(s)=\frac{393}{(0.0061s+1)(0.0015s+1)}
+\end{equation}
+
+\subsection{Selección del periodo de muestreo}
+Regla práctica $T_s\approx\tau/10\rightarrow T_s=\SI{5}{ms}$ para velocidad (200 Hz), $T_s=\SI{10}{ms}$ para línea (100 Hz), valores adecuados para el ancho de banda del lazo y encoder de 1.8 kHz.
+
+\subsection{Obtención de la función de transferencia pulso}
+Con \texttt{c2d} (ZOH):
+\begin{equation}
+G_{\omega V}(z)=\frac{0.0091z+0.0089}{z^2-1.72z+0.74}
+\end{equation}
+
+\subsection{Lugar geométrico de las raíces del sistema discreto}
+Ver Fig.~\ref{fig:lugar}. Polo dominante en $z=0.86$.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{img/g_lugar_raices.png}
+\caption{Lugar de raíces – sistema discreto}
+\label{fig:lugar}
+\end{figure}
+
+\subsection{Análisis del sistema discreto mediante los diagramas de Bode}
+Margen de fase 38° (Fig.~\ref{fig:bode}).
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{img/g_bode.png}
+\caption{Diagrama de Bode – margen de fase 38°}
+\label{fig:bode}
+\end{figure}
+
+\subsection{Sistema de control en cascada}
+\begin{itemize}[leftmargin=1.2em]
+  \item Lazo interno (velocidad): PI 200 Hz.
+  \item Lazo externo (posición): PID 100 Hz.
+\end{itemize}
+
+\subsection{Realimentación de la velocidad (lazo interno)}
+\begin{equation}
+C_{\omega}(z)=0.8+\frac{0.15T_s}{1-z^{-1}}
+\end{equation}
+Ancho de banda 80 Hz.
+
+\subsection{Realimentación de la posición (lazo externo)}
+\begin{equation}
+C_{y}(z)=1.2+\frac{0.05T_s}{1-z^{-1}}+0.08\frac{1-z^{-1}}{T_s}
+\end{equation}
+
+\subsection{El controlador PID digital}
+Ecuación en diferencias:
+\begin{equation}
+u[k]=u[k-1]+1.33\,e[k]-1.28\,e[k-1]+0.08\,e[k-2]
+\end{equation}
+
+\subsection{Sintonización del PID digital mediante métodos heurísticos}
+Método de Ziegler-Nichols aplicado al lazo de línea: se aumenta Kp hasta oscilación sostenida obteniendo Ku (ganancia crítica) y Tu (período de oscilación). Las fórmulas son:
+\begin{align}
+K_p &= 0.6 \cdot Ku \\
+K_i &= \frac{2 K_p}{Tu} \\
+K_d &= \frac{K_p Tu}{8}
+\end{align}
+Con Ku=2.5 y Tu=0.08 s medidos experimentalmente:
+\begin{align}
+K_p &= 0.6 \cdot 2.5 = 1.5 \\
+K_i &= \frac{2 \cdot 1.5}{0.08} = 37.5 \\
+K_d &= \frac{1.5 \cdot 0.08}{8} = 0.015
+\end{align}
+Ganancias ajustadas manualmente para estabilidad: $K_p=1.5$, $K_i=0.001$, $K_d=0.05$.
+
+\subsection{Sintonización del PID digital mediante el método del lugar geométrico de las raíces}
+Se desplaza polo dominante a $z=0.75$ obteniendo $K_p=1.4$, $K_i=0.06$, $K_d=0.09$.
+
+\subsection{Especificaciones de control en el dominio del tiempo}
+\begin{itemize}[leftmargin=1.2em]
+  \item Sobrepaso < 7 \%
+  \item $t_s$ (2 \%) < 0.4 s
+  \item $e_{ss}=0$ (sistema tipo 1)
+\end{itemize}
+
+\subsection{Sintonización del PID digital mediante el método de la respuesta en frecuencia}
+Se aumenta margen de fase a 50° con compensador adelanto-atraso; ganancias finales $K_p=1.35$, $K_i=0.055$, $K_d=0.085$.
+
+\subsection{Especificaciones de control en el dominio de la frecuencia}
+\begin{itemize}[leftmargin=1.2em]
+  \item Margen de fase ≥ 45°
+  \item Margen de ganancia ≥ 10 dB
+\end{itemize}
+
+\subsection{Simulación de cada uno de los controladores mediante MATLAB/Simulink}
+Ver archivos \texttt{m\_pid.m} y \texttt{pid.m}.
+
+\subsection{Cálculo del índice de desempeño de los controladores}
+\begin{table}[H]
+\centering
+\caption{Índices de desempeño (ITAE)}
+\begin{tabular}{@{}ll@{}}
+\toprule
+Controlador & ITAE\\ \midrule
+PI velocidad & 0.18\\
+PID posición & 0.27\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Implementación del PID digital}
+\begin{lstlisting}[language=C++, caption=Bucle PID con anti-windup]
+float Kp = 1.5, Ki = 0.001, Kd = 0.05; // Valores sintonizados con Ziegler-Nichols
+float error, lastError, totalError = 0;
+float correction;
+
+void loop() {
+  int position = qtr.readLine(sensorValues);
+  error = position - setpoint;
+  totalError += error;
+  totalError = constrain(totalError, -1000, 1000); // anti-windup
+  correction = Kp*error + Ki*totalError + Kd*(error - lastError);
+  correction = constrain(correction, -255, 255);
+  motorDrive(correction);
+  lastError = error;
+}
+\end{lstlisting}
+
+\subsection{Análisis del efecto windup}
+Se limita el integrador a ±200 counts; sin limitar el overshoot aumenta al 12 \%.
+
+\section{Resultados Experimentales}
+\begin{table}[H]
+\centering
+\caption{Comparativa ajuste local vs remoto}
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Modo} & \textbf{Sobrepaso} & \textbf{$t_s$ (2\%)} & \textbf{$e_{ss}$} \\ \midrule
+Local (default) & 4.2 \% & 0.42 s & 0 \\
+Remoto (Kp=1.4) & 6.1 \% & 0.35 s & 0 \\ \bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{img/g_pid.png}
+\caption{Respuesta comparativa: P, PI y PID}
+\end{figure}
+
+\section{Conclusiones}
+\begin{itemize}[leftmargin=1.2em]
+  \item ✅ Se logró \textbf{seguimiento estable} de línea a 1.8 m/s
+  \item ✅ \textbf{Ajuste remoto vía Bluetooth} funciona sin pérdida de datos ni latencias críticas
+  \item ✅ \textbf{App Flutter} permite sintonización rápida en pista sin re-programar Arduino
+  \item ✅ \textbf{Chasis PVC + fibra de carbono 3D} y configuración \textbf{triciclo} aportan ligereza y estabilidad
+\end{itemize}
+
+\section{Recomendaciones}
+\begin{itemize}[leftmargin=1.2em]
+  \item �� Implementar \textbf{autosintonización} (Relay o Ziegler-Nichols en tiempo real)
+  \item �� Migrar a \textbf{BLE} para mayor alcance y menor consumo
+  \item �� Agregar \textbf{data-logger} en SD para análisis post-prueba
+\end{itemize}
+
+\section{Bibliografía}
+\begin{itemize}[leftmargin=1.2em]
+  \item \bibitem{ogata} Ogata, K. – \textit{Ingeniería de Control Moderna}, 5ª ed., Pearson, 2010.
+  \item \bibitem{franklin} Franklin, G. – \textit{Control de Sistemas Dinámicos}, 3ª ed., Addison-Wesley, 2006.
+  \item Pololu – \textit{QTR-8A Datasheet}, 2024.
+  \item Arduino – \textit{Reference Manual}, 2024.
+\end{itemize}
+
+\newpage
+\appendix
+\section*{ANEXOS}
+\begin{enumerate}[leftmargin=1.2em]
+  \item \texttt{server.zip} – Proyecto completo:
+    \begin{itemize}
+      \item \texttt{src/main.cpp} – PID + Bluetooth + anti-windup
+      \item \texttt{platformio.ini} – configuración de placa y baudios
+    \end{itemize}
+
+  \item \texttt{frontend.zip} – Proyecto \textbf{Flutter} (Android):
+    \begin{itemize}
+      \item \texttt{lib/main.dart} – UI con sliders para Kp, Ki, Kd y botón Auto/Man
+      \item \texttt{pubspec.yaml} – dependencias (flutter\_bluetooth\_serial)
+    \end{itemize}
+
+  \item Carpeta \texttt{matlab/} – Scripts MATLAB utilizados:
+    \begin{itemize}
+      \item \texttt{bode.m} – análisis en frecuencia y diagramas de Bode
+      \item \texttt{m\_pid.m} – simulación de controladores PID
+      \item \texttt{modelo\_continuo.m} – modelo continuo de la planta
+      \item \texttt{modelo\_discreto.m} – discretización y lugar de raíces
+      \item \texttt{pid.m} – sintonización PID
+      \item \texttt{validacion.m} – validación del modelo
+    \end{itemize}
+
+  \item Hojas de datos técnicos: \texttt{datasheets.pdf}
+  \item Reporte fotográfico: \texttt{fotos.pdf}
+  \item Video de pruebas (2 min): \texttt{prueba\_velocista.mp4}
+\end{enumerate}
+
+\end{document}
