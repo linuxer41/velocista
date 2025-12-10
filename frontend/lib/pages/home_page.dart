@@ -6,16 +6,14 @@ import '../arduino_data.dart';
 import '../connection_bottom_sheet.dart';
 import '../widgets/remote_control.dart';
 import '../widgets/status_bar.dart';
-
 import '../widgets/idle_controls.dart';
 import '../widgets/pid_tabs.dart';
 import '../widgets/gauges_section.dart';
 import '../widgets/motor_info_section.dart';
-
-import 'config_page.dart';
 import 'terminal_page.dart';
 import 'graphs_page.dart';
 import 'app_settings_page.dart';
+
 
 class HomePage extends StatefulWidget {
   final ThemeProvider themeProvider;
@@ -174,64 +172,73 @@ class _HomePageState extends State<HomePage> {
   }
   @override
   Widget build(BuildContext context) {
-    final appState = AppInheritedWidget.of(context);
+    final appState = AppInheritedWidget.of(context)!;
 
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surface,
+      appBar: StatusBar(
+        appState: appState,
+        onShowConnectionModal: _showConnectionModal,
+      ),
       body: ValueListenableBuilder<OperationMode>(
         valueListenable: appState!.currentMode,
         builder: (context, mode, child) {
-          return SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Column(
-                children: [
-                  // Status Bar
-                  StatusBar(
-                      appState: appState,
-                      onShowConnectionModal: _showConnectionModal),
-                  NavigationMenu(menuItems: [
-                    {
-                      'label': 'Terminal',
-                      'icon': Icons.code,
-                      'page': TerminalPage(provider: appState,),
-                    },
-                    {
-                      'label': 'Configuración',
-                      'icon': Icons.settings,
-                      'page': const ConfigPage(),
-                    },
-                    {
-                      'label': 'Gráficos',
-                      'icon': Icons.bar_chart,
-                      'page': const GraphsPage(),
-                    },
-                    {
-                      'label': 'Info',
-                      'icon': Icons.help,
-                      'page': AppSettingsPage(themeProvider: widget.themeProvider,),
-                    },
-                  ], onOpenPage: (page) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => page),
-                    );
-                  }),
-                  // Gauges
-                  GaugesSection(appState: appState),
+          return Stack(
+            children: [
+              SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 16),
+                      // Gauges
+                      GaugesSection(appState: appState),
 
-                  // Motor and Line Following Information
-                  MotorInfoSection(appState: appState),
+                      // Motor and Line Following Information
+                      MotorInfoSection(appState: appState),
 
-                  const SizedBox(height: 8),
+                      const SizedBox(height: 8),
 
-                  // Dynamic controls based on selected mode
-                  _getControlsWidget(mode),
+                      // Dynamic controls based on selected mode
+                      _getControlsWidget(mode),
 
-                  const SizedBox(height: 16),
-                ],
+                      const SizedBox(height: 16),
+                    ],
+                  ),
+                ),
               ),
-            ),
+              Positioned(
+                top: 10,
+                right: 10,
+                child: NavigationMenu(menuItems: [
+                  {
+                    'label': 'Terminal',
+                    'icon': Icons.code,
+                    'page': TerminalPage(provider: appState,),
+                  },
+                  {
+                    'label': 'Configuración',
+                    'icon': Icons.settings,
+                    'page': const ConfigPage(),
+                  },
+                  {
+                    'label': 'Gráficos',
+                    'icon': Icons.bar_chart,
+                    'page': const GraphsPage(),
+                  },
+                  {
+                    'label': 'Info',
+                    'icon': Icons.help,
+                    'page': AppSettingsPage(themeProvider: widget.themeProvider,),
+                  },
+                ], onOpenPage: (page) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => page),
+                  );
+                }),
+              ),
+            ],
           );
         },
       ),

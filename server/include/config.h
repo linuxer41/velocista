@@ -23,12 +23,12 @@ const int16_t DEFAULT_RC_DEADZONE = 10;
 const int16_t DEFAULT_RC_MAX_THROTTLE = 255;
 const int16_t DEFAULT_RC_MAX_STEERING = 150;
 const int16_t DEFAULT_PULSES_PER_REVOLUTION = 36;
-const float DEFAULT_WHEEL_DIAMETER_MM = 20.0f;
+const float DEFAULT_WHEEL_DIAMETER_MM = 30.0f;
 const float DEFAULT_WHEEL_DISTANCE_MM = 100.0f;
 const uint16_t DEFAULT_LOOP_LINE_MS = 10;
 const uint16_t DEFAULT_LOOP_SPEED_MS = 5;
 const unsigned long DEFAULT_TELEMTRY_INTERVAL_MS = 100;
-const float DEFAULT_ROBOT_WEIGHT = 155.0f;
+const float DEFAULT_ROBOT_WEIGHT = 135.0f;
 
 // Magic numbers for sensor and control logic
 
@@ -72,9 +72,9 @@ const int SENSOR_PINS[NUM_SENSORS] = {A0, A1, A2, A3, A4, A5, A6, A7};
 // =============================================================================
 
 // PID para línea (más agresivo para corrección rápida)
-const float DEFAULT_LINE_KP = 1.500;
+const float DEFAULT_LINE_KP = 4.500;
 const float DEFAULT_LINE_KI = 0.001;
-const float DEFAULT_LINE_KD = 0.050;
+const float DEFAULT_LINE_KD = 0.150;
 
 // PID para motores (más agresivo para alcanzar RPM objetivo)
 const float DEFAULT_LEFT_KP = 0.590;
@@ -123,14 +123,14 @@ public:
 // VALORES POR DEFECTO
 // =============================================================================
 
-const bool DEFAULT_CASCADE = true;
-const bool DEFAULT_TELEMETRY_ENABLED = true;
+const bool DEFAULT_CASCADE = false;
+const bool DEFAULT_TELEMETRY_ENABLED = false;
 const FeaturesConfig DEFAULT_FEATURES = {false, false, false, false, false, false, false, false, false};
 const OperationMode DEFAULT_OPERATION_MODE = MODE_IDLE;
 const int16_t DEFAULT_BASE_SPEED = 150;
-const float DEFAULT_BASE_RPM = 1000.0f;
-const int16_t DEFAULT_MAX_SPEED = 230;
-const float DEFAULT_MAX_RPM = 3000.0f;
+const float DEFAULT_BASE_RPM = 400.0f;
+const int16_t DEFAULT_MAX_SPEED = 250;
+const float DEFAULT_MAX_RPM = 2000.0f;
 
 
 // =============================================================================
