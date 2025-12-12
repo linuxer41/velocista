@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Seguidor de Línea - Triple PID (Optimizado, Compatible con PlatformIO)
  * - Optimizado: Programador de intervalo fijo (menos jitter)
  * - Optimizado: Reducción de punto flotante en la lectura del sensor
@@ -54,8 +54,8 @@ constexpr int PWM_MAX = 255;
 constexpr float BASE_RPM = 120.0f;  // RPM base para cascada y modo IDLE
 constexpr float MAX_RPM = 1900.0f;
 
-// conversión PWM ↔ RPM (ajústala con pruebas)
-// constexpr float RPM_PER_PWM = 8.0f;   // 1 PWM ≈ 8 RPM
+// conversión PWM a RPM (ajústala con pruebas)
+// constexpr float RPM_PER_PWM = 8.0f;   // 1 PWM aprox. 8 RPM
 
 // Tasas de bucle en microsegundos (para el nuevo programador fijo)
 constexpr uint32_t LINE_SAMPLE_RATE_US = 5000;    // 5 ms
@@ -276,7 +276,7 @@ void loop() {
             rpmErrR = targetRpmR - currentRpmR;
             float pidOutL = pidSpeedL(targetRpmL, rpmErrL);
             float pidOutR = pidSpeedR(targetRpmR, rpmErrR);
-            pwmL = BASE_PWM + pidOutL;   // ✅ PWM = PWM + PID
+            pwmL = BASE_PWM + pidOutL;   // PWM = PWM + PID
             pwmR = BASE_PWM + pidOutR;
         }
         break;
@@ -289,7 +289,7 @@ void loop() {
             lineOut = pidLine(LINE_CENTER, lineErr);
 
             if (cascadeEnabled) {
-                // ✅ Usa cascade control para obtener PWM
+                // Usa cascade control para obtener PWM
                 float rpmOffset = lineOut;
                 targetRpmL = BASE_RPM + rpmOffset;
                 targetRpmR = BASE_RPM - rpmOffset;
@@ -300,7 +300,7 @@ void loop() {
                 float pidOutL = pidSpeedL(targetRpmL, rpmErrL);
                 float pidOutR = pidSpeedR(targetRpmR, rpmErrR);
 
-                pwmL = BASE_PWM + pidOutL;   // ✅ PWM = PWM + PID
+                pwmL = BASE_PWM + pidOutL;   // PWM = PWM + PID
                 pwmR = BASE_PWM + pidOutR;
             } else {
                 // Modo no-cascada: PWM directo
@@ -308,7 +308,7 @@ void loop() {
                 pwmR = BASE_PWM - lineOut;
             }
 
-            // ✅ Saturación intermedia
+            // Saturación intermedia
             pwmL = constrain(pwmL, -PWM_MAX, PWM_MAX);
             pwmR = constrain(pwmR, -PWM_MAX, PWM_MAX);
         }

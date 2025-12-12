@@ -36,7 +36,7 @@ grid on;
 % Gráfica 3: Salida del PID de línea vs tiempo
 figure;
 plot(time, lineOut);
-title('Salida del PID de Línea vs Tiempo');
+title('Salida del PID de Línea vs Tiempo')
 xlabel('Tiempo [s]');
 ylabel('Salida PID');
 grid on;

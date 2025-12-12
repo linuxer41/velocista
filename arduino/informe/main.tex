@@ -29,7 +29,14 @@
   stepnumber=1,
   numbersep=5pt,
   frame=single,
-  breaklines=true
+  breaklines=true,
+  % --- soporte para acentos dentro del listing ---
+  inputencoding=utf8,
+  extendedchars=true,
+  literate=
+    {á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
+    {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1
+    {ñ}{{\~n}}1 {Ñ}{{\~N}}1 {¿}{{\textquestiondown}}1 {¡}{{\textexclamdown}}1
 }
 
 \geometry{margin=2.5cm}
@@ -271,6 +278,8 @@ Simplificada: $\frac{\omega}{V} = \frac{0.014}{6.925 \times 10^{-8} s^2 + 4.165 
 
 Ver archivo \texttt{modelo\_continuo.m} en anexos; respuesta al escalón mostrada en Fig.~\ref{fig:escalon}.
 
+\lstinputlisting[language=Matlab]{matlab/modelo_continuo.m}
+
 \subsection{Ajuste de la ganancia K mediante el lugar geométrico de las raíces en tiempo continuo}
 Para ajustar la ganancia K del controlador proporcional C(s)=K utilizando el Lugar Geométrico de las Raíces (LGR), se siguen los pasos clave:
 
@@ -308,6 +317,8 @@ Ver archivo \texttt{rlocus\_continuo.m} en anexos para el script MATLAB.
 \label{fig:validacion}
 \end{figure}
 
+\lstinputlisting[language=Matlab]{matlab/validacion.m}
+
 \subsection{Función de transferencia de la velocidad respecto al voltaje de entrada}
 \begin{equation}
 G_{\omega V}(s)=\frac{393}{(0.0061s+1)(0.0015s+1)}
@@ -322,18 +333,22 @@ Con \texttt{c2d} (ZOH):
 G_{\omega V}(z)=\frac{0.0091z+0.0089}{z^2-1.72z+0.74}
 \end{equation}
 
-\subsection{Lugar geométrico de las raíces del sistema discreto}
-Ver Fig.~\ref{fig:lugar}. Polo dominante en $z=0.86$.
-
+\lstinputlisting[language=Matlab]{matlab/modelo_discreto.m}
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.8\textwidth]{img/g_lugar_raices.png}
 \caption{Lugar de raíces – sistema discreto}
 \label{fig:lugar}
 \end{figure}
+\subsection{Lugar geométrico de las raíces del sistema discreto}
+Ver Fig.~\ref{fig:lugar}. Polo dominante en $z=0.86$.
+
+
 
 \subsection{Análisis del sistema discreto mediante los diagramas de Bode}
 Margen de fase 38° (Fig.~\ref{fig:bode}).
+
+\lstinputlisting[language=Matlab]{matlab/bode.m}
 
 \begin{figure}[H]
 \centering
@@ -398,7 +413,8 @@ Se aumenta margen de fase a 50° con compensador adelanto-atraso; ganancias fina
 \end{itemize}
 
 \subsection{Simulación de cada uno de los controladores mediante MATLAB/Simulink}
-Ver archivos \texttt{m\_pid.m} y \texttt{pid.m}.
+\lstinputlisting[language=Matlab]{matlab/m_pid.m}
+\lstinputlisting[language=Matlab]{matlab/pid.m}
 
 \subsection{Cálculo del índice de desempeño de los controladores}
 \begin{table}[H]
@@ -469,7 +485,7 @@ Se recopilaron datos reales del sistema operativo mediante la salida de depuraci
 
 \textbf{Validación con modelo:} Se compara la respuesta real con la simulación del modelo identificado, ajustando por la entrada PWM promedio.
 
-Ver archivo \texttt{analisis\_datos.m} en anexos para el procesamiento de datos y gráficas.
+\lstinputlisting[language=Matlab]{matlab/analisis_datos.m}
 
 \section{Conclusiones}
 \begin{itemize}[leftmargin=1.2em]
@@ -506,27 +522,6 @@ Ver archivo \texttt{analisis\_datos.m} en anexos para el procesamiento de datos 
 
 
 
-  \item Carpeta \texttt{matlab/} – Scripts MATLAB utilizados:
-    \begin{itemize}
-      \item \texttt{analisis\_datos.m} – análisis de datos reales y gráficas de desempeño
-      \item \texttt{bode.m} – análisis en frecuencia y diagramas de Bode
-      \item \texttt{m\_pid.m} – simulación de controladores PID
-      \item \texttt{modelo\_continuo.m} – modelo continuo de la planta
-      \item \texttt{modelo\_discreto.m} – discretización y lugar de raíces
-      \item \texttt{pid.m} – sintonización PID
-      \item \texttt{rlocus\_continuo.m} – ajuste de K mediante lugar de raíces continuo
-      \item \texttt{validacion.m} – validación del modelo
-    \end{itemize}
-
-  \subsection{Códigos MATLAB}
-  \lstinputlisting[language=Matlab]{matlab/analisis_datos.m}
-  \lstinputlisting[language=Matlab]{matlab/bode.m}
-  \lstinputlisting[language=Matlab]{matlab/m_pid.m}
-  \lstinputlisting[language=Matlab]{matlab/modelo_continuo.m}
-  \lstinputlisting[language=Matlab]{matlab/modelo_discreto.m}
-  \lstinputlisting[language=Matlab]{matlab/pid.m}
-  \lstinputlisting[language=Matlab]{matlab/rlocus_continuo.m}
-  \lstinputlisting[language=Matlab]{matlab/validacion.m}
 
   \item Hojas de datos técnicos: \texttt{datasheets.pdf}
   \item Reporte fotográfico: \texttt{fotos.pdf}
