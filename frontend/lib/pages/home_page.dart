@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:labusfx/pages/config_page.dart';
 import 'package:labusfx/widgets/navigation_menu.dart';
 import '../app_state.dart';
 import '../arduino_data.dart';
