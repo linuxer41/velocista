@@ -1,6 +1,6 @@
 # Fdb version 4
-["pdflatex"] 1765549496.47657 "c:/Users/linuxer/Desktop/microntroladores/control2/velocista/arduino/informe/main.tex" "main.pdf" "main" 1765549498.36714 0
-  "../src/main.cpp" 1765549445 17394 1725028f8da46e032d04cfdf5a756686 ""
+["pdflatex"] 1765554215.70322 "c:/Users/linuxer/Desktop/microntroladores/control2/velocista/arduino/informe/main.tex" "main.pdf" "main" 1765554219.07235 0
+  "../src/main.cpp" 1765554213 17489 19e1b339fbe99d971368f4da6bacec6a ""
   "C:/Users/linuxer/AppData/Local/MiKTeX/fonts/map/pdftex/pdftex.map" 1765526472 80909 eab91d9745dd2edfd62a31d53cd5fe15 ""
   "C:/Users/linuxer/AppData/Local/MiKTeX/fonts/pk/ljfour/jknappen/ec/dpi600/tcrm1200.pk" 1765526479 14064 57e6eff98e21f56adfdfb17326c9ee86 ""
   "C:/Users/linuxer/AppData/Local/MiKTeX/miktex/data/le/pdftex/pdflatex.fmt" 1765526222 13334480 1f8ede0459c6f40762be612a98fc42de ""
@@ -123,7 +123,7 @@
   "C:/Users/linuxer/AppData/Local/Programs/MiKTeX/tex/latex/translations/translations.sty" 1644048522 44247 2188b95d0ee74e31eca4d316263c58a7 ""
   "C:/Users/linuxer/AppData/Local/Programs/MiKTeX/tex/latex/url/url.sty" 1388490452 12796 8edb7d69a20b857904dd0ea757c14ec9 ""
   "C:/Users/linuxer/AppData/Local/Programs/MiKTeX/tex/latex/xcolor/xcolor.sty" 1729265222 55384 b454dec21c2d9f45ec0b793f0995b992 ""
-  "c:/Users/linuxer/Desktop/microntroladores/control2/velocista/arduino/informe/main.tex" 1765549471 23254 a8bb7e1e5b97c8208e4203239aac1ac3 ""
+  "c:/Users/linuxer/Desktop/microntroladores/control2/velocista/arduino/informe/main.tex" 1765552021 28384 9681f2425d1c891ebfd0114ce301320f ""
   "img/ensamble1.jpg" 1765318999 122123 40f90271cf906a3bf4cd00317cc00a16 ""
   "img/ensamble2.jpg" 1765318999 95884 8ee6fd45dd994e5f6e98e473be684d7f ""
   "img/final.jpg" 1765318999 131007 f94663e78bab407c0beb77d0b9733027 ""
@@ -133,10 +133,10 @@
   "img/g_pid.png" 1765318999 33496 53dc10028cfda4ba5cc64361e051a4b0 ""
   "img/g_validacion.png" 1765318999 33762 46812eb4c93f870c534635e2be527f7c ""
   "img/modelo_motor_dc.png" 1765542046 44681 c22b418e2d2d104a3eac6118e634404f ""
-  "main.aux" 1765549498 10345 a076173ced4e5b9ec5df00dcf036c633 "pdflatex"
-  "main.out" 1765549498 13276 a6b2e4ca3276df290a3ab85df9571855 "pdflatex"
-  "main.tex" 1765549471 23254 a8bb7e1e5b97c8208e4203239aac1ac3 ""
-  "main.toc" 1765549498 4977 106cf34254d84c4edfc37ab640b4a81d "pdflatex"
+  "main.aux" 1765554218 10576 6dacf24c454375c9c12445d6ce80fe9c "pdflatex"
+  "main.out" 1765554218 13304 fb2212372c6a3b2e424a0974a75b2331 "pdflatex"
+  "main.tex" 1765552021 28384 9681f2425d1c891ebfd0114ce301320f ""
+  "main.toc" 1765554218 5118 a0f2526265f9a5c90ab4316aea2d6764 "pdflatex"
   "matlab/analisis_datos.m" 1765548205 2264 b198b1b2b54cf0e4c9dd9dc42d56a908 ""
   "matlab/bode.m" 1765547809 75 577f5eb240a80221fc05690818b1018d ""
   "matlab/m_pid.m" 1765318999 344 918c903fce680c3c045fb8da9f04aa98 ""

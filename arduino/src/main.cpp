@@ -54,6 +54,9 @@ constexpr int PWM_MAX = 255;
 constexpr float BASE_RPM = 120.0f;  // RPM base para cascada y modo IDLE
 constexpr float MAX_RPM = 1900.0f;
 
+const float RPM_TO_OMEGA = M_PI / 30.0f;
+const float BASE_OMEGA = BASE_RPM * RPM_TO_OMEGA;
+
 // conversión PWM a RPM (ajústala con pruebas)
 // constexpr float RPM_PER_PWM = 8.0f;   // 1 PWM aprox. 8 RPM
 

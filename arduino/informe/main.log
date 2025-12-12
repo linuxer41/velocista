@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.27 (MiKTeX 25.4) (preloaded format=pdflatex 2025.12.12)  12 DEC 2025 10:24
+This is pdfTeX, Version 3.141592653-2.6-1.40.27 (MiKTeX 25.4) (preloaded format=pdflatex 2025.12.12)  12 DEC 2025 11:43
 entering extended mode
  restricted \write18 enabled.
  file:line:error style messages enabled.
@@ -623,67 +623,62 @@ Package pdftex.def Info: img/final.jpg  used on input line 104.
 <img/modelo_motor_dc.png, id=256, 335.00156pt x 160.34906pt>
 File: img/modelo_motor_dc.png Graphic file (type png)
 <use img/modelo_motor_dc.png>
-Package pdftex.def Info: img/modelo_motor_dc.png  used on input line 143.
+Package pdftex.def Info: img/modelo_motor_dc.png  used on input line 145.
 (pdftex.def)             Requested size: 364.19667pt x 174.32191pt.
- [5 <./img/final.jpg>] [6 <./img/modelo_motor_dc.png>]
-Overfull \hbox (67.44685pt too wide) detected at line 218
-[][][]\OML/cmm/m/it/12 G\OT1/cmr/m/n/12 (\OML/cmm/m/it/12 s\OT1/cmr/m/n/12 ) = [] = [] = []
- []
-
-[7] (C:\Users\linuxer\AppData\Local\Programs\MiKTeX\tex/latex/listings\lstlang1.sty
+ [5 <./img/final.jpg>] [6 <./img/modelo_motor_dc.png>] [7] [8] (C:\Users\linuxer\AppData\Local\Programs\MiKTeX\tex/latex/listings\lstlang1.sty
 File: lstlang1.sty 2025/11/14 1.11b listings language file
 )
-Package hyperref Info: bookmark level for unknown lstlisting defaults to 0 on input line 272.
- (matlab/modelo_continuo.m [8])
-<img/g_escalon.png, id=318, 476.982pt x 258.2448pt>
+Package hyperref Info: bookmark level for unknown lstlisting defaults to 0 on input line 299.
+ (matlab/modelo_continuo.m)
+<img/g_escalon.png, id=304, 476.982pt x 258.2448pt>
 File: img/g_escalon.png Graphic file (type png)
 <use img/g_escalon.png>
-Package pdftex.def Info: img/g_escalon.png  used on input line 276.
+Package pdftex.def Info: img/g_escalon.png  used on input line 303.
 (pdftex.def)             Requested size: 364.19667pt x 197.18227pt.
- (matlab/validacion.m [9 <./img/g_escalon.png (PNG copy)>])
-<img/g_validacion.png, id=333, 461.0826pt x 265.4718pt>
+ [9] (matlab/validacion.m [10 <./img/g_escalon.png (PNG copy)>])
+<img/g_validacion.png, id=344, 461.0826pt x 265.4718pt>
 File: img/g_validacion.png Graphic file (type png)
 <use img/g_validacion.png>
-Package pdftex.def Info: img/g_validacion.png  used on input line 315.
+Package pdftex.def Info: img/g_validacion.png  used on input line 342.
 (pdftex.def)             Requested size: 364.19667pt x 209.6961pt.
- [10 <./img/g_validacion.png (PNG copy)>] (matlab/modelo_discreto.m)
-<img/g_lugar_raices.png, id=356, 473.1276pt x 256.7994pt>
+ [11 <./img/g_validacion.png (PNG copy)>] (matlab/modelo_discreto.m)
+<img/g_lugar_raices.png, id=360, 473.1276pt x 256.7994pt>
 File: img/g_lugar_raices.png Graphic file (type png)
 <use img/g_lugar_raices.png>
-Package pdftex.def Info: img/g_lugar_raices.png  used on input line 345.
+Package pdftex.def Info: img/g_lugar_raices.png  used on input line 374.
 (pdftex.def)             Requested size: 364.19667pt x 197.67345pt.
- [11 <./img/g_lugar_raices.png (PNG copy)>] (matlab/bode.m)
-<img/g_bode.png, id=377, 459.1554pt x 258.2448pt>
+ [12 <./img/g_lugar_raices.png (PNG copy)>] (matlab/bode.m)
+<img/g_bode.png, id=381, 459.1554pt x 258.2448pt>
 File: img/g_bode.png Graphic file (type png)
 <use img/g_bode.png>
-Package pdftex.def Info: img/g_bode.png  used on input line 361.
+Package pdftex.def Info: img/g_bode.png  used on input line 394.
 (pdftex.def)             Requested size: 364.19667pt x 204.84653pt.
- [12 <./img/g_bode.png (PNG copy)>]
+ [13 <./img/g_bode.png (PNG copy)>] [14]
 
-LaTeX Warning: Command \textdegree invalid in math mode on input line 417.
+LaTeX Warning: Command \textdegree invalid in math mode on input line 458.
 
 
-LaTeX Warning: Command \textdegree invalid in math mode on input line 417.
+LaTeX Warning: Command \textdegree invalid in math mode on input line 458.
 
 Missing character: There is no ° in font cmr12!
 
-Overfull \hbox (12.08646pt too wide) in paragraph at lines 421--421
+Overfull \hbox (12.08646pt too wide) in paragraph at lines 462--462
 |[]\OT1/cmr/bx/n/12 Simulaci^^Son de ca-da uno de los con-tro-la-do-res me-dian-te MATLAB/Simulink| 
  []
 
-(matlab/m_pid.m [13]) (matlab/pid.m) [14] (C:\Users\linuxer\AppData\Local\Programs\MiKTeX\tex/latex/listings\lstlang1.sty
+(matlab/m_pid.m) (matlab/pid.m [15]) (C:\Users\linuxer\AppData\Local\Programs\MiKTeX\tex/latex/listings\lstlang1.sty
 File: lstlang1.sty 2025/11/14 1.11b listings language file
 ) (C:\Users\linuxer\AppData\Local\Programs\MiKTeX\tex/latex/listings\lstlang1.sty
 File: lstlang1.sty 2025/11/14 1.11b listings language file
 ) (C:\Users\linuxer\AppData\Local\Programs\MiKTeX\tex/latex/listings\lstmisc.sty
 File: lstmisc.sty 2025/11/14 1.11b (Carsten Heinz)
-) (../src/main.cpp [15] [16] [17] [18] [19] [20] [21] [22] [23] [24] [25]) [26]
-<img/g_pid.png, id=1049, 467.8278pt x 258.2448pt>
+) (../src/main.cpp [16] [17] [18] [19] [20] [21] [22] [23] [24] [25] [26] [27])
+<img/g_pid.png, id=1038, 467.8278pt x 258.2448pt>
 File: img/g_pid.png Graphic file (type png)
 <use img/g_pid.png>
-Package pdftex.def Info: img/g_pid.png  used on input line 485.
+Package pdftex.def Info: img/g_pid.png  used on input line 526.
 (pdftex.def)             Requested size: 364.19667pt x 201.04395pt.
- [27 <./img/g_pid.png (PNG copy)>] (matlab/analisis_datos.m [28] [29]) [30] (main.aux
+ [28] (matlab/analisis_datos.m [29 <./img/g_pid.png (PNG copy)>] [30]) [31] [32] (main.aux
 LaTeX Info: Redefining \. on input line 11.
 LaTeX Info: Redefining \% on input line 11.
 )
@@ -692,20 +687,20 @@ LaTeX2e <2025-11-01>
 L3 programming layer <2025-11-06>
  ***********
 Package rerunfilecheck Info: File `main.out' has not changed.
-(rerunfilecheck)             Checksum: A6B2E4CA3276DF290A3AB85DF9571855;13276.
+(rerunfilecheck)             Checksum: FB2212372C6A3B2E424A0974A75B2331;13304.
  ) 
 Here is how much of TeX's memory you used:
- 22703 strings out of 467871
- 414869 string characters out of 5417407
- 1351383 words of memory out of 5000000
- 50473 multiletter control sequences out of 15000+600000
+ 22718 strings out of 467871
+ 415101 string characters out of 5417407
+ 1300622 words of memory out of 5000000
+ 50483 multiletter control sequences out of 15000+600000
  639528 words of font info for 86 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
- 75i,10n,79p,654b,3258s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 75i,16n,79p,654b,2803s stack positions out of 10000i,1000n,20000p,200000b,200000s
  <C:\Users\linuxer\AppData\Local\MiKTeX\fonts/pk/ljfour/jknappen/ec/dpi600\tcrm1200.pk><C:/Users/linuxer/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmbx12.pfb><C:/Users/linuxer/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmitt10.pfb><C:/Users/linuxer/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmmi12.pfb><C:/Users/linuxer/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmmi6.pfb><C:/Users/linuxer/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmmi8.pfb><C:/Users/linuxer/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr12.pfb><C:/Users/linuxer/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr6.pfb><C:/Users/linuxer/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr8.pfb><C:/Users/linuxer/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy10.pfb><C:/Users/linuxer/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy6.pfb><C:/Users/linuxer/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy8.pfb><C:/Users/linuxer/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmti12.pfb><C:/Users/linuxer/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmtt10.pfb><C:/Users/linuxer/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmtt12.pfb><C:/Users/linuxer/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/symbols/msam10.pfb>
-Output written on main.pdf (30 pages, 1061807 bytes).
+Output written on main.pdf (32 pages, 1067987 bytes).
 PDF statistics:
- 1405 PDF objects out of 1440 (max. 8388607)
- 857 named destinations out of 1000 (max. 500000)
+ 1418 PDF objects out of 1440 (max. 8388607)
+ 862 named destinations out of 1000 (max. 500000)
  398 words of extra memory for PDF output out of 10000 (max. 10000000)
 
