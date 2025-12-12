@@ -58,9 +58,9 @@ constexpr float MAX_RPM = 1900.0f;
 // constexpr float RPM_PER_PWM = 8.0f;   // 1 PWM aprox. 8 RPM
 
 // Tasas de bucle en microsegundos (para el nuevo programador fijo)
-constexpr uint32_t LINE_SAMPLE_RATE_US = 5000;    // 5 ms
-constexpr uint32_t ENCODER_SAMPLE_RATE_US = 2500;  // 2.5 ms
-constexpr uint32_t DEBUG_SAMPLE_RATE_US = 100000;  // 100 ms
+constexpr uint32_t LINE_SAMPLE_RATE_US = 10000;   // 10 ms
+constexpr uint32_t ENCODER_SAMPLE_RATE_US = 5000;  // 5 ms
+constexpr uint32_t DEBUG_SAMPLE_RATE_US = 100000; // 100 ms
 
 // Constantes PID (ajustadas con Ziegler-Nichols: Ku=0.5, Tu=0.5s)
 float LKp = 0.51f, LKi = 0.00f, LKd = 1.12f;  // PID de línea (produce offset PWM)

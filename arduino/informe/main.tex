@@ -46,7 +46,7 @@
 \title{\textbf{Sistema de Control Digital para Coche Velocista Seguidor de Línea}\\
 \large Seguimiento de Trayectoria – Control en Cascada PID}
 \author{Francisco Ochoa Gonzales\\Ingeniería Electrónica – Teoría de Control 2 – USFX}
-\date{Noviembre 2025}
+\date{Diciembre 2025}
 
 \begin{document}
 \maketitle
@@ -269,16 +269,14 @@ Simplificada: $\frac{\omega}{V} = \frac{0.014}{6.925 \times 10^{-8} s^2 + 4.165 
 
 \subsection{Simulación del modelo matemático a través de MATLAB/Simulink}
 
+\lstinputlisting[language=Matlab]{matlab/modelo_continuo.m}
+
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.8\textwidth]{img/g_escalon.png}
 \caption{Respuesta al escalón - modelo vs medición}
 \label{fig:escalon}
 \end{figure}
-
-Ver archivo \texttt{modelo\_continuo.m} en anexos; respuesta al escalón mostrada en Fig.~\ref{fig:escalon}.
-
-\lstinputlisting[language=Matlab]{matlab/modelo_continuo.m}
 
 \subsection{Ajuste de la ganancia K mediante el lugar geométrico de las raíces en tiempo continuo}
 Para ajustar la ganancia K del controlador proporcional C(s)=K utilizando el Lugar Geométrico de las Raíces (LGR), se siguen los pasos clave:
@@ -310,6 +308,8 @@ Ver archivo \texttt{rlocus\_continuo.m} en anexos para el script MATLAB.
 
 \subsection{Validación del modelo matemático obtenido}
 
+\lstinputlisting[language=Matlab]{matlab/validacion.m}
+
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.8\textwidth]{img/g_validacion.png}
@@ -317,15 +317,21 @@ Ver archivo \texttt{rlocus\_continuo.m} en anexos para el script MATLAB.
 \label{fig:validacion}
 \end{figure}
 
-\lstinputlisting[language=Matlab]{matlab/validacion.m}
-
 \subsection{Función de transferencia de la velocidad respecto al voltaje de entrada}
 \begin{equation}
 G_{\omega V}(s)=\frac{393}{(0.0061s+1)(0.0015s+1)}
 \end{equation}
 
 \subsection{Selección del periodo de muestreo}
-Regla práctica $T_s\approx\tau/10\rightarrow T_s=\SI{5}{ms}$ para velocidad (200 Hz), $T_s=\SI{10}{ms}$ para línea (100 Hz), valores adecuados para el ancho de banda del lazo y encoder de 1.8 kHz.
+La selección del periodo de muestreo $T_s$ se basa en criterios teóricos y prácticos para garantizar estabilidad y precisión en el control digital.
+
+\textbf{Cálculo teórico:} La regla práctica establece $T_s \approx \frac{\tau}{10}$, donde $\tau = 6.1$ ms es la constante de tiempo dominante del sistema. Aplicando: $T_s \approx 0.61$ ms. Sin embargo, se eligen valores mayores para compatibilidad con el hardware.
+
+\textbf{Consideraciones para encoders:} Los encoders generan pulsos a una frecuencia máxima determinada por la velocidad del motor. Con 36 pulsos por revolución (PPR) y velocidad máxima de 1900 RPM, la frecuencia máxima es:
+\[
+f_{\text{encoder}} = \frac{1900 \times 36}{60} \approx 1140 \, \text{Hz} \quad (\approx 1.14 \, \text{kHz})
+\]
+El teorema de Nyquist requiere $f_s > 2 f_{\text{encoder}}$, dando $T_s < 0.44$ ms. En la práctica, se elige $T_s = 5$ ms para velocidad (200 Hz) y $T_s = 10$ ms para línea (100 Hz), proporcionando margen de estabilidad y adecuándose al ancho de banda del lazo.
 
 \subsection{Obtención de la función de transferencia pulso}
 Con \texttt{c2d} (ZOH):
@@ -436,15 +442,30 @@ El código implementa control en cascada: PID de línea genera offset de RPM, lu
 
 Constantes PID del código:
 \begin{itemize}
-  \item Línea: $K_p=0.51$, $K_i=0.00$, $K_d=1.12$
-  \item Velocidad izquierda: $K_p=0.55$, $K_i=0.0014$, $K_d=0.015$
-  \item Velocidad derecha: $K_p=0.55$, $K_i=0.0014$, $K_d=0.015$
+   \item Línea: $K_p=0.51$, $K_i=0.00$, $K_d=1.12$
+   \item Velocidad izquierda: $K_p=0.55$, $K_i=0.0014$, $K_d=0.015$
+   \item Velocidad derecha: $K_p=0.55$, $K_i=0.0014$, $K_d=0.015$
 \end{itemize}
 
 Anti-windup: integrador clamped a $\pm 3000$ para línea, $\pm 2000$ para velocidad.
 
-Fragmento del código de control PID (de \texttt{src/main.cpp}):
-\lstinputlisting{../src/main.cpp}
+Código completo del control PID (de \texttt{src/main.cpp}):
+\lstinputlisting[language=C++]{../src/main.cpp}
+
+\subsubsection{Modelo matemático del controlador PID para las ruedas}
+El control de velocidad de cada rueda utiliza un controlador PID discreto para regular la velocidad angular $\omega$ en función de la referencia $r$ y el error $e[k] = r[k] - \omega[k]$. La ecuación en diferencias del PID es:
+\[
+u[k] = u[k-1] + K_p (e[k] - e[k-1]) + K_i e[k] + K_d (e[k] - 2e[k-1] + e[k-2])
+\]
+Donde $u[k]$ es la señal de control (PWM), y los coeficientes se calculan con $T_s = 5$ ms.
+
+El lazo cerrado combina el controlador con la planta del motor $G(z)$, obtenida por discretización ZOH del modelo continuo:
+\[
+G(s) = \frac{0.014}{0.0000025 s^3 + 0.000334 s^2 + 0.000178 s}
+\]
+Discretizado: $G(z) = \frac{0.0091 z + 0.0089}{z^2 - 1.72 z + 0.74}$.
+
+La estabilidad se verifica mediante el lugar de raíces o diagrama de Bode, asegurando margen de fase $\geq 45^\circ$.
 
 \subsection{Análisis del efecto windup}
 Definición y Naturaleza del Fenómeno: El efecto wind-up, también conocido como "saturación integral" o "enrollamiento integral", constituye un fenómeno no lineal que se manifiesta en controladores con acción integral cuando la señal de control alcanza los límites físicos de saturación del actuador. Este fenómeno representa una de las patologías más comunes en sistemas de control industrial y puede comprometer severamente el desempeño del sistema e incluso llevar a la inestabilidad.
@@ -510,22 +531,5 @@ Se recopilaron datos reales del sistema operativo mediante la salida de depuraci
   \bibitem{arduino} Arduino, \textit{Reference Manual}, 2024.
 \end{thebibliography}
 
-\newpage
-\appendix
-\section*{ANEXOS}
-\begin{enumerate}[leftmargin=1.2em]
-  \item \texttt{server.zip} – Proyecto completo:
-    \begin{itemize}
-      \item \texttt{src/main.cpp} – Control en cascada PID con anti-windup
-      \item \texttt{platformio.ini} – configuración de placa y baudios
-    \end{itemize}
-
-
-
-
-  \item Hojas de datos técnicos: \texttt{datasheets.pdf}
-  \item Reporte fotográfico: \texttt{fotos.pdf}
-  \item Video de pruebas (2 min): \texttt{prueba\_velocista.mp4}
-\end{enumerate}
 
 \end{document}
