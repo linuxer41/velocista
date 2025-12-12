@@ -43,8 +43,7 @@
 \titleformat{\section}{\large\bfseries}{\thesection}{1em}{}
 \titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{1em}{}
 
-\title{\textbf{Sistema de Control Digital para Coche Velocista Seguidor de Línea}\\
-\large Seguimiento de Trayectoria – Control en Cascada PID}
+\title{\textbf{Sistema de Control Digital para Coche Velocista Seguidor de Línea}\\n\large Seguimiento de Trayectoria – Control en Cascada PID}
 \author{Francisco Ochoa Gonzales\\Ingeniería Electrónica – Teoría de Control 2 – USFX}
 \date{Diciembre 2025}
 
@@ -112,8 +111,7 @@ El chasis está construido en \textbf{PVC} de 3 mm con una \textbf{extensión de
 \begin{tabular}{@{}ll@{}}
 \toprule
 \textbf{Subsistema} & \textbf{Componente}\\ \midrule
-Actuación & 2×Motor N20 3000 rpm (medido a 6,0 V)\\
-Sensado & 8×QTR-8A, 2×encoder Hall 36 ppr\\
+Actuación & 2×Motor N20 3000 rpm (medido a 6,0 V)\\nSensado & 8×QTR-8A, 2×encoder Hall 36 ppr\\
 Control & Arduino Nano, DRV8833\\
 Comunicación & HC-05 115200 baud\\
 Energía & LiPo 2 S 7,4 V nominal (8,4 V plena) 600 mAh\\
@@ -216,8 +214,7 @@ Tabla de parámetros:
 \caption{Parámetros de los Motores DC}
 \begin{tabular}{@{}llll@{}}
 \toprule
-Parámetro & Símbolo & Motor Izquierdo & Motor Derecho \\
-\midrule
+Parámetro & Símbolo & Motor Izquierdo & Motor Derecho \\ \midrule
 Momento de Inercia & $J$ & 0.0000277 kg·m² & 0.0000277 kg·m² \\
 Constante de Fricción Viscosa & $B$ & 0.0002699 N·m·s & 0.0002699 N·m·s \\
 Constante de Fuerza Electromotriz & $K_a$ & 0.014 V·s/rad & 0.014 V·s/rad \\
@@ -315,7 +312,7 @@ Para ajustar la ganancia K del controlador proporcional C(s)=K utilizando el Lug
 latex
 Copy
 \textbf{Polos de $G(s)$:}
-$s_{1,2}= -165\pm\sqrt{165^{2}-140}= -0{,}076,\; -329{,}924$
+$s_{1,2}= -165\pm\sqrt{165^{2}-140}= -0{,}076,\ -329{,}924$
 
 \textbf{Ceros de $G(s)$:} Ninguno (ceros en el infinito)
 
@@ -332,6 +329,15 @@ $s_{1,2}= -165\pm\sqrt{165^{2}-140}= -0{,}076,\; -329{,}924$
 
 
 Ver archivo \texttt{rlocus\_continuo.m} en anexos para el script MATLAB.
+
+\subsubsection{Controladores avanzados: Modelo en espacio de estados y control LQR}
+Para un control más robusto, se modela el sistema en espacio de estados. Las ecuaciones del motor DC se representan como:
+\[
+\dot{x} = A x + B u, \quad y = C x
+\]
+Donde $x = [\omega, i_a]^T$, $u = V_a$, y las matrices se derivan de las ecuaciones físicas.
+
+El control LQR minimiza el costo $J = \int (x^T Q x + u^T R u) dt$, obteniendo ganancias óptimas $K$ tales que $u = -K x$. Esto proporciona estabilidad y rechazo a perturbaciones superior al PID clásico.
 
 \subsection{Validación del modelo matemático obtenido}
 
@@ -385,7 +391,7 @@ Ver Fig.~\ref{fig:lugar}. Polo dominante en $z=0.86$.
 \subsection{Análisis del sistema discreto mediante los diagramas de Bode}
 Los diagramas de Bode proporcionan una representación gráfica de la respuesta en frecuencia del sistema, mostrando la magnitud y fase en función de la frecuencia. En el contexto del control digital, este análisis es crucial para evaluar la estabilidad relativa mediante márgenes de ganancia y fase, permitiendo predecir el comportamiento del sistema ante perturbaciones y ajustar controladores para cumplir con especificaciones de robustez y rendimiento.
 
-Margen de fase 38° (Fig.~\ref{fig:bode}).
+Margen de fase 38° (Fig.~\ref{fig:bode}). Además, se analiza el diagrama de Nyquist para evaluar la estabilidad absoluta y relativa, confirmando márgenes de ganancia y fase.
 
 \lstinputlisting[language=Matlab]{matlab/bode.m}
 
@@ -463,6 +469,8 @@ Se aumenta margen de fase a 50° con compensador adelanto-atraso; ganancias fina
 \lstinputlisting[language=Matlab]{matlab/m_pid.m}
 \lstinputlisting[language=Matlab]{matlab/pid.m}
 
+Se comparan los controladores PI, PID y LQR en términos de ITAE y respuesta a perturbaciones, mostrando superioridad del LQR en robustez.
+
 \subsection{Cálculo del índice de desempeño de los controladores}
 \begin{table}[H]
 \centering
@@ -475,6 +483,7 @@ PID posición & 0.27\\
 \bottomrule
 \end{tabular}
 \end{table}
+
 
 
 

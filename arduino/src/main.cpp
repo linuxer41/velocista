@@ -86,6 +86,7 @@ volatile int32_t encL = 0;
 volatile int32_t encR = 0;
 
 float currentRpmL = 0.0f, currentRpmR = 0.0f;
+float currentOmegaL = 0.0f, currentOmegaR = 0.0f;
 float targetRpmL = 0.0f, targetRpmR = 0.0f;
 float pwmL = 0.0f, pwmR = 0.0f;
 float lineOut = 0.0f;
@@ -265,6 +266,9 @@ void loop() {
 
         currentRpmL = (dl * 60000000.0f / (float)PPR) / (float)dt;
         currentRpmR = (dr * 60000000.0f / (float)PPR) / (float)dt;
+
+        currentOmegaL = currentRpmL * RPM_TO_OMEGA;
+        currentOmegaR = currentRpmR * RPM_TO_OMEGA;
     }
 
     // ------- Control de motores -------
@@ -293,15 +297,15 @@ void loop() {
 
             if (cascadeEnabled) {
                 // Usa cascade control para obtener PWM
-                float rpmOffset = lineOut;
-                targetRpmL = BASE_RPM + rpmOffset;
-                targetRpmR = BASE_RPM - rpmOffset;
+                float omegaOffset = lineOut * RPM_TO_OMEGA;
+                float targetOmegaL = BASE_OMEGA + omegaOffset;
+                float targetOmegaR = BASE_OMEGA - omegaOffset;
 
-                rpmErrL = targetRpmL - currentRpmL;
-                rpmErrR = targetRpmR - currentRpmR;
+                float omegaErrL = targetOmegaL - currentOmegaL;
+                float omegaErrR = targetOmegaR - currentOmegaR;
 
-                float pidOutL = pidSpeedL(targetRpmL, rpmErrL);
-                float pidOutR = pidSpeedR(targetRpmR, rpmErrR);
+                float pidOutL = pidSpeedL(targetOmegaL, omegaErrL);
+                float pidOutR = pidSpeedR(targetOmegaR, omegaErrR);
 
                 pwmL = BASE_PWM + pidOutL;   // PWM = PWM + PID
                 pwmR = BASE_PWM + pidOutR;
@@ -330,7 +334,7 @@ void loop() {
         lastDebugTime = now;
         if (debugEnabled) {
             String msg = String(now) + "," + String(currentPos) + "," +
-                         String(currentRpmL) + "," + String(currentRpmR) + "," +
+                         String(currentOmegaL) + "," + String(currentOmegaR) + "," +
                          String(lineOut) + "," + String(pwmL) + "," + String(pwmR);
             Serial.println(msg);
         }
@@ -529,6 +533,8 @@ void resetPIDAndSpeeds() {
     // reset speeds
     currentRpmL = 0.0f;
     currentRpmR = 0.0f;
+    currentOmegaL = 0.0f;
+    currentOmegaR = 0.0f;
     targetRpmL = 0.0f;
     targetRpmR = 0.0f;
     pwmL = 0.0f;

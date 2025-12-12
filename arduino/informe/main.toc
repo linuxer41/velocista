@@ -20,28 +20,29 @@
 \contentsline {subsection}{\numberline {5.9}Implementación en Simulink del Motor de Corriente Directa DC}{9}{subsection.5.9}%
 \contentsline {subsection}{\numberline {5.10}Simulación del modelo matemático a través de MATLAB/Simulink}{9}{subsection.5.10}%
 \contentsline {subsection}{\numberline {5.11}Ajuste de la ganancia K mediante el lugar geométrico de las raíces en tiempo continuo}{10}{subsection.5.11}%
-\contentsline {subsection}{\numberline {5.12}Validación del modelo matemático obtenido}{10}{subsection.5.12}%
+\contentsline {subsubsection}{\numberline {5.11.1}Controladores avanzados: Modelo en espacio de estados y control LQR}{10}{subsubsection.5.11.1}%
+\contentsline {subsection}{\numberline {5.12}Validación del modelo matemático obtenido}{11}{subsection.5.12}%
 \contentsline {subsection}{\numberline {5.13}Función de transferencia de la velocidad respecto al voltaje de entrada}{11}{subsection.5.13}%
 \contentsline {subsection}{\numberline {5.14}Selección del periodo de muestreo}{11}{subsection.5.14}%
 \contentsline {subsection}{\numberline {5.15}Obtención de la función de transferencia pulso}{12}{subsection.5.15}%
-\contentsline {subsection}{\numberline {5.16}Lugar geométrico de las raíces del sistema discreto}{12}{subsection.5.16}%
+\contentsline {subsection}{\numberline {5.16}Lugar geométrico de las raíces del sistema discreto}{13}{subsection.5.16}%
 \contentsline {subsection}{\numberline {5.17}Análisis del sistema discreto mediante los diagramas de Bode}{13}{subsection.5.17}%
-\contentsline {subsection}{\numberline {5.18}Sistema de control en cascada}{13}{subsection.5.18}%
-\contentsline {subsection}{\numberline {5.19}Realimentación de la velocidad (lazo interno)}{13}{subsection.5.19}%
+\contentsline {subsection}{\numberline {5.18}Sistema de control en cascada}{14}{subsection.5.18}%
+\contentsline {subsection}{\numberline {5.19}Realimentación de la velocidad (lazo interno)}{14}{subsection.5.19}%
 \contentsline {subsection}{\numberline {5.20}Realimentación de la posición (lazo externo)}{14}{subsection.5.20}%
-\contentsline {subsection}{\numberline {5.21}El controlador PID digital}{14}{subsection.5.21}%
-\contentsline {subsection}{\numberline {5.22}Sintonización del PID digital mediante métodos heurísticos}{14}{subsection.5.22}%
-\contentsline {subsection}{\numberline {5.23}Sintonización del PID digital mediante el método del lugar geométrico de las raíces}{14}{subsection.5.23}%
+\contentsline {subsection}{\numberline {5.21}El controlador PID digital}{15}{subsection.5.21}%
+\contentsline {subsection}{\numberline {5.22}Sintonización del PID digital mediante métodos heurísticos}{15}{subsection.5.22}%
+\contentsline {subsection}{\numberline {5.23}Sintonización del PID digital mediante el método del lugar geométrico de las raíces}{15}{subsection.5.23}%
 \contentsline {subsection}{\numberline {5.24}Especificaciones de control en el dominio del tiempo}{15}{subsection.5.24}%
 \contentsline {subsection}{\numberline {5.25}Sintonización del PID digital mediante el método de la respuesta en frecuencia}{15}{subsection.5.25}%
 \contentsline {subsection}{\numberline {5.26}Especificaciones de control en el dominio de la frecuencia}{15}{subsection.5.26}%
-\contentsline {subsection}{\numberline {5.27}Simulación de cada uno de los controladores mediante MATLAB/Simulink}{15}{subsection.5.27}%
-\contentsline {subsection}{\numberline {5.28}Cálculo del índice de desempeño de los controladores}{16}{subsection.5.28}%
-\contentsline {subsection}{\numberline {5.29}Implementación del control en cascada PID}{16}{subsection.5.29}%
-\contentsline {subsubsection}{\numberline {5.29.1}Modelo matemático del controlador PID para las ruedas}{28}{subsubsection.5.29.1}%
-\contentsline {subsection}{\numberline {5.30}Análisis del efecto windup}{28}{subsection.5.30}%
-\contentsline {section}{\numberline {6}Resultados Experimentales}{28}{section.6}%
-\contentsline {subsection}{\numberline {6.1}Análisis de datos reales del sistema}{29}{subsection.6.1}%
-\contentsline {section}{\numberline {7}Conclusiones}{31}{section.7}%
-\contentsline {section}{\numberline {8}Recomendaciones}{31}{section.8}%
-\contentsline {section}{\numberline {9}Bibliografía}{32}{section.9}%
+\contentsline {subsection}{\numberline {5.27}Simulación de cada uno de los controladores mediante MATLAB/Simulink}{16}{subsection.5.27}%
+\contentsline {subsection}{\numberline {5.28}Cálculo del índice de desempeño de los controladores}{17}{subsection.5.28}%
+\contentsline {subsection}{\numberline {5.29}Implementación del control en cascada PID}{17}{subsection.5.29}%
+\contentsline {subsubsection}{\numberline {5.29.1}Modelo matemático del controlador PID para las ruedas}{29}{subsubsection.5.29.1}%
+\contentsline {subsection}{\numberline {5.30}Análisis del efecto windup}{29}{subsection.5.30}%
+\contentsline {section}{\numberline {6}Resultados Experimentales}{30}{section.6}%
+\contentsline {subsection}{\numberline {6.1}Análisis de datos reales del sistema}{30}{subsection.6.1}%
+\contentsline {section}{\numberline {7}Conclusiones}{32}{section.7}%
+\contentsline {section}{\numberline {8}Recomendaciones}{33}{section.8}%
+\contentsline {section}{\numberline {9}Bibliografía}{33}{section.9}%

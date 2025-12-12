@@ -4,11 +4,11 @@
 .vscode/launch.json
 .vscode/ipch
 
-informe/main.out
-informe/main.aux
-informe/main.log
-informe/main.toc
-informe/main.synctex.gz
-informe/main.fls
-informe/main.fdb_latexmk
-informe/main.pdf
+informe/*.out
+informe/*.aux
+informe/*.log
+informe/*.toc
+informe/*.synctex.gz
+informe/*.fls
+informe/*.fdb_latexmk
+informe/*.pdf
