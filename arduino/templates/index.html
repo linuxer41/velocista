@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Line Follower PID Control</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-100 p-4">
+    <div class="max-w-7xl mx-auto">
+        <h1 class="text-3xl font-bold text-center mb-6">Line Follower PID Control</h1>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h2 class="text-xl font-semibold mb-4">Controls</h2>
+
+                <!-- Serial Connection -->
+                <div class="mb-4">
+                    <label class="block text-sm font-medium mb-2">COM Port</label>
+                    <select id="port" class="w-full p-2 border rounded"></select>
+                    <div class="flex gap-2 mt-2">
+                        <button id="connect" class="flex-1 bg-blue-500 text-white p-2 rounded hover:bg-blue-600">Connect</button>
+                        <button id="disconnect" class="flex-1 bg-red-500 text-white p-2 rounded hover:bg-red-600">Disconnect</button>
+                    </div>
+                </div>
+
+                <!-- Mode and System -->
+                <div class="mb-4">
+                    <button id="toggle_mode" class="w-full bg-purple-500 text-white p-2 rounded hover:bg-purple-600 mb-2">Toggle Mode</button>
+                    <button id="calibrate" class="w-full bg-green-500 text-white p-2 rounded hover:bg-green-600 mb-2">Calibrate</button>
+                    <div class="flex gap-2">
+                        <button id="debug_on" class="flex-1 bg-gray-500 text-white p-2 rounded hover:bg-gray-600">Debug ON</button>
+                        <button id="debug_off" class="flex-1 bg-gray-700 text-white p-2 rounded hover:bg-gray-800">Debug OFF</button>
+                    </div>
+                    <div class="flex gap-2 mt-2">
+                        <button id="cascade_on" class="flex-1 bg-indigo-500 text-white p-2 rounded hover:bg-indigo-600">Cascade ON</button>
+                        <button id="cascade_off" class="flex-1 bg-indigo-700 text-white p-2 rounded hover:bg-indigo-800">Cascade OFF</button>
+                    </div>
+                </div>
+
+                <!-- PWM Control -->
+                <div class="mb-4">
+                    <h3 class="text-lg font-medium mb-2">PWM Control</h3>
+                    <div class="grid grid-cols-2 gap-2">
+                        <input type="number" id="pwm_l" placeholder="Left PWM" class="p-2 border rounded">
+                        <input type="number" id="pwm_r" placeholder="Right PWM" class="p-2 border rounded">
+                    </div>
+                    <button id="set_pwm" class="w-full bg-yellow-500 text-white p-2 rounded hover:bg-yellow-600 mt-2">Set PWM</button>
+                </div>
+
+                <!-- RPM Control -->
+                <div class="mb-4">
+                    <h3 class="text-lg font-medium mb-2">RPM Control</h3>
+                    <div class="grid grid-cols-2 gap-2">
+                        <input type="number" id="rpm_l" placeholder="Left RPM" class="p-2 border rounded">
+                        <input type="number" id="rpm_r" placeholder="Right RPM" class="p-2 border rounded">
+                    </div>
+                    <button id="set_rpm" class="w-full bg-orange-500 text-white p-2 rounded hover:bg-orange-600 mt-2">Set RPM</button>
+                </div>
+
+                <!-- Line PID -->
+                <div class="mb-4">
+                    <h3 class="text-lg font-medium mb-2">Line PID</h3>
+                    <div class="space-y-2">
+                        <input type="number" id="line_kp" step="0.01" value="0.3" placeholder="Kp" class="w-full p-2 border rounded">
+                        <input type="number" id="line_ki" step="0.01" value="0.0" placeholder="Ki" class="w-full p-2 border rounded">
+                        <input type="number" id="line_kd" step="0.01" value="0.7875" placeholder="Kd" class="w-full p-2 border rounded">
+                        <button id="set_line_pid" class="w-full bg-teal-500 text-white p-2 rounded hover:bg-teal-600">Set Line PID</button>
+                        <div class="grid grid-cols-2 gap-2">
+                            <input type="number" id="line_ku" step="0.01" placeholder="Ku" class="p-2 border rounded">
+                            <input type="number" id="line_tu" step="0.01" placeholder="Tu (s)" class="p-2 border rounded">
+                        </div>
+                        <button id="tune_line_pid" class="w-full bg-cyan-500 text-white p-2 rounded hover:bg-cyan-600">Tune Line PID (Ziegler-Nichols)</button>
+                    </div>
+                </div>
+
+                <!-- Left Motor PID -->
+                <div class="mb-4">
+                    <h3 class="text-lg font-medium mb-2">Left Motor PID</h3>
+                    <div class="space-y-2">
+                        <input type="number" id="left_kp" step="0.01" value="0.55" placeholder="Kp" class="w-full p-2 border rounded">
+                        <input type="number" id="left_ki" step="0.01" value="0.0014" placeholder="Ki" class="w-full p-2 border rounded">
+                        <input type="number" id="left_kd" step="0.01" value="0.015" placeholder="Kd" class="w-full p-2 border rounded">
+                        <button id="set_left_pid" class="w-full bg-teal-500 text-white p-2 rounded hover:bg-teal-600">Set Left PID</button>
+                        <div class="grid grid-cols-2 gap-2">
+                            <input type="number" id="left_ku" step="0.01" placeholder="Ku" class="p-2 border rounded">
+                            <input type="number" id="left_tu" step="0.01" placeholder="Tu (s)" class="p-2 border rounded">
+                        </div>
+                        <button id="tune_left_pid" class="w-full bg-cyan-500 text-white p-2 rounded hover:bg-cyan-600">Tune Left PID (Ziegler-Nichols)</button>
+                    </div>
+                </div>
+
+                <!-- Right Motor PID -->
+                <div class="mb-4">
+                    <h3 class="text-lg font-medium mb-2">Right Motor PID</h3>
+                    <div class="space-y-2">
+                        <input type="number" id="right_kp" step="0.01" value="0.55" placeholder="Kp" class="w-full p-2 border rounded">
+                        <input type="number" id="right_ki" step="0.01" value="0.0014" placeholder="Ki" class="w-full p-2 border rounded">
+                        <input type="number" id="right_kd" step="0.01" value="0.015" placeholder="Kd" class="w-full p-2 border rounded">
+                        <button id="set_right_pid" class="w-full bg-teal-500 text-white p-2 rounded hover:bg-teal-600">Set Right PID</button>
+                        <div class="grid grid-cols-2 gap-2">
+                            <input type="number" id="right_ku" step="0.01" placeholder="Ku" class="p-2 border rounded">
+                            <input type="number" id="right_tu" step="0.01" placeholder="Tu (s)" class="p-2 border rounded">
+                        </div>
+                        <button id="tune_right_pid" class="w-full bg-cyan-500 text-white p-2 rounded hover:bg-cyan-600">Tune Right PID (Ziegler-Nichols)</button>
+                    </div>
+                </div>
+
+                <!-- Generate Plots -->
+                <div class="mb-4">
+                    <button id="generate_plots" class="w-full bg-pink-500 text-white p-2 rounded hover:bg-pink-600">Generate Plots</button>
+                </div>
+
+                <div id="status" class="mt-4 p-2 bg-gray-200 rounded text-sm"></div>
+            </div>
+
+            <div class="lg:col-span-2 space-y-6">
+                <div class="bg-white p-4 rounded-lg shadow-md">
+                    <canvas id="posChart" class="w-full h-64"></canvas>
+                </div>
+                <div class="bg-white p-4 rounded-lg shadow-md">
+                    <canvas id="rpmChart" class="w-full h-64"></canvas>
+                </div>
+                <div class="bg-white p-4 rounded-lg shadow-md">
+                    <canvas id="errorChart" class="w-full h-64"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let posChart, rpmChart, errorChart;
+        let dataPoints = [];
+
+        // Initialize charts
+        function initCharts() {
+            const commonOptions = {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: { type: 'linear', position: 'bottom' }
+                }
+            };
+
+            posChart = new Chart(document.getElementById('posChart'), {
+                type: 'line',
+                data: { datasets: [{ label: 'Position', data: [], borderColor: 'blue' }] },
+                options: { ...commonOptions, plugins: { title: { display: true, text: 'Line Position' } } }
+            });
+
+            rpmChart = new Chart(document.getElementById('rpmChart'), {
+                type: 'line',
+                data: {
+                    datasets: [
+                        { label: 'RPM Left', data: [], borderColor: 'green' },
+                        { label: 'RPM Right', data: [], borderColor: 'red' }
+                    ]
+                },
+                options: { ...commonOptions, plugins: { title: { display: true, text: 'RPM' } } }
+            });
+
+            errorChart = new Chart(document.getElementById('errorChart'), {
+                type: 'line',
+                data: { datasets: [{ label: 'Error', data: [], borderColor: 'orange' }] },
+                options: { ...commonOptions, plugins: { title: { display: true, text: 'Line Error' } } }
+            });
+        }
+
+        // Update charts with new data
+        function updateCharts(data) {
+            dataPoints.push(data);
+            if (dataPoints.length > 100) dataPoints.shift();
+
+            posChart.data.datasets[0].data = dataPoints.map(d => ({ x: d.time, y: d.pos }));
+            rpmChart.data.datasets[0].data = dataPoints.map(d => ({ x: d.time, y: d.rpmL }));
+            rpmChart.data.datasets[1].data = dataPoints.map(d => ({ x: d.time, y: d.rpmR }));
+            errorChart.data.datasets[0].data = dataPoints.map(d => ({ x: d.time, y: d.pos + 500 })); // Error relative to center
+
+            posChart.update();
+            rpmChart.update();
+            errorChart.update();
+        }
+
+        // Socket events
+        socket.on('connect', () => {
+            console.log('Connected to server');
+            socket.emit('get_ports');
+        });
+
+        socket.on('ports', (ports) => {
+            const portSelect = document.getElementById('port');
+            portSelect.innerHTML = '';
+            ports.forEach(port => {
+                const option = document.createElement('option');
+                option.value = port;
+                option.textContent = port;
+                portSelect.appendChild(option);
+            });
+        });
+
+        socket.on('data', updateCharts);
+
+        socket.on('status', (data) => {
+            document.getElementById('status').textContent = data.message;
+        });
+
+        // Event listeners
+        document.getElementById('connect').addEventListener('click', () => {
+            const port = document.getElementById('port').value;
+            socket.emit('connect_serial', { port });
+        });
+
+        document.getElementById('disconnect').addEventListener('click', () => {
+            socket.emit('disconnect_serial');
+        });
+
+        document.getElementById('toggle_mode').addEventListener('click', () => {
+            socket.emit('send_command', { cmd: 9, value: '' });
+        });
+
+        document.getElementById('calibrate').addEventListener('click', () => {
+            socket.emit('send_command', { cmd: 1, value: '' });
+        });
+
+        document.getElementById('debug_on').addEventListener('click', () => {
+            socket.emit('send_command', { cmd: 7, value: 1 });
+        });
+
+        document.getElementById('debug_off').addEventListener('click', () => {
+            socket.emit('send_command', { cmd: 7, value: 0 });
+        });
+
+        document.getElementById('cascade_on').addEventListener('click', () => {
+            socket.emit('send_command', { cmd: 8, value: 1 });
+        });
+
+        document.getElementById('cascade_off').addEventListener('click', () => {
+            socket.emit('send_command', { cmd: 8, value: 0 });
+        });
+
+        document.getElementById('set_pwm').addEventListener('click', () => {
+            const l = parseFloat(document.getElementById('pwm_l').value) || 0;
+            const r = parseFloat(document.getElementById('pwm_r').value) || 0;
+            socket.emit('send_command', { cmd: 2, value: `${l} ${r}` });
+        });
+
+        document.getElementById('set_rpm').addEventListener('click', () => {
+            const l = parseFloat(document.getElementById('rpm_l').value) || 0;
+            const r = parseFloat(document.getElementById('rpm_r').value) || 0;
+            socket.emit('send_command', { cmd: 3, value: `${l} ${r}` });
+        });
+
+        document.getElementById('set_line_pid').addEventListener('click', () => {
+            const kp = parseFloat(document.getElementById('line_kp').value);
+            const ki = parseFloat(document.getElementById('line_ki').value);
+            const kd = parseFloat(document.getElementById('line_kd').value);
+            socket.emit('set_pid', { type: 'line', kp, ki, kd });
+        });
+
+        document.getElementById('set_left_pid').addEventListener('click', () => {
+            const kp = parseFloat(document.getElementById('left_kp').value);
+            const ki = parseFloat(document.getElementById('left_ki').value);
+            const kd = parseFloat(document.getElementById('left_kd').value);
+            socket.emit('set_pid', { type: 'left', kp, ki, kd });
+        });
+
+        document.getElementById('set_right_pid').addEventListener('click', () => {
+            const kp = parseFloat(document.getElementById('right_kp').value);
+            const ki = parseFloat(document.getElementById('right_ki').value);
+            const kd = parseFloat(document.getElementById('right_kd').value);
+            socket.emit('set_pid', { type: 'right', kp, ki, kd });
+        });
+
+        document.getElementById('tune_line_pid').addEventListener('click', () => {
+            const ku = parseFloat(document.getElementById('line_ku').value);
+            const tu = parseFloat(document.getElementById('line_tu').value);
+            if (ku && tu) {
+                const kp = 0.6 * ku;
+                const ki = 2 * kp / tu;
+                const kd = kp * tu / 8;
+                document.getElementById('line_kp').value = kp.toFixed(3);
+                document.getElementById('line_ki').value = ki.toFixed(6);
+                document.getElementById('line_kd').value = kd.toFixed(3);
+                socket.emit('set_pid', { type: 'line', kp, ki, kd });
+            }
+        });
+
+        document.getElementById('tune_left_pid').addEventListener('click', () => {
+            const ku = parseFloat(document.getElementById('left_ku').value);
+            const tu = parseFloat(document.getElementById('left_tu').value);
+            if (ku && tu) {
+                const kp = 0.6 * ku;
+                const ki = 2 * kp / tu;
+                const kd = kp * tu / 8;
+                document.getElementById('left_kp').value = kp.toFixed(3);
+                document.getElementById('left_ki').value = ki.toFixed(6);
+                document.getElementById('left_kd').value = kd.toFixed(3);
+                socket.emit('set_pid', { type: 'left', kp, ki, kd });
+            }
+        });
+
+        document.getElementById('tune_right_pid').addEventListener('click', () => {
+            const ku = parseFloat(document.getElementById('right_ku').value);
+            const tu = parseFloat(document.getElementById('right_tu').value);
+            if (ku && tu) {
+                const kp = 0.6 * ku;
+                const ki = 2 * kp / tu;
+                const kd = kp * tu / 8;
+                document.getElementById('right_kp').value = kp.toFixed(3);
+                document.getElementById('right_ki').value = ki.toFixed(6);
+                document.getElementById('right_kd').value = kd.toFixed(3);
+                socket.emit('set_pid', { type: 'right', kp, ki, kd });
+            }
+        });
+
+        document.getElementById('generate_plots').addEventListener('click', () => {
+            socket.emit('generate_plots');
+        });
+
+        socket.on('plots_ready', () => {
+            window.open('/plots', '_blank');
+        });
+
+        initCharts();
+    </script>
+</body>
+</html>

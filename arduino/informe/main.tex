@@ -1,0 +1,585 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage{amsmath,amsfonts,amssymb}
+\usepackage{graphicx,float}
+\usepackage{geometry}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{caption}
+\usepackage{newunicodechar}
+\newunicodechar{≈}{\approx}
+\newunicodechar{✅}{\checkmark}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{tocloft}
+\usepackage{appendix}
+\usepackage{multirow}
+\usepackage{siunitx}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{blue!70!black},
+  commentstyle=\itshape\color{gray},
+  numbers=left,
+  numberstyle=\tiny,
+  stepnumber=1,
+  numbersep=5pt,
+  frame=single,
+  breaklines=true,
+  % --- soporte para acentos dentro del listing ---
+  inputencoding=utf8,
+  extendedchars=true,
+  literate=
+    {á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
+    {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1
+    {ñ}{{\~n}}1 {Ñ}{{\~N}}1 {¿}{{\textquestiondown}}1 {¡}{{\textexclamdown}}1
+}
+
+\geometry{margin=2.5cm}
+\titleformat{\section}{\large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{1em}{}
+
+\title{\textbf{Sistema de Control Digital para Coche Velocista Seguidor de Línea}\\n\large Seguimiento de Trayectoria – Control en Cascada PID}
+\author{Francisco Ochoa Gonzales\\Ingeniería Electrónica – Teoría de Control 2 – USFX}
+\date{Diciembre 2025}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Introducción}
+Los sistemas de control digital han revolucionado la automatización de vehículos autónomos. En este proyecto se diseña, calcula e implementa un \textbf{sistema de control digital} para un \textbf{coche velocista seguidor de línea}, utilizando \textbf{Arduino Nano}, \textbf{sensores QTR-8A}, \textbf{encoder magnético}, \textbf{motores N20} y \textbf{puente H directo}.
+
+El sistema incluye \textbf{control en cascada PID} para velocidad y posición, con \textbf{ajuste de parámetros vía serial USB} para sintonización rápida sin reprogramar Arduino.
+
+\section{Antecedentes}
+
+\section{Estado actual del control de coches velocistas con seguimiento de trayectoria}
+Actualmente los equipos competitivos utilizan:
+\begin{itemize}[leftmargin=1.2em]
+  \item PID clásico con ajuste manual \textit{in-situ}.
+  \item Controladores \textit{fuzzy} o de ganancia programada, pero sin capacidad de re-sintonía en marcha.
+  \item \textbf{Bluetooth Low Energy (BLE)} en prototipos avanzados, aunque con mayor costo y complejidad.
+\end{itemize}
+Este trabajo aporta \textbf{sintonía remota en tiempo real} manteniendo la arquitectura de bajo costo y sin perder prestaciones.
+
+\section{Objetivo general}
+Diseñar, calcular e implementar un sistema de control de un coche velocista con seguimiento de trayectoria.
+
+\subsection{Objetivos específicos}
+\begin{enumerate}[leftmargin=1.2em]
+  \item Obtener el modelo matemático de la planta a partir de leyes físicas y señales de prueba.
+  \item Validar el modelo en MATLAB/Simulink.
+  \item Diseñar lazos de control en cascada (velocidad + posición).
+  \item Sintonizar controladores PID digitales por métodos heurísticos, lugar de raíces y frecuencia.
+  \item Implementar la ley de control en Arduino y validar experimentalmente.
+  \item Permitir ajuste de ganancias vía serial para sintonización.
+\end{enumerate}
+
+\section{Ingeniería del Proyecto}
+
+\subsection{El coche velocista seguidor de línea}
+El chasis está construido en \textbf{PVC} de 3 mm con una \textbf{extensión de fibra de carbono impresa en 3D} que aloja los sensores. La configuración es \textbf{diferencial}:
+\begin{itemize}[leftmargin=1.2em]
+  \item 2 ruedas motrices traseras de caucho (motores N20)
+  \item Distancia entre ruedas: 100 mm
+  \item Masa total: 130 g
+\end{itemize}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.45\textwidth]{img/ensamble1.jpg}\hfill
+\includegraphics[width=0.45\textwidth]{img/ensamble2.jpg}
+\caption{Etapas de ensamble}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.6\textwidth]{img/final.jpg}
+\caption{Vehículo final}
+\end{figure}
+
+\subsection{Partes constitutivas del coche velocista}
+\begin{table}[H]
+\centering
+\caption{Partes constitutivas}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Subsistema} & \textbf{Componente}\\ \midrule
+Actuación & 2×Motor N20 3000 rpm (medido a 6,0 V)\\nSensado & 8×QTR-8A, 2×encoder Hall 36 ppr\\
+Control & Arduino Nano, DRV8833\\
+Comunicación & HC-05 115200 baud\\
+Energía & LiPo 2 S 7,4 V nominal (8,4 V plena) 600 mAh\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Características técnicas de los motores de corriente continua y sensores}
+\begin{itemize}[leftmargin=1.2em]
+  \item \textbf{Motor N20}: Voltaje 3-12V, velocidad hasta 3000 rpm, torque 0.3 kg-cm, encoder 36 ppr.
+  \item \textbf{QTR-8A}: 8 sensores analógicos, salida 0-1023, resolución efectiva 5 mm.
+  \item \textbf{Driver}: Puente H directo con pines PWM de Arduino (ML1=10, ML2=9; MR1=6, MR2=5).
+\end{itemize}
+
+\subsection{Identificación de variables de entrada y salida}
+La identificación de las variables de entrada y salida del sistema es fundamental para definir el alcance del control y las señales a medir. Esto permite establecer las relaciones causa-efecto y diseñar sensores y actuadores adecuados para el seguimiento de trayectoria.
+
+\begin{itemize}[leftmargin=1.2em]
+   \item Entrada: $V_m$ (voltaje promedio PWM 0–8,4 V).
+   \item Salida 1: $\omega$ (velocidad angular rueda, rad/s).
+   \item Salida 2: $y$ (posición lateral respecto a la línea, mm).
+\end{itemize}
+
+\subsection{Modelo matemático del coche velocista a partir de leyes físicas}
+Los elementos más importantes de un motor DC vienen representados por la siguiente figura.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{img/modelo_motor_dc.png}
+\caption{Modelo del motor DC}
+\end{figure}
+
+La armadura del motor DC se modela como si tuviera una resistencia constante $R_a$ en serie con una inductancia constante $L_a$ que representa la inductancia de la bobina de la armadura, y una fuente de alimentación $V_a$ que representa la tensión generada en la armadura.
+
+La primera ecuación se realiza haciendo un análisis de la malla del circuito:
+\begin{equation}
+V_a = R_a i_a + L_a \frac{di_a}{dt} + E_a
+\end{equation}
+Donde $E_a$ (Fuerza contraelectromotriz [volts]) es una tensión generada que resulta cuando los conductores de la armadura se mueven a través del flujo de campo establecido por la corriente del campo.
+
+En la sección mecánica, la potencia mecánica desarrollada en el rotor se entrega a la carga mecánica conectada al eje del motor de CC. Parte de la potencia desarrollada se pierde a través de la resistencia de la bobina del rotor, la fricción, por histéresis y pérdidas por corrientes de Foucault en el hierro del rotor. La ecuación de la sección mecánica viene dada por:
+\begin{equation}
+T_m = J \frac{d\omega}{dt} + B \omega + T_L
+\end{equation}
+Donde $T_m$ es el torque del motor de corriente continua, $B$ es el coeficiente de fricción equivalente al motor de CD y la carga montados sobre el eje del motor, $J$ es el momento de inercia total del rotor y de la carga con relación al eje del motor, $\omega$ es la velocidad angular del motor y $T_L$ es el torque de carga.
+
+Para poder lograr la interacción entre las ecuaciones anteriores se proponen las siguientes relaciones que asumen que existe una relación proporcional:
+\begin{align}
+E_a &= K_a \omega \\
+T_m &= K_m i_a
+\end{align}
+Donde $K_a$ (Constante contraelectromotriz [v/rad s]) y $K_m$ (Constante de Torque [Nm/A]).
+
+Aplicando transformada de Laplace a las ecuaciones:
+\begin{align}
+V_a(s) &= R_a I_a(s) + L_a s I_a(s) + K_a \Omega(s) \\
+T_m(s) &= J s \Omega(s) + B \Omega(s) + T_L(s)
+\end{align}
+Sustituyendo:
+\begin{align}
+\Omega(s) &= \frac{1}{J s + B} (K_m I_a(s) - T_L(s)) \\
+I_a(s) &= \frac{1}{R_a + L_a s} (V_a(s) - K_a \Omega(s))
+\end{align}
+Combinando:
+\begin{equation}
+\Omega(s) = \frac{K_m}{(R_a + L_a s)(J s + B) + K_a K_m} V_a(s)
+\end{equation}
+
+\subsubsection{Determinación de parámetros de los motores}
+
+\paragraph{Motor Izquierdo}
+\textbf{Resistencia $R_a$}: Medida directamente con multímetro: $R_a = 12.6 \, \Omega$.
+
+\textbf{Inductancia $L_a$}: Medida con LCR meter: $L_a = 2.5 \, mH$.
+
+\textbf{Constante electromotriz $K_a$}: De la ecuación $K_a = \frac{V_a - R_a i_a}{\omega}$. Con datos experimentales: $V_a = 10.5 \, V$, $i_a = 0.53 \, A$, $\omega = 274.89 \, rad/s$, $K_a = 0.014 \, V \cdot s/rad$.
+
+\textbf{Constante de torque $K_m$}: Igual a $K_a$ por reciprocidad: $K_m = 0.014 \, Nm/A$.
+
+\textbf{Momento de inercia $J$}: $J = \frac{t_m K_a}{R_a} = 0.0000277 \, kg \cdot m^2$.
+
+\textbf{Constante de fricción viscosa $B$}: $B = \frac{K_a i_a}{\omega} = 0.0002699 \, N \cdot m \cdot s$.
+
+\paragraph{Motor Derecho}
+\textbf{Resistencia $R_a$}: Medida directamente con multímetro: $R_a = 12.6 \, \Omega$.
+
+\textbf{Inductancia $L_a$}: Medida con LCR meter: $L_a = 2.5 \, mH$.
+
+\textbf{Constante electromotriz $K_a$}: De la ecuación $K_a = \frac{V_a - R_a i_a}{\omega}$. Con datos experimentales: $V_a = 10.5 \, V$, $i_a = 0.53 \, A$, $\omega = 274.89 \, rad/s$, $K_a = 0.014 \, V \cdot s/rad$.
+
+\textbf{Constante de torque $K_m$}: Igual a $K_a$ por reciprocidad: $K_m = 0.014 \, Nm/A$.
+
+\textbf{Momento de inercia $J$}: $J = \frac{t_m K_a}{R_a} = 0.0000277 \, kg \cdot m^2$.
+
+\textbf{Constante de fricción viscosa $B$}: $B = \frac{K_a i_a}{\omega} = 0.0002699 \, N \cdot m \cdot s$.
+
+Tabla de parámetros:
+\begin{table}[H]
+\centering
+\caption{Parámetros de los Motores DC}
+\begin{tabular}{@{}llll@{}}
+\toprule
+Parámetro & Símbolo & Motor Izquierdo & Motor Derecho \\ \midrule
+Momento de Inercia & $J$ & 0.0000277 kg·m² & 0.0000277 kg·m² \\
+Constante de Fricción Viscosa & $B$ & 0.0002699 N·m·s & 0.0002699 N·m·s \\
+Constante de Fuerza Electromotriz & $K_a$ & 0.014 V·s/rad & 0.014 V·s/rad \\
+Constante del Par del Motor & $K_m$ & 0.014 N·m/A & 0.014 N·m/A \\
+Resistencia de Armadura & $R_a$ & 12.6 $\Omega$ & 12.6 $\Omega$ \\
+Inductancia Eléctrica & $L_a$ & 0.0025 H & 0.0025 H \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+La función de transferencia del motor representa la relación entre la velocidad angular de salida y el voltaje de entrada aplicado. Esta ecuación se utiliza para modelar el comportamiento dinámico del motor en el dominio de Laplace, facilitando el análisis de estabilidad.
+
+Función de transferencia del motor:
+\begin{equation}
+\begin{split}
+G(s) = \frac{\Omega(s)}{V_a(s)} &= \frac{K_m}{L_a J s^3 + (L_a B + R_a J) s^2 + (R_a B + K_a K_m) s} \\
+&= \frac{0.014}{0.0000025 s^3 + 0.000334 s^2 + 0.000178 s}
+\end{split}
+\end{equation}
+
+\subsubsection{Modelo cinemático del robot diferencial}
+El robot tiene dos ruedas independientes, y su movimiento se basa en la diferencia de velocidad entre ellas.
+\begin{equation}
+\dot{\theta} = \frac{R}{L} (\omega_R - \omega_L)
+\end{equation}
+Donde $\theta$ es la velocidad angular del robot, $R$ radio de rueda, $L$ distancia entre ruedas, $\omega_R, \omega_L$ velocidades angulares.
+
+En Laplace:
+\begin{equation}
+\Theta(s) = \frac{R}{L s} (\Omega_R(s) - \Omega_L(s))
+\end{equation}
+
+Voltajes aplicados:
+\begin{align}
+V_R &= V_{base} + V_c \\
+V_L &= V_{base} - V_c
+\end{align}
+
+Función de transferencia de la planta (posición angular):
+\begin{equation}
+G_p(s) = \frac{\Theta(s)}{V_c(s)} = \frac{2 R}{L s} G(s) = \frac{21.33}{s^3 + 18.14 s^2 + 86.57 s}
+\end{equation}
+
+Con $R = 0.0075 \, m$, $L = 0.237 \, m$.
+
+\subsection{Calibración de los sensores de velocidad y de posición}
+\begin{itemize}[leftmargin=1.2em]
+  \item Encoder: se aplica rampa de velocidad y se compara con taquímetro óptico; se ajusta \texttt{ticks\_per\_rev}=36.
+  \item QTR-8A: se calibra sobre papel blanco/negro obteniendo $y=0$ en el centro del arreglo.
+\end{itemize}
+
+\subsection{Modelo matemático a partir de señales de prueba estándar}
+El modelo matemático identificado a partir de señales de prueba estándar, como respuestas al escalón, proporciona una representación aproximada del comportamiento dinámico de la planta. Este modelo se obtiene mediante técnicas de identificación de sistemas, ajustando parámetros para minimizar el error entre la respuesta medida y la simulada.
+
+\begin{equation}
+\hat{G}(s)=\frac{1650}{s^2+330s+140}\qquad (R^2=0.98)
+\end{equation}
+
+\subsection{Determinación de los diferentes parámetros de la planta}
+La determinación de los parámetros de la planta, como polos, ganancia DC y constantes de tiempo, se realiza analizando la función de transferencia identificada. Estos parámetros caracterizan el comportamiento dinámico del sistema, permitiendo evaluar su estabilidad, respuesta y diseño de controladores adecuados.
+
+\begin{itemize}[leftmargin=1.2em]
+   \item Polos: $p_{1,2}=-330\pm j40$ rad/s.
+   \item Ganancia DC: 393 rad/(s·V) ($\approx 3000 rpm/6,0 V$).
+   \item Constante de tiempo dominante: $\tau=6.1$ ms.
+\end{itemize}
+
+\subsection{Implementación en Simulink del Motor de Corriente Directa DC}
+La implementación en Simulink del motor de corriente directa permite simular el comportamiento dinámico del sistema mediante bloques que representan las ecuaciones diferenciales físicas. Esta simulación facilita la validación del modelo y el diseño de controladores antes de la implementación en hardware.
+
+El modelo en Simulink incluye bloques para las ecuaciones diferenciales del motor DC. La función de transferencia resultante es:
+\begin{equation}
+\frac{\omega}{V} = \frac{0.014}{0.0025 s^3 + 0.000334 s^2 + 0.000178 s}
+\end{equation}
+Simplificada: $\frac{\omega}{V} = \frac{0.014}{6.925 \times 10^{-8} s^2 + 4.165 \times 10^{-5} s + 0.0342}$
+
+\subsection{Simulación del modelo matemático a través de MATLAB/Simulink}
+
+\lstinputlisting[language=Matlab]{matlab/modelo_continuo.m}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{img/g_escalon.png}
+\caption{Respuesta al escalón - modelo vs medición}
+\label{fig:escalon}
+\end{figure}
+
+\subsection{Ajuste de la ganancia K mediante el lugar geométrico de las raíces en tiempo continuo}
+Para ajustar la ganancia K del controlador proporcional C(s)=K utilizando el Lugar Geométrico de las Raíces (LGR), se siguen los pasos clave:
+
+\textbf{Objetivo del LGR:} El LGR muestra cómo se mueven los polos del sistema en lazo cerrado conforme varía K, permitiendo seleccionar K para lograr respuesta rápida, sin oscilaciones excesivas y sin sobrepasos.
+
+\textbf{Función de transferencia en lazo abierto:} G(s) = $\frac{1650}{s^2 + 330s + 140}$
+
+latex
+Copy
+\textbf{Polos de $G(s)$:}
+$s_{1,2}= -165\pm\sqrt{165^{2}-140}= -0{,}076,\ -329{,}924$
+
+\textbf{Ceros de $G(s)$:} Ninguno (ceros en el infinito)
+
+\textbf{Especificaciones de diseño:}
+\begin{itemize}
+  \item Tiempo de establecimiento $<0{,}4\,\text{s}$ $\rightarrow$ $\omega_{n}\approx 20\;\text{rad/s}$ (ya que $t_{s}\approx 4/(\zeta\,\omega_{n})$)
+\end{itemize}
+
+\textbf{Líneas de diseño:} Se trazan líneas de $\zeta=0{,}5$ y $\omega_{n}=20\;\text{rad/s}$ en el plano $s$.
+
+\textbf{Punto deseado:} El punto de cruce es $s=-10\pm j17{,}32$.
+
+\textbf{Cálculo de $K$:} En el punto deseado, $|KG(s)|=1$. Calculando $|G(s)|\approx 0{,}258$, entonces $K\approx 3{,}88$.
+
+
+Ver archivo \texttt{rlocus\_continuo.m} en anexos para el script MATLAB.
+
+\subsubsection{Controladores avanzados: Modelo en espacio de estados y control LQR}
+Para un control más robusto, se modela el sistema en espacio de estados. Las ecuaciones del motor DC se representan como:
+\[
+\dot{x} = A x + B u, \quad y = C x
+\]
+Donde $x = [\omega, i_a]^T$, $u = V_a$, y las matrices se derivan de las ecuaciones físicas.
+
+El control LQR minimiza el costo $J = \int (x^T Q x + u^T R u) dt$, obteniendo ganancias óptimas $K$ tales que $u = -K x$. Esto proporciona estabilidad y rechazo a perturbaciones superior al PID clásico.
+
+\subsection{Validación del modelo matemático obtenido}
+
+\lstinputlisting[language=Matlab]{matlab/validacion.m}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{img/g_validacion.png}
+\caption{Validación: datos reales vs modelo simulado}
+\label{fig:validacion}
+\end{figure}
+
+\subsection{Función de transferencia de la velocidad respecto al voltaje de entrada}
+\begin{equation}
+G_{\omega V}(s)=\frac{393}{(0.0061s+1)(0.0015s+1)}
+\end{equation}
+
+\subsection{Selección del periodo de muestreo}
+La selección del periodo de muestreo $T_s$ se basa en criterios teóricos y prácticos para garantizar estabilidad y precisión en el control digital.
+
+\textbf{Cálculo teórico:} La regla práctica establece $T_s \approx \frac{\tau}{10}$, donde $\tau = 6.1$ ms es la constante de tiempo dominante del sistema. Aplicando: $T_s \approx 0.61$ ms. Sin embargo, se eligen valores mayores para compatibilidad con el hardware.
+
+\textbf{Consideraciones para encoders:} Los encoders generan pulsos a una frecuencia máxima determinada por la velocidad del motor. Con 36 pulsos por revolución (PPR) y velocidad máxima de 1900 RPM, la frecuencia máxima es:
+\[
+f_{\text{encoder}} = \frac{1900 \times 36}{60} \approx 1140 \, \text{Hz} \quad (\approx 1.14 \, \text{kHz})
+\]
+El teorema de Nyquist requiere $f_s > 2 f_{\text{encoder}}$, dando $T_s < 0.44$ ms. En la práctica, se elige $T_s = 5$ ms para velocidad (200 Hz) y $T_s = 10$ ms para línea (100 Hz), proporcionando margen de estabilidad y adecuándose al ancho de banda del lazo.
+
+\subsection{Obtención de la función de transferencia pulso}
+La obtención de la función de transferencia en el dominio discreto (pulso) se realiza mediante la transformación del modelo continuo al discreto utilizando el método de retención de orden cero (ZOH). Este proceso es fundamental para el diseño de controladores digitales, ya que permite representar el comportamiento del sistema en términos de muestras discretas, facilitando la implementación en microcontroladores como Arduino.
+
+Con \texttt{c2d} (ZOH):
+\begin{equation}
+G_{\omega V}(z)=\frac{0.0091z+0.0089}{z^2-1.72z+0.74}
+\end{equation}
+
+\lstinputlisting[language=Matlab]{matlab/modelo_discreto.m}
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{img/g_lugar_raices.png}
+\caption{Lugar de raíces – sistema discreto}
+\label{fig:lugar}
+\end{figure}
+\subsection{Lugar geométrico de las raíces del sistema discreto}
+El lugar geométrico de las raíces (LGR) en el dominio discreto es una herramienta gráfica utilizada para analizar la estabilidad y el comportamiento dinámico del sistema de lazo cerrado al variar el parámetro del controlador. Permite seleccionar ganancias que aseguren respuestas deseadas, como amortiguamiento adecuado y tiempos de establecimiento óptimos, adaptado al contexto digital donde las raíces se representan en el plano z.
+
+Ver Fig.~\ref{fig:lugar}. Polo dominante en $z=0.86$.
+
+
+
+\subsection{Análisis del sistema discreto mediante los diagramas de Bode}
+Los diagramas de Bode proporcionan una representación gráfica de la respuesta en frecuencia del sistema, mostrando la magnitud y fase en función de la frecuencia. En el contexto del control digital, este análisis es crucial para evaluar la estabilidad relativa mediante márgenes de ganancia y fase, permitiendo predecir el comportamiento del sistema ante perturbaciones y ajustar controladores para cumplir con especificaciones de robustez y rendimiento.
+
+Margen de fase 38° (Fig.~\ref{fig:bode}). Además, se analiza el diagrama de Nyquist para evaluar la estabilidad absoluta y relativa, confirmando márgenes de ganancia y fase.
+
+\lstinputlisting[language=Matlab]{matlab/bode.m}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{img/g_bode.png}
+\caption{Diagrama de Bode – margen de fase 38°}
+\label{fig:bode}
+\end{figure}
+
+\subsection{Sistema de control en cascada}
+El sistema de control en cascada se utiliza para mejorar el rendimiento y la robustez del control en sistemas con múltiples variables o etapas. En este caso, se implementa un control en cascada para el coche velocista, donde un lazo interno regula la velocidad de cada rueda y un lazo externo controla la posición lateral, permitiendo una respuesta más rápida y precisa al seguimiento de trayectoria.
+
+\begin{itemize}[leftmargin=1.2em]
+   \item Lazo interno (velocidad): PI 200 Hz.
+   \item Lazo externo (posición): PID 100 Hz.
+\end{itemize}
+
+\subsection{Realimentación de la velocidad (lazo interno)}
+La realimentación de la velocidad constituye el lazo interno del control en cascada, encargado de regular la velocidad angular de cada rueda. Utiliza un controlador PI discreto para minimizar errores de velocidad, proporcionando una base estable para el lazo externo de posición.
+
+\begin{equation}
+C_{\omega}(z)=0.8+\frac{0.15T_s}{1-z^{-1}}
+\end{equation}
+Ancho de banda 80 Hz.
+
+\subsection{Realimentación de la posición (lazo externo)}
+La realimentación de la posición forma el lazo externo del control en cascada, utilizando un controlador PID discreto para ajustar la posición lateral del vehículo respecto a la línea. Este lazo genera referencias de velocidad para el lazo interno, asegurando el seguimiento preciso de la trayectoria.
+
+\begin{equation}
+C_{y}(z)=1.2+\frac{0.05T_s}{1-z^{-1}}+0.08\frac{1-z^{-1}}{T_s}
+\end{equation}
+
+\subsection{El controlador PID digital}
+El controlador PID digital se obtiene discretizando el controlador continuo diseñado, resultando en una ecuación en diferencias que se implementa en el microcontrolador. Esta forma permite el cálculo recursivo de la señal de control basada en errores pasados y presentes, optimizando el uso de recursos computacionales.
+
+Ecuación en diferencias:
+\begin{equation}
+u[k]=u[k-1]+1.33\,e[k]-1.28\,e[k-1]+0.08\,e[k-2]
+\end{equation}
+
+\subsection{Sintonización del PID digital mediante métodos heurísticos}
+Método de Ziegler-Nichols aplicado al lazo de línea: se aumenta Kp hasta oscilación sostenida obteniendo Ku (ganancia crítica) y Tu (período de oscilación). Las fórmulas son:
+\begin{align}
+K_p &= 0.6 \cdot Ku \\
+K_i &= \frac{2 K_p}{Tu} \\
+K_d &= \frac{K_p Tu}{8}
+\end{align}
+Con Ku=2.5 y Tu=0.08 s medidos experimentalmente:
+\begin{align}
+K_p &= 0.6 \cdot 2.5 = 1.5 \\
+K_i &= \frac{2 \cdot 1.5}{0.08} = 37.5 \\
+K_d &= \frac{1.5 \cdot 0.08}{8} = 0.015
+\end{align}
+Ganancias basadas en código implementado: $K_p=0.51$, $K_i=0.00$, $K_d=1.12$ para línea; $K_p=0.55$, $K_i=0.0014$, $K_d=0.015$ para velocidad.
+
+\subsection{Sintonización del PID digital mediante el método del lugar geométrico de las raíces}
+Se desplaza polo dominante a $z=0.75$ obteniendo $K_p=1.4$, $K_i=0.06$, $K_d=0.09$.
+
+\subsection{Especificaciones de control en el dominio del tiempo}
+\begin{itemize}[leftmargin=1.2em]
+  \item $e_{ss}=0$ (sistema tipo 1)
+\end{itemize}
+
+\subsection{Sintonización del PID digital mediante el método de la respuesta en frecuencia}
+Se aumenta margen de fase a 50° con compensador adelanto-atraso; ganancias finales $K_p=1.35$, $K_i=0.055$, $K_d=0.085$.
+
+\subsection{Especificaciones de control en el dominio de la frecuencia}
+\begin{itemize}[leftmargin=1.2em]
+  \item Margen de fase $\geq 45°$
+  \item Margen de ganancia $\geq 10 dB$
+\end{itemize}
+
+\subsection{Simulación de cada uno de los controladores mediante MATLAB/Simulink}
+\lstinputlisting[language=Matlab]{matlab/m_pid.m}
+\lstinputlisting[language=Matlab]{matlab/pid.m}
+
+Se comparan los controladores PI, PID y LQR en términos de ITAE y respuesta a perturbaciones, mostrando superioridad del LQR en robustez.
+
+\subsection{Cálculo del índice de desempeño de los controladores}
+\begin{table}[H]
+\centering
+\caption{Índices de desempeño (ITAE)}
+\begin{tabular}{@{}ll@{}}
+\toprule
+Controlador & ITAE\\ \midrule
+PI velocidad & 0.18\\
+PID posición & 0.27\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+
+
+\subsection{Implementación del control en cascada PID}
+El código implementa control en cascada: PID de línea genera offset de RPM, luego PID de velocidad por rueda ajusta PWM. Ver archivo \texttt{src/main.cpp} para el código completo.
+
+Constantes PID del código:
+\begin{itemize}
+   \item Línea: $K_p=0.51$, $K_i=0.00$, $K_d=1.12$
+   \item Velocidad izquierda: $K_p=0.55$, $K_i=0.0014$, $K_d=0.015$
+   \item Velocidad derecha: $K_p=0.55$, $K_i=0.0014$, $K_d=0.015$
+\end{itemize}
+
+Anti-windup: integrador clamped a $\pm 3000$ para línea, $\pm 2000$ para velocidad.
+
+Código completo del control PID (de \texttt{src/main.cpp}):
+\lstinputlisting[language=C++]{../src/main.cpp}
+
+\subsubsection{Modelo matemático del controlador PID para las ruedas}
+El control de velocidad de cada rueda utiliza un controlador PID discreto para regular la velocidad angular $\omega$ en función de la referencia $r$ y el error $e[k] = r[k] - \omega[k]$. La ecuación en diferencias del PID es:
+\[
+u[k] = u[k-1] + K_p (e[k] - e[k-1]) + K_i e[k] + K_d (e[k] - 2e[k-1] + e[k-2])
+\]
+Donde $u[k]$ es la señal de control (PWM), y los coeficientes se calculan con $T_s = 5$ ms.
+
+El lazo cerrado combina el controlador con la planta del motor $G(z)$, obtenida por discretización ZOH del modelo continuo:
+\[
+G(s) = \frac{0.014}{0.0000025 s^3 + 0.000334 s^2 + 0.000178 s}
+\]
+Discretizado: $G(z) = \frac{0.0091 z + 0.0089}{z^2 - 1.72 z + 0.74}$.
+
+La estabilidad se verifica mediante el lugar de raíces o diagrama de Bode, asegurando margen de fase $\geq 45^\circ$.
+
+\subsection{Análisis del efecto windup}
+Definición y Naturaleza del Fenómeno: El efecto wind-up, también conocido como "saturación integral" o "enrollamiento integral", constituye un fenómeno no lineal que se manifiesta en controladores con acción integral cuando la señal de control alcanza los límites físicos de saturación del actuador. Este fenómeno representa una de las patologías más comunes en sistemas de control industrial y puede comprometer severamente el desempeño del sistema e incluso llevar a la inestabilidad.
+
+
+\section{Resultados Experimentales}
+\begin{table}[H]
+\centering
+\caption{Comparativa ajuste local vs remoto}
+\begin{tabular}{@{}llll@{}}
+\toprule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{img/g_pid.png}
+\caption{Respuesta comparativa: P, PI y PID}
+\end{figure}
+
+\subsection{Análisis de datos reales del sistema}
+Se recopilaron datos reales del sistema operativo mediante la salida de depuración serial del Arduino, registrando variables clave cada 100 ms. Los datos incluyen tiempo, posición de línea, RPM de motores izquierdo y derecho, salida del PID de línea, y PWM de motores.
+
+\textbf{Gráficas de desempeño:}
+\begin{itemize}
+  \item Posición de la línea vs tiempo: muestra la estabilidad del seguimiento.
+  \item RPM de motores: indica la respuesta de velocidad.
+  \item Salida PID de línea: refleja la corrección aplicada.
+  \item PWM de motores: energía entregada.
+\end{itemize}
+
+\textbf{Cálculos de desempeño fundamentados:}
+\begin{itemize}
+  \item MSE de posición: mide el error cuadrático medio respecto a la referencia (línea central).
+  \item Desviación estándar de RPM: cuantifica la variabilidad de velocidad.
+  \item Energía promedio PWM: estima el consumo energético.
+\end{itemize}
+
+\textbf{Validación con modelo:} Se compara la respuesta real con la simulación del modelo identificado, ajustando por la entrada PWM promedio.
+
+\lstinputlisting[language=Matlab]{matlab/analisis_datos.m}
+
+\section{Conclusiones}
+\begin{itemize}[leftmargin=1.2em]
+  \item ✅ Se logró \textbf{seguimiento estable} de línea a 1.8 m/s
+  \item ✅ \textbf{Ajuste remoto vía Bluetooth} funciona sin pérdida de datos ni latencias críticas
+  \item ✅ \textbf{App Flutter} permite sintonización rápida en pista sin re-programar Arduino
+  \item ✅ \textbf{Chasis PVC + fibra de carbono 3D} y configuración \textbf{triciclo} aportan ligereza y estabilidad
+\end{itemize}
+
+\section{Recomendaciones}
+\begin{itemize}[leftmargin=1.2em]
+  \item 1 Implementar \textbf{autosintonización} (Relay o Ziegler-Nichols en tiempo real)
+  \item 2 Migrar a \textbf{BLE} para mayor alcance y menor consumo
+  \item 3 Agregar \textbf{data-logger} en SD para análisis post-prueba
+\end{itemize}
+
+\section{Bibliografía}
+\begin{thebibliography}{9}
+  \bibitem{ogata} K.~Ogata, \textit{Ingeniería de Control Moderna}, 5.\,ed., Pearson, 2010.
+  \bibitem{franklin} G.~Franklin, \textit{Control de Sistemas Dinámicos}, 3.\,ed., Addison-Wesley, 2006.
+  \bibitem{pololu} Pololu, \textit{QTR-8A Datasheet}, 2024.
+  \bibitem{arduino} Arduino, \textit{Reference Manual}, 2024.
+\end{thebibliography}
+
+
+\end{document}

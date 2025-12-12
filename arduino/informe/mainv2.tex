@@ -1,0 +1,855 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage{amsmath,amsfonts,amssymb}
+\usepackage{graphicx,float}
+\usepackage{geometry}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{caption}
+\usepackage{newunicodechar}
+\newunicodechar{≈}{\approx}
+\newunicodechar{✅}{\checkmark}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{tocloft}
+\usepackage{appendix}
+\usepackage{multirow}
+\usepackage{siunitx}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{blue!70!black},
+  commentstyle=\itshape\color{gray},
+  numbers=left,
+  numberstyle=\tiny,
+  stepnumber=1,
+  numbersep=5pt,
+  frame=single,
+  breaklines=true,
+  % --- soporte para acentos dentro del listing ---
+  inputencoding=utf8,
+  extendedchars=true,
+  literate=
+    {á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
+    {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1
+    {ñ}{{\~n}}1 {Ñ}{{\~N}}1 {¿}{{\textquestiondown}}1 {¡}{{\textexclamdown}}1
+}
+
+\geometry{margin=2.5cm}
+\titleformat{\section}{\large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{1em}{}
+
+\title{\textbf{Diseño e Implementación de un Robot Seguidor de Línea de Competencia para la Categoría Velocista}}
+\author{Yeison Daniel Tapiero Santa}
+\date{2019}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Introducción}
+La robótica móvil es uno de los campos de la robótica que más ha presentado avances en las últimas décadas [1], [2]. Nuevas configuraciones mecánicas, estructuras de control y navegación, desarrollos en vehículos no tripulados y nuevas aplicaciones han cambiado la forma en la que conocíamos los sistemas robóticos. Pensar en un futuro en el que las máquinas realicen el trabajo operativo de muchas personas no es ciencia ficción, sino una realidad que pertenece a la denominada cuarta revolución industrial, un movimiento que combina tecnologías como la robótica, el análisis de datos y la inteligencia artificial para transformar radicalmente la forma en la que vivimos y trabajamos [3].
+
+En el entorno Universitario, se han desarrollado plataformas robóticas como herramientas para la educación e investigación. Adicionalmente, han surgido en este ámbito encuentros estudiantiles que han ganado bastante popularidad en los últimos años. Estos espacios además de comparar esfuerzos entre Universidades permiten a sus participantes compartir experiencias que les ayudan a fortalecer sus conocimientos de las ramas de la ingeniería involucradas: Mecánica analítica, propiedades de materiales, instrumentación electrónica, manipulación de motores, control automático y entre otras; de la misma manera, fomentan aptitudes investigativas como la observación, el planteamiento de hipótesis y el desarrollo innovador, reflejados en sus diferentes prototipos cada año.
+
+En el ámbito académico-deportivo los robots móviles se emplean en diferentes competencias y categorías descritas en la tabla 1.
+
+\begin{table}[H]
+\centering
+\caption{Categorías en torneos de robótica alrededor del mundo.}
+\begin{tabular}{@{}ll@{}}
+\toprule
+Categoría & Descripción \\ \midrule
+Batalla de Robots & lucha entre dos robots radiocontrolados que se realiza sobre un área de combate de 1.5mts x 2mts y consiste en lograr que el robot oponente sea desarmado o en su defecto inhabilitar al oponente. \\
+Robot Laberinto & Competencia la cual consiste en resolver un laberinto en el menor tiempo posible. \\
+Drone Racing & Competencia la cual consiste en realizar un circuito demarcado con gates, banderines y conos con un Drone controlado de manera remota con un visor FPV \\
+Pelea de Bípedos & Dos robots humanoides bípedos que se enfrentan cuerpo a cuerpo en una lona con el fin de derribar a su oponente mientras el vencedor mantiene el equilibrio \\
+Robot Futbol & Competencia por entre dos equipos de tres robots que recrean el futbol. \\
+Robot Seguidor de línea & Competencia en la cual los robots deberán desarrollar el recorrido de una pista en el menor tiempo posible, sorteando los puentes y las curvas del recorrido \\
+Robot Trepador & Cosiste en trepar un muro en el menor tiempo posible. \\
+Robot Sumo & Lucha entre dos robots radiocontrolados o autónomos que se realiza sobre un área de combate y consiste en lograr que el robot oponente se salga del área de combate siendo una de las más populares, la categoría de robots seguidores de línea velocistas, en ingles Line Follower Robot (LFR). Tiene una historia como es visto en [4], que muestra que es el robot más popular entre los robots de competencia con una tarea específica y simple: seguir una trayectoria definida en el menor tiempo posible. Un gran número de autores ha abordado el tema de LFR, centrándose únicamente en el diseño, implementación y posibles aplicaciones, encontrando un gap entre los reportes de investigación sobre el modelamiento y estrategias de control de estos sistemas.
+\end{tabular}
+\end{table}
+
+La masiva acogida por parte de universidades y colegios ha llevado a elevar la exigencia de los diferentes encuentros de robótica y sus esquemas de competencia, haciendo cada vez más, que estos prototipos involucren con mayor intensidad conceptos y métodos de ingeniería que les permitan optimizar su desempeño. Este proyecto plantea el diseño, implementación, modelamiento y control de un LFR, de manera que se genere una metodología de diseño y se optimice el desempeño de estos robots móviles.
+
+El presente documento se divide en seis capítulos: en el primer capítulo se presentan las generalidades del proyecto, motivación, planteamiento del problema y justificación. Así como los objetivos y alcances que tiene este proyecto. La robótica de competencia, su estado actualmente, los avances presentados en robots seguidores de línea y robots diferenciales desde el ámbito del diseño y control son presentados en el capítulo 2. Seguidamente, en el capítulo 3, se encuentra el diseño mecánico y electrónico del sistema, además de mostrar un estudio acerca de las posibilidades que existen desde el punto de vista del control automático para este tipo de sistemas. Los resultados de la investigación son mostrados en el capítulo 4 y finalmente en el capítulo 5, se presentan las conclusiones y recomendaciones que servirán como aporte para futuras investigaciones y el continuo mejoramiento de los robots seguidores de línea velocistas.
+
+\section{Generalidades}
+
+\subsection{Motivación}
+Actualmente, es común ver robots realizando trabajos que antes correspondían a una persona, ya sean trabajos muy repetitivos que conlleven un peligro para el trabajador o simplemente trabajos que salgan de las facultades de una persona y conlleve a un riesgo. Las empresas que cuentan con grandes ingresos, fábricas y/o bodegas, utilizan máquinas autónomas para el trasporte de material que por lo general son robots seguidores de línea de gran tamaño, el uso de este tipo de tecnología ha permitido que universidades e incluso empresas que se dedican al desarrollo de hardware, realicen más avances en la implementación de estos robots industriales, incluso, en muchas ocasiones, utilizan estos prototipos como plataforma base de pruebas para nuevos sistemas de control que serán aplicados en otras con distinta aplicación [5].
+
+Por otro lado, y teniendo en cuenta la tendencia durante los últimos tiempos sobre la robótica de competencia, el LFR se ha convertido en un desafío para los jóvenes investigadores, que han escalado la aplicación de un robot seguidor de línea Industrial a una aplicación educativa e investigativa, realizando cada año nuevos diseños, probando nuevas estrategias e implementando técnicas de control las cuales podrían ser escaladas a distintas áreas de aplicación.
+
+A nivel universitario, existen encuentros académicos que invitan a personas de todo el mundo a competir en diferentes eventos y han ganado una gran popularidad en los últimos años, por ejemplo: RoboCup, RobotChallenge, All Japan Robot-Sumo y Mercury Challenge. Colombia presenta la misma tendencia y las competencias robóticas como Runibot, RoboticPeopleFest, UdiTech y Robo-Matrix están aumentando el número de participantes cada año, los cuales asisten en busca de una acreditación para asistir a alguno de los eventos internacionales nombrados anteriormente y evaluar sus conocimientos con participantes de todo el planeta [6]–[9].
+
+\subsection{Planteamiento del Problema}
+En numerosos sistemas electrónicos, el cambio de parámetros de operación del sistema genera un cambio en su modelo matemático, en muchos casos como en los LFR, suelen tener variaciones como: El voltaje de la batería, ya sea por descarga o por sobrecarga, el aumento en la velocidad de desplazamiento, o inclusive el cambio de trayectoria del circuito; obligan al desarrollador a realizar una re-sintonización de los parámetros, por medio de métodos empíricos, basados en la experiencia y respuesta momentánea de los compensadores en el robot.
+
+En su mayoría, el controlador PID es el más popular para el control de un LFR, debido a que es un compensador muy robusto, fácil de sintonizar y de fácil adaptación a cualquier sistema [10]. Pero ¿Qué tanto mejoraría su desempeño un robot velocista al implementar otras técnicas de control, o incluso variaciones de este mismo? La respuesta no es evidente, porque las investigaciones actuales, se enfocan únicamente en el diseño mecánico y electrónico, dejando de lado la dinámica del sistema, modelo matemático o el esquema de control, solucionando el problema de manera empírica, de una forma no convencional.
+
+Esta idea implica primeramente encontrar un modelo matemático que relacione los niveles de voltaje aplicado sobre los dos motores, la velocidad de la turbina de succión que surge como solución a problemas de estabilidad, con las velocidades del robot y su desviación respecto a la línea de referencia, del mismo modo, estos parámetros deben relacionarse con la mecánica que el robot pueda poseer, es decir deben tenerse en cuenta las diferentes medidas y distancias definidas en la figura 1:1
+
+\begin{itemize}[leftmargin=1.2em]
+    \item H: Distancia desde el centro de las llantas hasta el frente del robot.
+    \item L: Distancia de separación entre las llantas del robot.
+    \item D: Frente del robot.
+    \item d: D/2.
+    \item $\theta$: Angulo formado por H y d.
+    \item R: radio de la llanta.
+\end{itemize}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{img/robot_dimensiones.jpg}
+\caption{Robot seguidor de línea y sus dimensiones.}
+\end{figure}
+
+Tras realizar un análisis del sistema sobre un LFR convencional, este puede representarse mediante el diagrama general de control que se muestra en la figura~1.2. En dicho esquema, el controlador es de tipo PID y la referencia corresponde a un valor comprendido entre 0 y $D$, el cual representa la posición obtenida a partir de un arreglo de sensores; dicha posición indica la distancia entre el centro del robot y el centro de la línea de referencia. La salida del sistema es el ángulo $\theta$. El ruido está dado por los cambios de luminosidad percibidos por los sensores a lo largo del circuito de prueba, así como por las vibraciones mecánicas que se generan durante el funcionamiento; las perturbaciones se interpretan, por su parte, como los cambios en la trayectoria.
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{img/diagrama_bloques_control.jpg}
+\caption{Diagrama de bloques de un sistema de control.}
+\end{figure}
+
+La principal dificultad de estas plataformas es cómo seguir la línea sin problemas, con precisión y completar el circuito en el menor tiempo posible. Para lograr este objetivo, se consideran tres aspectos importantes, según un análisis realizado a lo largo de los años en diferentes eventos de esta categoría: (1) Cuanto más conocimiento tenga el LFR sobre la posición de la línea con respecto a su propio centro, mejor seguirá la referencia; (2) un controlador apropiado genera las acciones correctas en los motores para mantener el robot centrado en la línea y para ir rápido sin salir de la pista de carreras; (3) la compensación de los efectos de deriva se debe a las fuerzas centrífugas y centrípetas en las curvas del circuito de carreras. De esta manera, el desarrollo de este proyecto busca encontrar respuesta a la pregunta: ¿Cuál es la mejor estrategia de control para un robot seguidor de línea velocista en topología diferencial?
+
+\subsection{Objetivo General}
+Esta propuesta de proyecto tiene como principal objetivo diseñar, construir y modelar un robot Seguidor de línea para la categoría velocista, con características técnicas de nivel avanzado, que cumplan con los estándares de las competencias internacionales.
+
+\subsection{Objetivos Específicos}
+\begin{enumerate}[leftmargin=1.2em]
+\item Diseñar e implementar las capas mecánica y electrónica de un robot seguidor de línea.
+\item Obtener un modelo matemático simple que describa la cinemática y dinámica de un robot seguidor de línea.
+\item Diseñar, implementar y comparar tres estrategias de control para establecer el robot seguidor de línea en la trayectoria de referencia.
+\end{enumerate}
+
+\section{Marco de Referencia}
+
+\subsection{Marco Teórico}
+La robótica es la ciencia que se ocupa del diseño, manufactura y aplicaciones de robots combinando diversas disciplinas como son: La mecánica, la electrónica, la informática, la inteligencia artificial y la ingeniería de control [11]. Otras áreas importantes en robótica son el álgebra lineal, los autómatas programables y las máquinas de estados, las cuales conforman una parte fundamental en su lógica de operación. En la actualidad podemos apreciar los múltiples campos en los que se desempaña la robótica en general. Algunos de ellos son: La industria, servicios sociales o incluso en el hogar. Los inicios de esta rama de la ingeniería nace a mediados del siglo XX, alrededor de los años 1939-1949; los primeros avances fueron en robots móviles durante la segunda guerra mundial, inicialmente usados para la detonación bombas. De este modo, los robots móviles son máquinas automáticas con la capacidad de trasladarse de un sitio a otro, estos están provistos de patas, ruedas u orugas que los capacitan para desplazarse de acuerdo su programación como es mostrado en [12]. Estos procesan la información que reciben a través de sus propios sistemas de sensores y la emplean para cumplir un objetivo según su aplicación: Transporte de mercancías en cadenas de producción y almacenes, tareas de cinematografía, exploración en zonas de difícil acceso, exploración espacial, investigaciones o rescates submarinos etc.
+
+Un robot móvil puede clasificarse según su operación, la cual puede ser manual y teledirigida por una persona o automática en la que el robot debe cumplir su propósito basado únicamente en su programación [13]. Otra característica relevante en un robot autónomo es que debe poseer una fuente propia de energía; por lo general, la alimentación proviene de baterías recargables, de este modo la autonomía de los prototipos es limitada por la capacidad de éstas; por que este es un punto muy importante que se debe tener en cuenta al momento de diseñar un prototipo. Obtener información acerca de su entorno o punto de trabajo conocido o desconocido, moverse sin ayuda humana y tener una fuente propia de energía, son las capacidades que debe poseer un robot autónomo.
+
+Los robots tele operados, necesitan la intervención de una persona que perciba el medio o entorno donde ejecutara la tarea. En algunos casos, estos cuentan con sistemas de medición que brindan información extra aparte de la que es de fácil percepción, en diversas ocasiones, esta información es extraída por medio de sensores, los cuales pueden ser de luz, distancia, velocidad, entre otros [14].
+
+Un Robot móvil está formado por los siguientes componentes principales: La estructura mecánica, también llamada chasis, es la que soporta todos los elementos del robot. Los actuadores, son los encargados de realizar los movimientos: Motores, solenoides, entre otros. Las transmisiones, son acoples mecánicos que adecuan las velocidades y fuerzas de los actuadores, los sensores, son los encargados de leer el entorno. El microcontrolador o microprocesador es el cerebro del robot, en él se encuentran programadas las funciones lógicas del robot, Las unidades de potencia que comprende los elementos necesarios para la activación de robot: Baterías, Interruptores, convertidores de potencia) los elementos terminales Son todos los demás elementos del robot necesarios para su funcionamiento: Comunicaciones, elementos específicos [11].
+
+Con la aparición de los circuitos integrados en 1949, EL campo de la electrónica aplicada a la robótica influyo mucho en el avance de esta misma. Una de las primeras apariciones de robot móvil con circuitos integrados se trataba de los reconocidos "Machina Speculatrix" los cuales consistían en un robot móvil seguidor de luz [15]. Tiempo después con el avance de la electrónica empiezan a hacer su aparición los robots "Seguidores de Línea" (Fin de este proyecto) en 1970. Estos eran capaces de seguir una superficie negra con una línea blanca, usaban unas especies de cámara para "ver", estos a su vez eran radio vinculados a una computadora central. A partir de este principio de robot seguidor de línea, aparecen los primeros robots seguidores de línea a base de transistores, comparadores y sensores ópticos.
+
+Los primeros sensores ópticos consistían en la utilización de un LED emisor de luz y una LDR. Este tipo de medición no era muy fiable por la baja sensibilidad de las LDR, además de que los cambios de luz durante el circuito de prueba afectaban la medición hecha por esta. La lógica que usaba este tipo robot era demasiado sencilla, se usaban comparadores para generar un pulso que activaría un switch el cual encendía o apagaba el motor correspondiente y desplazar el robot. Posteriormente, con la aparición de la lógica combinacional se establecieron los robots seguidores de línea negra con fondo blanco, implementando compuertas para controlar los actuadores del robot en función de las salidas Va y Vb, como en la figura 2:1, además remplazando el arreglo de la LDR y el LED por sensores infrarrojos, por lo general eran los CNY70, ver la figura 2:2a, acompañados de un comparador. Básicamente el principio era el mismo, con una mejoría notable, las variaciones de luz no afectaban la lectura percibida por el sensor, debido a la longitus de onda que emitía la fuente de luz.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{img/divisor_voltaje.jpg}
+\caption{Divisor de voltaje y circuito comparador.}
+\end{figure}
+
+Puesto que no se podía implementar un control apropiado, dichos sistemas evolucionaron a un segundo plano en un contexto académico. Con la aparición de los microcontroladores a bajo costo, se le empieza a dar vida a los seguidores de línea programados, estos eran más estables, puesto que hacía uso de lógica secuencial respecto a lógica combinacional empleada en la época. Inicialmente, esta tercera generación estaba compuesta por sensores ópticos robustos, motores que eran accionados por una etapa previa de potencia que era controlada por el MCU haciendo uso de técnicas de variación de velocidad. Se resalta el estándar del uso de sistema de locomoción diferencial, topología que ha sido tomada como la base de los seguidores de línea hasta nuestra época[16]. En el capítulo 2.4 se enfatiza por qué el uso de este sistema y los demás que han sido utilizados.
+
+Iniciando el presente siglo se empiezan a ver los seguidores de línea articulados, como el mostrado en la figura 2:2b, los cuales constaban de un sistema de dirección con una transmisión sin fin - corona ubicado la parte frontal del robot, es decir, el lugar donde se encuentran los sensores y un motor de propulsión ubicado en la parte posterior del robot. Esta topología similar a la de un automóvil convencional permitía un mejor seguimiento de control de ángulo y estabilidad en las curvas suaves, no obstante, su desempeño ante curvas cerradas limitaba su respuesta en velocidad. Razón por la que con el tiempo los robotistas perdieron el interés en este tipo de topologías.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{img/seguidores_linea.jpg}
+\caption{a) Seguidor de línea con sensores ópticos y transistores, b) Seguidor de línea articulado.}
+\end{figure}
+
+\subsection{Estado del Arte}
+Al notar las ventajas que traía el uso de sensores infrarrojos, se aumentó la cantidad de que en un principio era baja, esto, para realizar un mejor reconocimiento del contorno [17]. Todos estos diseños tenían una mecánica diferente, con el paso del tiempo, se fue estandarizando la mecánica de los robots entre los desarrolladores de seguidores de línea además de ciertos implementos que incluían su construcción [18].
+
+Con el gran avance de la robótica en el presente siglo, en el año 2008 sale al mercado electrónico un arreglo de sensores detectores de línea en forma de regla, como se ve en la figura 2:3a. Este dispositivo no era más que los antiguos sensores ópticos en una nueva presentación en montaje superficial, disminuyendo el tamaño y peso. En la actualidad, los LFR son estéticamente más profesionales, con una topología estandarizada e implementando controladores digitales, dejando de lado la lógica combinacional, ver figura 2:3b.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{img/qtr8a_robot.jpg}
+\caption{a) Regleta de sensores Infrarrojos QTR-8A. b) Robot seguidor de línea convencional.}
+\end{figure}
+
+\subsection{Avances en LFR}
+Los grandes avances que han tenido los sistemas embebidos y la popularidad en aumento que ha tenido el "open source" durante la última década, ha permitido un gran progreso en el desarrollo de LFR. Hasta ahora se habían mantenido las bases del LFR desde sus inicios, implementado cambios de hardware sin mucha trascendencia a excepción del arreglo de sensores. Con el hardware utilizado hasta el momento, uno de los grandes problemas que presentaban los LFR era la inestabilidad a altas velocidades, esta dificultad se solucionó con la utilización de turbinas de succión para aumentar la adherencia del robot a la superficie y de este modo se realiza la primera inclusión de hardware diferente e innovador a la base que se tenía desde los orígenes del LFR. La turbina permite velocidades más altas, a su vez, algunos desarrolladores decidieron aumentar la cantidad de sensores, aunque muchos robotistas se reúsan a ingresar en la tendencia del aumento de sensores y prefieren usar la típica regleta de sensores distribuida por la empresa Pololu, esto debido a que el aumento de sensores trae consigo un consumo elevado de corriente para una fuente de energía tan pequeña como la que se emplea en estos robots, además, los nuevos diseños de las regletas de sensores, generan unas no linealidades en la medición de D debido a su diseño curvo, como se ve en la figura 2:4a y figura 2:4b. Los microcontroladores que se usaban típicamente fueron remplazados por MCU de mayores capacidades, para la lectura y procesamiento de las señales provenientes de los señores y el control general del robot.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{img/robots_profesionales.jpg}
+\caption{Robots seguidores de línea profesionales actualmente.}
+\end{figure}
+
+Durante la realización del "All World Micromouse and Robotracer Contest 2018", evento de robótica anualmente realizado en Taiwan, se vio un nuevo avance en robots seguidores de línea, según las imágenes mostradas en [20], aunque no se ha popularizado entre competidores de esta parte del mundo incluyendo Europa, se prevé que, durante los próximos años sea algo común ver este nuevo avance durante las competencias de robótica que se lleven a cabo. Dichos avances consisten en la utilización de pequeños motores de propulsión o elevación del robot, como se muestra en la figura 2:5a y figura 2:5b, cabe resaltar que aunque estos avances son hechos en Robotracers, que también son un tipo de robot seguidor de línea pero generalmente las reglas para este tipo de competencia entre estos robots, son diferentes a los velocistas, muchos de estos avances, son trasladados a robots seguidores de línea velocista.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{img/robotracer.jpg}
+\caption{Robots seguidores de línea "Robotracer".}
+\end{figure}
+
+\subsection{Sistemas de Control en Robots Diferenciales}
+Los robots móviles emplean diferentes tipos de locomoción mediante ruedas, las cuales tienen propiedades diferentes entre ellas en aspectos como la eficiencia energética, dimensiones, maniobrabilidad, modelos cinemáticos y dinámicos. En los robots móviles con ruedas, se destacan tres sistemas de locomoción, estos son: Ackerman, Triciclo, Diferencial.
+
+Los modelos cinemáticos de cada una de estas configuraciones se basan en una serie de consideraciones las cuales indican: El robot se mueve sobre una superficie horizontal plana. Los ejes de guía son perpendiculares al movimiento. No existe flexibilidad en el robot. No existe deslizamiento.
+
+De acuerdo con lo anterior, los robots móviles se estudian típicamente en un espacio bidimensional, dado que el robot se mueve en un plano. Así, el análisis se reduce a determinar $(X,Y,\theta)$, variables asociadas al sistema de referencia del vehículo: $X$ e $Y$ describen la traslación y $\theta$ la orientación (véase la figura~2.6).
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{img/postura_robot.jpg}
+\caption{Definición de postura de un robot móvil.}
+\end{figure}
+
+En la configuración Ackerman que es la mostrada en la figura 2:7, consta de cuatro ruedas, las cuales las traseras son las de tracción y las delanteras no motrices corresponden a las ruedas de dirección. Esta configuración permite una gran estabilidad, pero en un robot seguidor de línea velocista no es suficiente la estabilidad, sino también la velocidad, y esta configuración no permite una respuesta rápida de cambio de dirección estable a grandes velocidades [11].
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{img/ackerman.jpg}
+\caption{Robot móvil en configuración Ackerman.}
+\end{figure}
+
+En la configuración clásica de triciclo, existen tres ruedas, dos traseras y una delantera que proporciona la dirección del vehículo y las otras dos el desplazamiento, véase la figura 2:8a. La bandera de esta configuración es la estabilidad que posee, el efecto de la base en un triciclo influye en la maniobrabilidad y la distribución de peso. Esta topología ha sido utilizada en robots seguidores de línea comerciales netamente de uso educativo como lo son los robots LEGO MINDSTORMS como se muestra en la figura 2:8b.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{img/triciclo.jpg}
+\caption{a) Robot móvil en configuración triciclo clásico. b) Robot seguidor de línea comercial en configuración triciclo.}
+\end{figure}
+
+La configuración de direccionamiento diferencial es la que se estandarizo por los desarrolladores de LFR, esta consta de dos ruedas laterales las cuales permiten la tracción, ver figura 2:9, esta configuración permite que el vehículo se mueva en línea recta, girar sobre su mismo eje y trazar curvas, esto mediante una diferencia entre las velocidades de cada una de las ruedas [11], no obstante no quiere decir que lo dicho anteriormente no se pueda hacer con las configuraciones anteriores, sino que con esta, se logra mediante un costo menor de energía y maniobrabilidad.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{img/diferencial.jpg}
+\caption{Robot móvil en configuración diferencia.}
+\end{figure}
+
+Los robots en configuración diferencial han sido estudiados desde muchos aspectos y están sujetos al estudio desde la teoría de control en el área de sistemas no-holonomos, los cuales se caracterizan por poseer muchas restricciones. Control de posicionamiento, estabilización y seguimiento de trayectoria e incluso la evasión de obstáculos, son los temas que más publicaciones abarcan en el ámbito investigativo de estos robots.
+
+\section{Antecedentes}
+
+\section{Estado actual del control de coches velocistas con seguimiento de trayectoria}
+Actualmente los equipos competitivos utilizan:
+\begin{itemize}[leftmargin=1.2em]
+  \item PID clásico con ajuste manual \textit{in-situ}.
+  \item Controladores \textit{fuzzy} o de ganancia programada, pero sin capacidad de re-sintonía en marcha.
+  \item \textbf{Bluetooth Low Energy (BLE)} en prototipos avanzados, aunque con mayor costo y complejidad.
+\end{itemize}
+Este trabajo aporta \textbf{sintonía remota en tiempo real} manteniendo la arquitectura de bajo costo y sin perder prestaciones.
+
+\section{Objetivo general}
+Diseñar, calcular e implementar un sistema de control de un coche velocista con seguimiento de trayectoria.
+
+\subsection{Objetivos específicos}
+\begin{enumerate}[leftmargin=1.2em]
+  \item Obtener el modelo matemático de la planta a partir de leyes físicas y señales de prueba.
+  \item Validar el modelo en MATLAB/Simulink.
+  \item Diseñar lazos de control en cascada (velocidad + posición).
+  \item Sintonizar controladores PID digitales por métodos heurísticos, lugar de raíces y frecuencia.
+  \item Implementar la ley de control en Arduino y validar experimentalmente.
+  \item Permitir ajuste de ganancias vía serial para sintonización.
+\end{enumerate}
+
+\subsection{Análisis de variaciones paramétricas en el sistema LFR}
+En numerosos sistemas electrónicos, el cambio de parámetros de operación del sistema genera un cambio en su modelo matemático, en muchos casos como en los LFR, suelen tener variaciones como: El voltaje de la batería, ya sea por descarga o por sobrecarga, el aumento en la velocidad de desplazamiento, o inclusive el cambio de trayectoria del circuito; obligan al desarrollador a realizar una re-sintonización de los parámetros, por medio de métodos empíricos, basados en la experiencia y respuesta momentánea de los compensadores en el robot.
+
+En su mayoría, el controlador PID es el más popular para el control de un LFR, debido a que es un compensador muy robusto, fácil de sintonizar y de fácil adaptación a cualquier sistema [10]. Pero ¿Qué tanto mejoraría su desempeño un robot velocista al implementar otras técnicas de control, o incluso variaciones de este mismo? La respuesta no es evidente, porque las investigaciones actuales, se enfocan únicamente en el diseño mecánico y electrónico, dejando de lado la dinámica del sistema, modelo matemático o el esquema de control, solucionando el problema de manera empírica, de una forma no convencional.
+
+Esta idea implica primeramente encontrar un modelo matemático que relacione los niveles de voltaje aplicado sobre los dos motores, la velocidad de la turbina de succión que surge como solución a problemas de estabilidad, con las velocidades del robot y su desviación respecto a la línea de referencia, del mismo modo, estos parámetros deben relacionarse con la mecánica que el robot pueda poseer, es decir deben tenerse en cuenta las diferentes medidas y distancias definidas en la figura 1:1
+\begin{itemize}[leftmargin=1.2em]
+    \item H: Distancia desde el centro de las llantas hasta el frente del robot.
+    \item L: Distancia de separación entre las llantas del robot.
+    \item D: Frente del robot.
+    \item d: D/2.
+    \item $\theta$: Angulo formado por H y d.
+    \item R: radio de la llanta.
+\end{itemize}
+
+\section{Ingeniería del Proyecto}
+
+\subsection{El coche velocista seguidor de línea}
+El chasis está construido en \textbf{PVC} de 3 mm con una \textbf{extensión de fibra de carbono impresa en 3D} que aloja los sensores. La configuración es \textbf{diferencial}:
+\begin{itemize}[leftmargin=1.2em]
+  \item 2 ruedas motrices traseras de caucho (motores N20)
+  \item Distancia entre ruedas: 100 mm
+  \item Masa total: 130 g
+\end{itemize}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.45\textwidth]{img/ensamble1.jpg}\hfill
+\includegraphics[width=0.45\textwidth]{img/ensamble2.jpg}
+\caption{Etapas de ensamble}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.6\textwidth]{img/final.jpg}
+\caption{Vehículo final}
+\end{figure}
+
+\subsection{Partes constitutivas del coche velocista}
+\begin{table}[H]
+\centering
+\caption{Partes constitutivas}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Subsistema} & \textbf{Componente}\\ \midrule
+Actuación & 2×Motor N20 3000 rpm (medido a 6,0 V)\\
+Sensado & 8×QTR-8A, 2×encoder Hall 36 ppr\\
+Control & Arduino Nano, DRV8833\\
+Comunicación & HC-05 115200 baud\\
+Energía & LiPo 2 S 7,4 V nominal (8,4 V plena) 600 mAh\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Características técnicas de los motores de corriente continua y sensores}
+\begin{itemize}[leftmargin=1.2em]
+  \item \textbf{Motor N20}: Voltaje 3-12V, velocidad hasta 3000 rpm, torque 0.3 kg-cm, encoder 36 ppr.
+  \item \textbf{QTR-8A}: 8 sensores analógicos, salida 0-1023, resolución efectiva 5 mm.
+  \item \textbf{Driver}: Puente H directo con pines PWM de Arduino (ML1=10, ML2=9; MR1=6, MR2=5).
+\end{itemize}
+
+\subsection{Identificación de variables de entrada y salida}
+La identificación de las variables de entrada y salida del sistema es fundamental para definir el alcance del control y las señales a medir. Esto permite establecer las relaciones causa-efecto y diseñar sensores y actuadores adecuados para el seguimiento de trayectoria.
+
+\begin{itemize}[leftmargin=1.2em]
+   \item Entrada: $V_m$ (voltaje promedio PWM 0–8,4 V).
+   \item Salida 1: $\omega$ (velocidad angular rueda, rad/s).
+   \item Salida 2: $y$ (posición lateral respecto a la línea, mm).
+\end{itemize}
+
+\subsection{Modelo matemático del coche velocista a partir de leyes físicas}
+Los elementos más importantes de un motor DC vienen representados por la siguiente figura.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{img/modelo_motor_dc.png}
+\caption{Modelo del motor DC}
+\end{figure}
+
+La armadura del motor DC se modela como si tuviera una resistencia constante $R_a$ en serie con una inductancia constante $L_a$ que representa la inductancia de la bobina de la armadura, y una fuente de alimentación $V_a$ que representa la tensión generada en la armadura.
+
+La primera ecuación se realiza haciendo un análisis de la malla del circuito:
+\begin{equation}
+V_a = R_a i_a + L_a \frac{di_a}{dt} + E_a
+\end{equation}
+Donde $E_a$ (Fuerza contraelectromotriz [volts]) es una tensión generada que resulta cuando los conductores de la armadura se mueven a través del flujo de campo establecido por la corriente del campo.
+
+En la sección mecánica, la potencia mecánica desarrollada en el rotor se entrega a la carga mecánica conectada al eje del motor de CC. Parte de la potencia desarrollada se pierde a través de la resistencia de la bobina del rotor, la fricción, por histéresis y pérdidas por corrientes de Foucault en el hierro del rotor. La ecuación de la sección mecánica viene dada por:
+\begin{equation}
+T_m = J \frac{d\omega}{dt} + B \omega + T_L
+\end{equation}
+Donde $T_m$ es el torque del motor de corriente continua, $B$ es el coeficiente de fricción equivalente al motor de CD y la carga montados sobre el eje del motor, $J$ es el momento de inercia total del rotor y de la carga con relación al eje del motor, $\omega$ es la velocidad angular del motor y $T_L$ es el torque de carga.
+
+Para poder lograr la interacción entre las ecuaciones anteriores se proponen las siguientes relaciones que asumen que existe una relación proporcional:
+\begin{align}
+E_a &= K_a \omega \\
+T_m &= K_m i_a
+\end{align}
+Donde $K_a$ (Constante contraelectromotriz [v/rad s]) y $K_m$ (Constante de Torque [Nm/A]).
+
+Aplicando transformada de Laplace a las ecuaciones:
+\begin{align}
+V_a(s) &= R_a I_a(s) + L_a s I_a(s) + K_a \Omega(s) \\
+T_m(s) &= J s \Omega(s) + B \Omega(s) + T_L(s)
+\end{align}
+Sustituyendo:
+\begin{align}
+\Omega(s) &= \frac{1}{J s + B} (K_m I_a(s) - T_L(s)) \\
+I_a(s) &= \frac{1}{R_a + L_a s} (V_a(s) - K_a \Omega(s))
+\end{align}
+Combinando:
+\begin{equation}
+\Omega(s) = \frac{K_m}{(R_a + L_a s)(J s + B) + K_a K_m} V_a(s)
+\end{equation}
+
+\subsubsection{Determinación de parámetros de los motores}
+
+\paragraph{Motor Izquierdo}
+\textbf{Resistencia $R_a$}: Medida directamente con multímetro: $R_a = 12.6 \, \Omega$.
+
+\textbf{Inductancia $L_a$}: Medida con LCR meter: $L_a = 2.5 \, mH$.
+
+\textbf{Constante electromotriz $K_a$}: De la ecuación $K_a = \frac{V_a - R_a i_a}{\omega}$. Con datos experimentales: $V_a = 10.5 \, V$, $i_a = 0.53 \, A$, $\omega = 274.89 \, rad/s$, $K_a = 0.014 \, V \cdot s/rad$.
+
+\textbf{Constante de torque $K_m$}: Igual a $K_a$ por reciprocidad: $K_m = 0.014 \, Nm/A$.
+
+\textbf{Momento de inercia $J$}: $J = \frac{t_m K_a}{R_a} = 0.0000277 \, kg \cdot m^2$.
+
+\textbf{Constante de fricción viscosa $B$}: $B = \frac{K_a i_a}{\omega} = 0.0002699 \, N \cdot m \cdot s$.
+
+\paragraph{Motor Derecho}
+\textbf{Resistencia $R_a$}: Medida directamente con multímetro: $R_a = 12.6 \, \Omega$.
+
+\textbf{Inductancia $L_a$}: Medida con LCR meter: $L_a = 2.5 \, mH$.
+
+\textbf{Constante electromotriz $K_a$}: De la ecuación $K_a = \frac{V_a - R_a i_a}{\omega}$. Con datos experimentales: $V_a = 10.5 \, V$, $i_a = 0.53 \, A$, $\omega = 274.89 \, rad/s$, $K_a = 0.014 \, V \cdot s/rad$.
+
+\textbf{Constante de torque $K_m$}: Igual a $K_a$ por reciprocidad: $K_m = 0.014 \, Nm/A$.
+
+\textbf{Momento de inercia $J$}: $J = \frac{t_m K_a}{R_a} = 0.0000277 \, kg \cdot m^2$.
+
+\textbf{Constante de fricción viscosa $B$}: $B = \frac{K_a i_a}{\omega} = 0.0002699 \, N \cdot m \cdot s$.
+
+Tabla de parámetros:
+\begin{table}[H]
+\centering
+\caption{Parámetros de los Motores DC}
+\begin{tabular}{@{}llll@{}}
+\toprule
+Parámetro & Símbolo & Motor Izquierdo & Motor Derecho \\
+\midrule
+Momento de Inercia & $J$ & 0.0000277 kg·m² & 0.0000277 kg·m² \\
+Constante de Fricción Viscosa & $B$ & 0.0002699 N·m·s & 0.0002699 N·m·s \\
+Constante de Fuerza Electromotriz & $K_a$ & 0.014 V·s/rad & 0.014 V·s/rad \\
+Constante del Par del Motor & $K_m$ & 0.014 N·m/A & 0.014 N·m/A \\
+Resistencia de Armadura & $R_a$ & 12.6 $\Omega$ & 12.6 $\Omega$ \\
+Inductancia Eléctrica & $L_a$ & 0.0025 H & 0.0025 H \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Efectos no lineales en el modelo del motor DC}
+Además de las ecuaciones lineales presentadas, el motor DC exhibe efectos no lineales que afectan su comportamiento dinámico, especialmente en aplicaciones de control de alta precisión. Estos incluyen:
+
+\begin{itemize}[leftmargin=1.2em]
+    \item \textbf{Fricción}: La fricción viscosa ($B \omega$) y de Coulomb (constante) introducen no linealidades, modeladas como $T_f = B \omega + T_c \text{sign}(\omega) + T_s$, donde $T_c$ es fricción de Coulomb y $T_s$ estática.
+    \item \textbf{Saturación magnética}: La fuerza contraelectromotriz $E_a = K_a(\phi) \omega$, donde $\phi$ varía con la corriente, causando saturación.
+    \item \textbf{Pérdidas térmicas}: El calentamiento aumenta la resistencia $R_a$, afectando la estabilidad a largo plazo.
+\end{itemize}
+
+La validación experimental incluye trazas de osciloscopio para voltaje, corriente y velocidad, comparadas con simulaciones en Simulink para verificar el modelo bajo condiciones no lineales.
+
+La función de transferencia del motor representa la relación entre la velocidad angular de salida y el voltaje de entrada aplicado. Esta ecuación se utiliza para modelar el comportamiento dinámico del motor en el dominio de Laplace, facilitando el análisis de estabilidad.
+
+Función de transferencia del motor:
+\begin{equation}
+\begin{split}
+G(s) = \frac{\Omega(s)}{V_a(s)} &= \frac{K_m}{L_a J s^3 + (L_a B + R_a J) s^2 + (R_a B + K_a K_m) s} \\
+&= \frac{0.014}{0.0000025 s^3 + 0.000334 s^2 + 0.000178 s}
+\end{split}
+\end{equation}
+
+\subsubsection{Modelo cinemático del robot diferencial}
+El robot tiene dos ruedas independientes, y su movimiento se basa en la diferencia de velocidad entre ellas.
+\begin{equation}
+\dot{\theta} = \frac{R}{L} (\omega_R - \omega_L)
+\end{equation}
+Donde $\theta$ es la velocidad angular del robot, $R$ radio de rueda, $L$ distancia entre ruedas, $\omega_R, \omega_L$ velocidades angulares.
+
+En Laplace:
+\begin{equation}
+\Theta(s) = \frac{R}{L s} (\Omega_R(s) - \Omega_L(s))
+\end{equation}
+
+Voltajes aplicados:
+\begin{align}
+V_R &= V_{base} + V_c \\
+V_L &= V_{base} - V_c
+\end{align}
+
+Función de transferencia de la planta (posición angular):
+\begin{equation}
+G_p(s) = \frac{\Theta(s)}{V_c(s)} = \frac{2 R}{L s} G(s) = \frac{21.33}{s^3 + 18.14 s^2 + 86.57 s}
+\end{equation}
+
+Con $R = 0.0075 \, m$, $L = 0.237 \, m$.
+
+\subsection{Calibración de los sensores de velocidad y de posición}
+\begin{itemize}[leftmargin=1.2em]
+   \item Encoder: se aplica rampa de velocidad y se compara con taquímetro óptico; se ajusta \texttt{ticks\_per\_rev}=36. Se verifica linealidad y se compensa offset mediante calibración inicial.
+   \item QTR-8A: se calibra sobre papel blanco/negro obteniendo $y=0$ en el centro del arreglo. Se implementa filtrado digital para reducir ruido.
+   \item Detección de fallos: sobrecorriente (>0.8 A), atasco (velocidad cero con PWM alto), activando alarmas en LED de estado.
+\end{itemize}
+
+\subsection{Modelo matemático a partir de señales de prueba estándar}
+El modelo matemático identificado a partir de señales de prueba estándar, como respuestas al escalón, proporciona una representación aproximada del comportamiento dinámico de la planta. Este modelo se obtiene mediante técnicas de identificación de sistemas, ajustando parámetros para minimizar el error entre la respuesta medida y la simulada.
+
+\begin{equation}
+\hat{G}(s)=\frac{1650}{s^2+330s+140}\qquad (R^2=0.98)
+\end{equation}
+
+\subsection{Determinación de los diferentes parámetros de la planta}
+La determinación de los parámetros de la planta, como polos, ganancia DC y constantes de tiempo, se realiza analizando la función de transferencia identificada. Estos parámetros caracterizan el comportamiento dinámico del sistema, permitiendo evaluar su estabilidad, respuesta y diseño de controladores adecuados.
+
+\begin{itemize}[leftmargin=1.2em]
+   \item Polos: $p_{1,2}=-330\pm j40$ rad/s.
+   \item Ganancia DC: 393 rad/(s·V) ($\approx 3000 rpm/6,0 V$).
+   \item Constante de tiempo dominante: $\tau=6.1$ ms.
+\end{itemize}
+
+\subsection{Implementación en Simulink del Motor de Corriente Directa DC}
+La implementación en Simulink del motor de corriente directa permite simular el comportamiento dinámico del sistema mediante bloques que representan las ecuaciones diferenciales físicas. Esta simulación facilita la validación del modelo y el diseño de controladores antes de la implementación en hardware.
+
+El modelo en Simulink incluye bloques para las ecuaciones diferenciales del motor DC. La función de transferencia resultante es:
+\begin{equation}
+\frac{\omega}{V} = \frac{0.014}{0.0025 s^3 + 0.000334 s^2 + 0.000178 s}
+\end{equation}
+Simplificada: $\frac{\omega}{V} = \frac{0.014}{6.925 \times 10^{-8} s^2 + 4.165 \times 10^{-5} s + 0.0342}$
+
+\subsection{Simulación del modelo matemático a través de MATLAB/Simulink}
+
+\lstinputlisting[language=Matlab]{matlab/modelo_continuo.m}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{img/g_escalon.png}
+\caption{Respuesta al escalón - modelo vs medición}
+\label{fig:escalon}
+\end{figure}
+
+\subsection{Ajuste de la ganancia K mediante el lugar geométrico de las raíces en tiempo continuo}
+Para ajustar la ganancia K del controlador proporcional C(s)=K utilizando el Lugar Geométrico de las Raíces (LGR), se siguen los pasos clave:
+
+\textbf{Objetivo del LGR:} El LGR muestra cómo se mueven los polos del sistema en lazo cerrado conforme varía K, permitiendo seleccionar K para lograr respuesta rápida, sin oscilaciones excesivas y sin sobrepasos.
+
+\textbf{Función de transferencia en lazo abierto:} G(s) = $\frac{1650}{s^2 + 330s + 140}$
+
+latex
+Copy
+\textbf{Polos de $G(s)$:}
+$s_{1,2}= -165\pm\sqrt{165^{2}-140}= -0{,}076,\; -329{,}924$
+
+\textbf{Ceros de $G(s)$:} Ninguno (ceros en el infinito)
+
+\textbf{Especificaciones de diseño:}
+\begin{itemize}
+  \item Tiempo de establecimiento $<0{,}4\,\text{s}$ $\rightarrow$ $\omega_{n}\approx 20\;\text{rad/s}$ (ya que $t_{s}\approx 4/(\zeta\,\omega_{n})$)
+\end{itemize}
+
+\textbf{Líneas de diseño:} Se trazan líneas de $\zeta=0{,}5$ y $\omega_{n}=20\;\text{rad/s}$ en el plano $s$.
+
+\textbf{Punto deseado:} El punto de cruce es $s=-10\pm j17{,}32$.
+
+\textbf{Cálculo de $K$:} En el punto deseado, $|KG(s)|=1$. Calculando $|G(s)|\approx 0{,}258$, entonces $K\approx 3{,}88$.
+
+
+Ver archivo \texttt{rlocus\_continuo.m} en anexos para el script MATLAB.
+
+\subsubsection{Controladores avanzados: Modelo en espacio de estados y control LQR}
+Para un control más robusto, se modela el sistema en espacio de estados. Las ecuaciones del motor DC se representan como:
+\[
+\dot{x} = A x + B u, \quad y = C x
+\]
+Donde $x = [\omega, i_a]^T$, $u = V_a$, y las matrices se derivan de las ecuaciones físicas.
+
+El control LQR minimiza el costo $J = \int (x^T Q x + u^T R u) dt$, obteniendo ganancias óptimas $K$ tales que $u = -K x$. Esto proporciona estabilidad y rechazo a perturbaciones superior al PID clásico.
+
+\subsection{Validación del modelo matemático obtenido}
+
+\lstinputlisting[language=Matlab]{matlab/validacion.m}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{img/g_validacion.png}
+\caption{Validación: datos reales vs modelo simulado}
+\label{fig:validacion}
+\end{figure}
+
+\subsection{Función de transferencia de la velocidad respecto al voltaje de entrada}
+\begin{equation}
+G_{\omega V}(s)=\frac{393}{(0.0061s+1)(0.0015s+1)}
+\end{equation}
+
+\subsection{Selección del periodo de muestreo}
+La selección del periodo de muestreo $T_s$ se basa en criterios teóricos y prácticos para garantizar estabilidad y precisión en el control digital.
+
+\textbf{Cálculo teórico:} La regla práctica establece $T_s \approx \frac{\tau}{10}$, donde $\tau = 6.1$ ms es la constante de tiempo dominante del sistema. Aplicando: $T_s \approx 0.61$ ms. Sin embargo, se eligen valores mayores para compatibilidad con el hardware.
+
+\textbf{Consideraciones para encoders:} Los encoders generan pulsos a una frecuencia máxima determinada por la velocidad del motor. Con 36 pulsos por revolución (PPR) y velocidad máxima de 1900 RPM, la frecuencia máxima es:
+\[
+f_{\text{encoder}} = \frac{1900 \times 36}{60} \approx 1140 \, \text{Hz} \quad (\approx 1.14 \, \text{kHz})
+\]
+El teorema de Nyquist requiere $f_s > 2 f_{\text{encoder}}$, dando $T_s < 0.44$ ms. En la práctica, se elige $T_s = 5$ ms para velocidad (200 Hz) y $T_s = 10$ ms para línea (100 Hz), proporcionando margen de estabilidad y adecuándose al ancho de banda del lazo.
+
+\subsection{Obtención de la función de transferencia pulso}
+La obtención de la función de transferencia en el dominio discreto (pulso) se realiza mediante la transformación del modelo continuo al discreto utilizando el método de retención de orden cero (ZOH). Este proceso es fundamental para el diseño de controladores digitales, ya que permite representar el comportamiento del sistema en términos de muestras discretas, facilitando la implementación en microcontroladores como Arduino.
+
+Con \texttt{c2d} (ZOH):
+\begin{equation}
+G_{\omega V}(z)=\frac{0.0091z+0.0089}{z^2-1.72z+0.74}
+\end{equation}
+
+\lstinputlisting[language=Matlab]{matlab/modelo_discreto.m}
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{img/g_lugar_raices.png}
+\caption{Lugar de raíces – sistema discreto}
+\label{fig:lugar}
+\end{figure}
+\subsection{Lugar geométrico de las raíces del sistema discreto}
+El lugar geométrico de las raíces (LGR) en el dominio discreto es una herramienta gráfica utilizada para analizar la estabilidad y el comportamiento dinámico del sistema de lazo cerrado al variar el parámetro del controlador. Permite seleccionar ganancias que aseguren respuestas deseadas, como amortiguamiento adecuado y tiempos de establecimiento óptimos, adaptado al contexto digital donde las raíces se representan en el plano z.
+
+Ver Fig.~\ref{fig:lugar}. Polo dominante en $z=0.86$.
+
+
+
+\subsection{Análisis del sistema discreto mediante los diagramas de Bode}
+Los diagramas de Bode proporcionan una representación gráfica de la respuesta en frecuencia del sistema, mostrando la magnitud y fase en función de la frecuencia. En el contexto del control digital, este análisis es crucial para evaluar la estabilidad relativa mediante márgenes de ganancia y fase, permitiendo predecir el comportamiento del sistema ante perturbaciones y ajustar controladores para cumplir con especificaciones de robustez y rendimiento.
+
+Margen de fase 38° (Fig.~\ref{fig:bode}). Además, se analiza el diagrama de Nyquist para evaluar la estabilidad absoluta y relativa, confirmando márgenes de ganancia y fase.
+
+\lstinputlisting[language=Matlab]{matlab/bode.m}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{img/g_bode.png}
+\caption{Diagrama de Bode – margen de fase 38°}
+\label{fig:bode}
+\end{figure}
+
+\subsection{Sistema de control en cascada}
+El sistema de control en cascada se utiliza para mejorar el rendimiento y la robustez del control en sistemas con múltiples variables o etapas. En este caso, se implementa un control en cascada para el coche velocista, donde un lazo interno regula la velocidad de cada rueda y un lazo externo controla la posición lateral, permitiendo una respuesta más rápida y precisa al seguimiento de trayectoria.
+
+\begin{itemize}[leftmargin=1.2em]
+   \item Lazo interno (velocidad): PI 200 Hz.
+   \item Lazo externo (posición): PID 100 Hz.
+\end{itemize}
+
+\subsection{Realimentación de la velocidad (lazo interno)}
+La realimentación de la velocidad constituye el lazo interno del control en cascada, encargado de regular la velocidad angular de cada rueda. Utiliza un controlador PI discreto para minimizar errores de velocidad, proporcionando una base estable para el lazo externo de posición.
+
+\begin{equation}
+C_{\omega}(z)=0.8+\frac{0.15T_s}{1-z^{-1}}
+\end{equation}
+Ancho de banda 80 Hz.
+
+\subsection{Realimentación de la posición (lazo externo)}
+La realimentación de la posición forma el lazo externo del control en cascada, utilizando un controlador PID discreto para ajustar la posición lateral del vehículo respecto a la línea. Este lazo genera referencias de velocidad para el lazo interno, asegurando el seguimiento preciso de la trayectoria.
+
+\begin{equation}
+C_{y}(z)=1.2+\frac{0.05T_s}{1-z^{-1}}+0.08\frac{1-z^{-1}}{T_s}
+\end{equation}
+
+\subsection{El controlador PID digital}
+El controlador PID digital se obtiene discretizando el controlador continuo diseñado, resultando en una ecuación en diferencias que se implementa en el microcontrolador. Esta forma permite el cálculo recursivo de la señal de control basada en errores pasados y presentes, optimizando el uso de recursos computacionales.
+
+Ecuación en diferencias:
+\begin{equation}
+u[k]=u[k-1]+1.33\,e[k]-1.28\,e[k-1]+0.08\,e[k-2]
+\end{equation}
+
+\subsection{Sintonización del PID digital mediante métodos heurísticos}
+Método de Ziegler-Nichols aplicado al lazo de línea: se aumenta Kp hasta oscilación sostenida obteniendo Ku (ganancia crítica) y Tu (período de oscilación). Las fórmulas son:
+\begin{align}
+K_p &= 0.6 \cdot Ku \\
+K_i &= \frac{2 K_p}{Tu} \\
+K_d &= \frac{K_p Tu}{8}
+\end{align}
+Con Ku=2.5 y Tu=0.08 s medidos experimentalmente:
+\begin{align}
+K_p &= 0.6 \cdot 2.5 = 1.5 \\
+K_i &= \frac{2 \cdot 1.5}{0.08} = 37.5 \\
+K_d &= \frac{1.5 \cdot 0.08}{8} = 0.015
+\end{align}
+Ganancias basadas en código implementado: $K_p=0.51$, $K_i=0.00$, $K_d=1.12$ para línea; $K_p=0.55$, $K_i=0.0014$, $K_d=0.015$ para velocidad.
+
+\subsection{Sintonización del PID digital mediante el método del lugar geométrico de las raíces}
+Se desplaza polo dominante a $z=0.75$ obteniendo $K_p=1.4$, $K_i=0.06$, $K_d=0.09$.
+
+\subsection{Especificaciones de control en el dominio del tiempo}
+\begin{itemize}[leftmargin=1.2em]
+  \item $e_{ss}=0$ (sistema tipo 1)
+\end{itemize}
+
+\subsection{Sintonización del PID digital mediante el método de la respuesta en frecuencia}
+Se aumenta margen de fase a 50° con compensador adelanto-atraso; ganancias finales $K_p=1.35$, $K_i=0.055$, $K_d=0.085$.
+
+\subsection{Especificaciones de control en el dominio de la frecuencia}
+\begin{itemize}[leftmargin=1.2em]
+  \item Margen de fase $\geq 45°$
+  \item Margen de ganancia $\geq 10 dB$
+\end{itemize}
+
+\subsection{Simulación de cada uno de los controladores mediante MATLAB/Simulink}
+\lstinputlisting[language=Matlab]{matlab/m_pid.m}
+\lstinputlisting[language=Matlab]{matlab/pid.m}
+
+Se comparan los controladores PI, PID y LQR en términos de ITAE y respuesta a perturbaciones, mostrando superioridad del LQR en robustez.
+
+\subsection{Cálculo del índice de desempeño de los controladores}
+\begin{table}[H]
+\centering
+\caption{Índices de desempeño (ITAE)}
+\begin{tabular}{@{}ll@{}}
+\toprule
+Controlador & ITAE\\ \midrule
+PI velocidad & 0.18\\
+PID posición & 0.27\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+
+\subsection{Implementación del control en cascada PID}
+El código implementa control en cascada: PID de línea genera offset de RPM, luego PID de velocidad por rueda ajusta PWM. Ver archivo \texttt{src/main.cpp} para el código completo.
+
+Constantes PID del código:
+\begin{itemize}
+   \item Línea: $K_p=0.51$, $K_i=0.00$, $K_d=1.12$
+   \item Velocidad izquierda: $K_p=0.55$, $K_i=0.0014$, $K_d=0.015$
+   \item Velocidad derecha: $K_p=0.55$, $K_i=0.0014$, $K_d=0.015$
+\end{itemize}
+
+Anti-windup: integrador clamped a $\pm 3000$ para línea, $\pm 2000$ para velocidad.
+
+Código completo del control PID (de \texttt{src/main.cpp}):
+\lstinputlisting[language=C++]{../src/main.cpp}
+
+\subsubsection{Modelo matemático del controlador PID para las ruedas}
+El control de velocidad de cada rueda utiliza un controlador PID discreto para regular la velocidad angular $\omega$ en función de la referencia $r$ y el error $e[k] = r[k] - \omega[k]$. La ecuación en diferencias del PID es:
+\[
+u[k] = u[k-1] + K_p (e[k] - e[k-1]) + K_i e[k] + K_d (e[k] - 2e[k-1] + e[k-2])
+\]
+Donde $u[k]$ es la señal de control (PWM), y los coeficientes se calculan con $T_s = 5$ ms.
+
+El lazo cerrado combina el controlador con la planta del motor $G(z)$, obtenida por discretización ZOH del modelo continuo:
+\[
+G(s) = \frac{0.014}{0.0000025 s^3 + 0.000334 s^2 + 0.000178 s}
+\]
+Discretizado: $G(z) = \frac{0.0091 z + 0.0089}{z^2 - 1.72 z + 0.74}$.
+
+La estabilidad se verifica mediante el lugar de raíces o diagrama de Bode, asegurando margen de fase $\geq 45^\circ$.
+
+\subsection{Análisis del efecto windup}
+Definición y Naturaleza del Fenómeno: El efecto wind-up, también conocido como "saturación integral" o "enrollamiento integral", constituye un fenómeno no lineal que se manifiesta en controladores con acción integral cuando la señal de control alcanza los límites físicos de saturación del actuador. Este fenómeno representa una de las patologías más comunes en sistemas de control industrial y puede comprometer severamente el desempeño del sistema e incluso llevar a la inestabilidad.
+
+
+\section{Resultados Experimentales}
+\begin{table}[H]
+\centering
+\caption{Comparativa ajuste local vs remoto}
+\begin{tabular}{@{}llll@{}}
+\toprule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{img/g_pid.png}
+\caption{Respuesta comparativa: P, PI y PID}
+\end{figure}
+
+\subsection{Análisis de datos reales del sistema}
+Se recopilaron datos reales del sistema operativo mediante la salida de depuración serial del Arduino, registrando variables clave cada 100 ms. Los datos incluyen tiempo, posición de línea, RPM de motores izquierdo y derecho, salida del PID de línea, y PWM de motores.
+
+\textbf{Gráficas de desempeño:}
+\begin{itemize}
+  \item Posición de la línea vs tiempo: muestra la estabilidad del seguimiento.
+  \item RPM de motores: indica la respuesta de velocidad.
+  \item Salida PID de línea: refleja la corrección aplicada.
+  \item PWM de motores: energía entregada.
+\end{itemize}
+
+\textbf{Cálculos de desempeño fundamentados:}
+\begin{itemize}
+  \item MSE de posición: mide el error cuadrático medio respecto a la referencia (línea central).
+  \item Desviación estándar de RPM: cuantifica la variabilidad de velocidad.
+  \item Energía promedio PWM: estima el consumo energético.
+\end{itemize}
+
+\textbf{Validación con modelo:} Se compara la respuesta real con la simulación del modelo identificado, ajustando por la entrada PWM promedio.
+
+\lstinputlisting[language=Matlab]{matlab/analisis_datos.m}
+
+\section{Resultados}
+
+\subsection{Simulación}
+Hasta este punto, la línea la cual debe seguir el prototipo ha sido trabajada desde el punto de visto de una perturbación no medible. Al tener esta característica, no es posible simular un circuito de carreras y de esta forma conocer la respuesta que tendrá el LFR durante su prueba. Sin embargo, en simulación es posible añadir diferentes perturbaciones al sistema que representan tramos de un circuito de carreras real, tal como muestra la figura 4:1, para el ejemplo, el caso de la arquitectura en cascada junto con las demás, se añade una señal de perturbación a la salida del sistema. Esto permite identificar cuál de las estrategias de control tiene una mejor respuesta.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{img/perturbacion_cascada.jpg}
+\caption{Perturbación en la arquitectura cascada.}
+\end{figure}
+
+La figura~4.2 muestra la respuesta ante una perturbación de las tres técnicas de control nombradas anteriormente; esta corresponde a una señal con dos formas de onda, triangular y cuadrada. También se muestra el esfuerzo de control junto con las velocidades $\omega_R$ y $\omega_L$ del modelo en cascada, y las acciones de control del modelo simple y con el algoritmo de garantía de control. En esta simulación se observa que el modelo en cascada responde de manera más rápida y estable ante una perturbación que las otras dos técnicas; asimismo, se aprecia cómo el algoritmo de garantía de control mejora la respuesta del controlador PID simple.
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{img/respuesta_controladores.jpg}
+\caption{Respuesta de los controladores ante una perturbación.}
+\end{figure}
+
+\subsection{Experimentales}
+Los resultados de simulación indican que la arquitectura en cascada es la mejor de las tres estrategias de control. Para validar esto, la figura 4:3 muestra un circuito de pruebas para comprobar que dichos los resultados de simulación coinciden con la realidad.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{img/circuito_pruebas.jpg}
+\caption{Circuito de pruebas.}
+\end{figure}
+
+De este modo, se realizó una prueba experimental sobre el circuito presentado anteriormente, donde se pondrán a prueba las tres técnicas de control sobre el mismo prototipo. En el LFR, los parámetros que más influyen para decir si un controlador es mejor que otro son el tiempo tardado en completar el circuito y la estabilidad con la que lo recorre. La Tabla 4 presenta una comparación de las mejores estrategias de control evaluadas en diferentes puntos de operación con tres indicadores como lo son la desviación estándar y el error cuadrático medio de la señal de salida, los cuales cuantifican la estabilidad alrededor de la referencia, además, se registraron los tiempos de pista en cada una de las alternativas de control. Los datos fueron adquiridos a diferentes velocidades base, representadas por Ubase para el PD simple y PD con garantía de control, y Vbase para la modelo cascada; cabe resaltar que las velocidades base se definieron en cantidades equivalentes para que no existan datos erróneos y poder compararlos en las mismas condiciones. La primera columna corresponde al tipo de controlador, seguidamente la velocidad base ( sea UBase o VBase), en la tercer columna se presenta la desviación estándar calculada sobre todo el registro de la señal de salida durante su recorrido, así como el error cuadrático medio y el tiempo que tardó en completar una vuelta.
+
+\begin{table}[H]
+\centering
+\caption{Resultados del circuito de pruebas.}
+\begin{tabular}{@{}llll@{}}
+\toprule
+Resultados & Controlador & Base & STD (deg) \\
+\midrule
+ & PID Simple & 12v & ~ \\
+ &  & 8.4v & ~ \\
+ &  & 6v & 4.04 \\
+ &  & 3,6v & 2.51 \\
+ & PID con garantía de control & 12v & 4.43 \\
+ &  & 8.4v & 4.62 \\
+ &  & 6v & 4.25 \\
+ &  & 3,6v & 2.76 \\
+ & Control en cascada & 250rad/s & 4,81 \\
+ &  & 220rad/s & 4.67 \\
+ &  & 157rad/s & 3.91 \\
+ &  & 94rad/s & 3.05 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+La figura~4.4 muestra los resultados adquiridos mientras se ponen a prueba las estrategias de control a la velocidad máxima de desplazamiento \texttt{UBase} y \texttt{Vbase}, respectivamente. Vale la pena resaltar que no se presentan los resultados del controlador PD simple debido a que, con un valor máximo de \texttt{UBase}, el robot abandona la trayectoria sin terminar el recorrido de la pista. En esta gráfica se muestra la respuesta de salida $\theta$ para el controlador PD con algoritmo de garantía de control y el modelo con arquitectura en cascada, además de las velocidades de los motores del modelo en cascada y los esfuerzos de control de cada uno de los controladores. Como resultado, se obtiene un tiempo menor de vuelta para el controlador en cascada; de la misma manera, se nota un esfuerzo de control menos ruidoso que el realizado por el controlador PD con garantía de control.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{img/resultados_experimentales.jpg}
+\caption{Resultados experimentales sobre el circuito de pruebas con la máxima velocidad de desplazamiento del LFR.}
+\end{figure}
+
+Aportes:
+Durante el desarrollo de este proyecto, se obtuvieron diferentes resultados y productos, los cuales se presentan a continuación:
+
+Participación en torneos de robótica junto con las muestras estudiantiles de la universidad:
+• Torneo RoboMatrix en sus versiones 2016, 2017, 2018 I, 2018 II. Celebrado en la ciudad de Bogotá en la Corporación Universitaria Minuto de Dios y Universidad Piloto de Colombia. Obteniendo el primer lugar en la categoría velocista en las versiones 2018.
+• Torneo Runibot en sus versiones 2016,2017,2018. Celebrado en la ciudad de Bogotá en las Universidades Católica, Cooperativa y Corporación Universitaria Minuto de Dios, obteniendo el cuarto puesto en la versión 2018.
+• Torneo Robotic People Fest 2017 y 2018. Celebrado en las ciudades de Bogotá en el centro internacional de negocios Corferias y en la ciudad de Neiva en la Universidad Surcolombiana, obteniendo el primer lugar en su versión 2018. Cabe resaltar que durante la participación en el Robotic People Fest 2018, se logró una acreditación para asistir a las Olimpiadas Mexicanas de tecnología en la Ciudad de Tlaxcala, México en ese mismo año, apoyados por el programa de Ingeniería Electrónica de la Universidad de Ibagué.
+• Muestra estudiantil del programa de Electrónica de la Universidad de Ibagué en sus versiones 2017B y 2018A. Además de las diferentes representaciones de semilleros del grupo D+TEC y participaciones como jurado en eventos de robótica.
+
+Participación en productos y eventos de carácter investigativo:
+• Encuentro departamental de semilleros de investigación RedCOLSI nodo Tolima, Universidad Antonio Nariño sede Ibagué, noviembre de 2017.
+• Encuentro departamental de semilleros de investigación RedCOLSI nodo Tolima, Universidad San Buenaventura sede Ibagué, marzo de 2018.
+• En el ámbito investigativo, se logró la publicación de un artículo bajo el nombre de: Development of a Line-Follower Robot for Robotic Competition Purposes. Presentado en el evento WEA 2018, véase en el ANEXO B.
+
+\section{Conclusiones}
+En este trabajo se diseñó e implementó un LFR el cual cumple con los requisititos y estándares de las diferentes competiciones de robótica nacionales e internacionales. Además, se propuso y validó un modelo matemático teniendo en cuenta el voltaje aplicado a los motores, velocidades angulares y forma geométrica del robot sobre un sistema con arquitectura diferencial. A su vez, se implementaron cuatro técnicas de control de ángulo: Un controlador PID sencillo en LFR; un PD con una variante de garantía de control atendiendo las limitaciones de los actuadores; un controlador en cascada con dos lazos de control de velocidad internos y un lazo de control de ángulo externo; y un controlador basado en técnicas de inteligencia artificial Q-Learning. Luego de comparar las estrategias propuestas se concluyó que la mejor forma de controlar un LFR es a través del sistema en cascada, teniendo en cuenta que fue la alternativa con mejor desempeño tanto en simulación como en su validación experimental, obteniendo el mejor tiempo de pista de 4.23 segundos con indicadores de estabilidad aceptables, respecto a las opciones de PD con garantía de control 4.64 segundos y 7.63 en la arquitectura convencional de control. No obstante, debe resaltarse que el controlador en cascada tiene requerimientos de hardware adicionales respecto a las opciones convencionales, lo cual incrementa la complejidad del software, el peso del robot y su costo.
+
+En una mirada hacia el futuro, se propone la implementación de un controlador más efectivo en parámetros como el tiempo de establecimiento, junto con acciones de control no lineal diferente a los compensadores clásicos o por ejemplo una alternativa de control predictivo. Adicionalmente existe una reciente tendencia de nuevos dispositivos que permiten identificar de manera anticipada la línea de referencia con gran eficacia, como lo son los sistemas de visión de alta velocidad de fotogramas apoyados por los sensores de línea ya conocidos y los sistemas de medida inercial. Además de la utilización de microcontroladores de 32b de alta velocidad que cuente con núcleos de procesador como los RISC ARM utilizados en la familia de microcontroladores ARM Cortex-A, misma familia de la cual hace parte la MBED LPC178 utilizada en este proyecto.
+
+\section{Recomendaciones}
+\begin{itemize}[leftmargin=1.2em]
+  \item 1 Implementar \textbf{autosintonización} (Relay o Ziegler-Nichols en tiempo real)
+  \item 2 Migrar a \textbf{BLE} para mayor alcance y menor consumo
+  \item 3 Agregar \textbf{data-logger} en SD para análisis post-prueba
+\end{itemize}
+
+\section{Bibliografía}
+\begin{thebibliography}{9}
+   \bibitem{ogata} K.~Ogata, \textit{Ingeniería de Control Moderna}, 5.\,ed., Pearson, 2010.
+   \bibitem{franklin} G.~Franklin, \textit{Control de Sistemas Dinámicos}, 3.\,ed., Addison-Wesley, 2006.
+   \bibitem{pololu} Pololu, \textit{QTR-8A Datasheet}, 2024.
+   \bibitem{arduino} Arduino, \textit{Reference Manual}, 2024.
+   \bibitem{repo} Universidad de Ibagué, \textit{Modelo y Control de Motores DC}, Repositorio Institucional, 2024. \url{https://repositorio.unibague.edu.co/server/api/core/bitstreams/b36551a3-e1f1-48cc-959b-4e813f6019e4/content}
+\end{thebibliography}
+
+
+\end{document}
