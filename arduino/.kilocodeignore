@@ -1,8 +1,0 @@
-informe/*.out
-informe/*.aux
-informe/*.log
-informe/*.toc
-informe/*.synctex.gz
-informe/*.fls
-informe/*.fdb_latexmk
-informe/*.pdf
